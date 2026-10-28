@@ -130,6 +130,25 @@ test("groups Pi and OpenCode updates and suppresses runtime-incompatible major p
     );
 });
 
+test("resolves js-yaml only to patched releases", () => {
+  // why: 4.3.2 is the first 4.x without GHSA-2883-xcg3-v3hh and 5.4.1 the first
+  // 5.x without GHSA-r3ph-w7gj-g6xm. json-schema-to-typescript 16 needs 5.x;
+  // every other consumer stays on the 4.x override.
+  const floors = new Map([
+    [4, [4, 3, 2]],
+    [5, [5, 4, 1]]
+  ]);
+  const rank = ([major, minor, patch]) => major * 1e6 + minor * 1e3 + patch;
+  const resolved = [...read("pnpm-lock.yaml").matchAll(/^\s{2}js-yaml@(\d+)\.(\d+)\.(\d+):/gmu)].map((match) =>
+    match.slice(1).map(Number)
+  );
+  assert.notEqual(resolved.length, 0);
+  for (const version of resolved) {
+    const floor = floors.get(version[0]);
+    assert.ok(floor !== undefined && rank(version) >= rank(floor), `js-yaml@${version.join(".")} is not patched`);
+  }
+});
+
 test("the lockfile resolves none of the three alerted site versions", () => {
   const lockfile = read("pnpm-lock.yaml");
   for (const alerted of ["zod@3.25.76", "postcss-selector-parser@6.1.5", "katex@0.16.47"])
@@ -144,7 +163,8 @@ test("Dependabot ignores the exact-pinned cedar and json-schema-to-typescript up
     policy,
     /dependency-name: "@cedar-policy\/cedar-wasm"\s*\n\s+update-types:\s*\n\s+- version-update:semver-minor\s*\n\s+- version-update:semver-patch/u
   );
-  // why: json-schema-to-typescript 16 breaks the contract generator (#563).
+  // why: a json-schema-to-typescript major may change the generated contracts,
+  // so it moves only with a drift check or a reviewed regeneration (#563).
   assert.match(
     policy,
     /dependency-name: json-schema-to-typescript\s*\n\s+update-types:\s*\n\s+- version-update:semver-major/u
