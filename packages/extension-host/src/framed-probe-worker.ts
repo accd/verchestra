@@ -328,6 +328,13 @@ export class FramedProbeWorker {
     if (this.#fatal !== undefined) return;
     try {
       for (const envelope of this.#decoder.push(chunk)) {
+        // invariant: this worker reads payload schema version 1 only. A frame
+        // under another version is refused, never read as if it were 1 (#570).
+        if (envelope.payloadSchema.version !== SCHEMA_VERSION)
+          throw protocolViolation(
+            "VES_PROBE_PAYLOAD_SCHEMA_UNSUPPORTED",
+            "Probe payload schema version is unsupported"
+          );
         this.#guard.accept(envelope);
         this.#inbox.push(envelope);
       }

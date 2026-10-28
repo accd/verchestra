@@ -47,8 +47,12 @@ function reapObserved(t, results) {
   });
 }
 
+// why: "hang-ignore-eof" survives the end of its input, so only the host's own
+// process group reaches it; a worker started outside a group of its own
+// (`detached: false`) outlives this case (#570).
 for (const [label, mode] of [
   ["during execution", "hang"],
+  ["during execution while ignoring the end of its input", "hang-ignore-eof"],
   ["before answering its handshake", "hang-handshake"]
 ]) {
   test(`a worker that hangs ${label} is killed at the time bound`, OPTIONS, async (t) => {
