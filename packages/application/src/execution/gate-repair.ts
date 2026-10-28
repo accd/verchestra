@@ -192,6 +192,167 @@ function assertFeedback(feedback: GateAttemptFeedback): void {
     fail("VES_REPAIR_FEEDBACK_INVALID", "driver feedback is unbounded or malformed");
 }
 
+type RepairState = ReturnType<typeof normalizeState>;
+type RepairStage = Parameters<GateRepairPorts["saveState"]>[0]["stage"];
+type AttemptResult = Awaited<ReturnType<GateRepairPorts["attempt"]>>;
+
+interface RepairRun {
+  readonly ports: GateRepairPorts;
+  readonly state: RepairState;
+  readonly meter: BudgetMeter | undefined;
+}
+
+function saveStage(run: RepairRun, stage: RepairStage): Promise<void> {
+  return run.ports.saveState({
+    stage,
+    attempts: run.state.attempts,
+    attemptCapsuleDigests: run.state.attemptCapsuleDigests,
+    budgetLedger: run.meter?.ledger() ?? null
+  });
+}
+
+function capsuleChain(state: RepairState): readonly Digest[] {
+  return Object.freeze([...state.attemptCapsuleDigests]);
+}
+
+function budgetStopReason(meter: BudgetMeter | undefined): string | undefined {
+  const decision = meter?.shouldStop();
+  if (decision?.stop !== true) return undefined;
+  return decision.reason ?? "budget";
+}
+
+async function budgetExceeded(
+  run: RepairRun,
+  reason: string,
+  failure: GateFailure | undefined
+): Promise<GateRepairOutcome> {
+  await saveStage(run, "budget-exceeded");
+  return Object.freeze({
+    status: "BUDGET_EXCEEDED",
+    attempts: run.state.attempts,
+    stopReason: reason,
+    failure,
+    attemptCapsuleDigests: capsuleChain(run.state)
+  });
+}
+
+// invariant: SSI-60 and SSI-68. A suspended attempt saves the run's spend
+// with the repair state as it stands, so the resumed meter continues from
+// it and counts no time the run spent suspended.
+async function suspended(run: RepairRun, suspension: ExecutionSuspension): Promise<GateRepairOutcome> {
+  await saveStage(run, "repair");
+  return Object.freeze({
+    status: "SUSPENDED",
+    attempts: run.state.attempts,
+    suspension,
+    attemptCapsuleDigests: capsuleChain(run.state)
+  });
+}
+
+async function converged(run: RepairRun): Promise<GateRepairOutcome> {
+  await saveStage(run, "converged");
+  return Object.freeze({
+    status: "CONVERGED",
+    attempts: run.state.attempts,
+    attemptCapsuleDigests: capsuleChain(run.state)
+  });
+}
+
+async function escalated(run: RepairRun, failure: GateFailure): Promise<GateRepairOutcome> {
+  await saveStage(run, "escalated");
+  return Object.freeze({
+    status: "ESCALATED",
+    attempts: run.state.attempts,
+    failure,
+    attemptCapsuleDigests: capsuleChain(run.state)
+  });
+}
+
+// The terminal stage after the last attempt is written once: a declared
+// policy escalates, an absent one ends at gate-failed.
+async function exhausted(
+  run: RepairRun,
+  declared: boolean,
+  failure: GateFailure | undefined
+): Promise<GateRepairOutcome> {
+  if (failure === undefined) fail("VES_REPAIR_STATE_INVALID", "repair loop ended without a recorded failure");
+  await saveStage(run, declared ? "escalated" : "gate-failed");
+  return Object.freeze({
+    status: declared ? "ESCALATED" : "GATE_FAILED",
+    attempts: run.state.attempts,
+    failure,
+    attemptCapsuleDigests: capsuleChain(run.state)
+  });
+}
+
+async function attemptFeedback(
+  run: RepairRun,
+  policy: GateRepairPolicy,
+  lastFailure: GateFailure | undefined,
+  current: GateAttemptFeedback | undefined
+): Promise<{ readonly feedback: GateAttemptFeedback | undefined; readonly feedbackWithheld: boolean }> {
+  if (lastFailure === undefined && run.state.attempts <= 0) return { feedback: current, feedbackWithheld: false };
+  if (policy.feedbackToDriver && lastFailure !== undefined) {
+    const feedback = await run.ports.buildFeedback(lastFailure);
+    assertFeedback(feedback);
+    return { feedback, feedbackWithheld: false };
+  }
+  // Withholding is a policy decision the evidence must show, not an
+  // omission a reader has to infer (REP-03).
+  return { feedback: undefined, feedbackWithheld: lastFailure !== undefined };
+}
+
+async function sealAndRecord(
+  run: RepairRun,
+  attempt: number,
+  result: AttemptResult,
+  feedbackWithheld: boolean
+): Promise<void> {
+  const previousAttemptDigest = run.state.attemptCapsuleDigests.at(-1) ?? null;
+  const sealed = await run.ports.sealAttempt({
+    attempt,
+    passed: result.passed,
+    failure: result.passed ? undefined : result.failure,
+    feedbackWithheld,
+    previousAttemptDigest
+  });
+  if (!DIGEST.test(sealed.capsuleDigest)) fail("VES_REPAIR_STATE_INVALID", "attempt capsule digest is invalid");
+  run.state.attempts = attempt;
+  run.state.attemptCapsuleDigests.push(sealed.capsuleDigest);
+}
+
+async function afterFailedAttempt(
+  run: RepairRun,
+  policy: GateRepairPolicy,
+  declared: boolean,
+  failure: GateFailure
+): Promise<GateRepairOutcome | undefined> {
+  // The budget outcome wins over escalation, for the same reason it wins over
+  // the driver's own cancellation report: ESCALATED invites a human to
+  // approve more attempts, and there is nothing left to spend on them. A
+  // converged attempt is still converged, which is why this sits after the
+  // passed branch rather than before it.
+  const afterAttempt = budgetStopReason(run.meter);
+  if (afterAttempt !== undefined) return budgetExceeded(run, afterAttempt, failure);
+
+  // Escalation wins over further retries: no autonomous attempt past the
+  // declared escalation point under any circumstances (REP-04). Exhaustion of
+  // a declared policy is handled after the loop and also escalates.
+  const { attempts } = run.state;
+  if (declared && attempts >= policy.escalateAfter && attempts < policy.maxAttempts) return escalated(run, failure);
+
+  // The repair stage is only durable state between attempts; the terminal
+  // stage after the last attempt is written once, after the loop.
+  if (attempts < policy.maxAttempts) await saveStage(run, "repair");
+  return undefined;
+}
+
+function gateFailure(result: AttemptResult): GateFailure {
+  if (result.failure === undefined || !SAFE.test(result.failure.failedGateId))
+    fail("VES_REPAIR_INPUT_INVALID", "gate failure evidence is missing");
+  return result.failure;
+}
+
 export async function runGateRepairLoop(
   input: { readonly onGateFailure?: unknown },
   ports: GateRepairPorts
@@ -204,145 +365,29 @@ export async function runGateRepairLoop(
   const policy = normalizePolicy(input.onGateFailure);
   const state = normalizeState(await ports.loadState());
   // One meter for the whole run, resumed from whatever earlier attempts spent.
-  const meter = ports.budget?.create(state.budgetLedger);
-  const ledger = (): BudgetLedger | null => meter?.ledger() ?? null;
+  const run: RepairRun = { ports, state, meter: ports.budget?.create(state.budgetLedger) };
   let lastFailure: GateFailure | undefined;
   let feedback: GateAttemptFeedback | undefined;
-
-  const budgetExceeded = async (reason: string): Promise<GateRepairOutcome> => {
-    await ports.saveState({
-      stage: "budget-exceeded",
-      attempts: state.attempts,
-      attemptCapsuleDigests: state.attemptCapsuleDigests,
-      budgetLedger: ledger()
-    });
-    return Object.freeze({
-      status: "BUDGET_EXCEEDED",
-      attempts: state.attempts,
-      stopReason: reason,
-      failure: lastFailure,
-      attemptCapsuleDigests: Object.freeze([...state.attemptCapsuleDigests])
-    });
-  };
-
-  // invariant: SSI-60 and SSI-68. A suspended attempt saves the run's spend
-  // with the repair state as it stands, so the resumed meter continues from
-  // it and counts no time the run spent suspended.
-  const suspended = async (suspension: ExecutionSuspension): Promise<GateRepairOutcome> => {
-    await ports.saveState({
-      stage: "repair",
-      attempts: state.attempts,
-      attemptCapsuleDigests: state.attemptCapsuleDigests,
-      budgetLedger: ledger()
-    });
-    return Object.freeze({
-      status: "SUSPENDED",
-      attempts: state.attempts,
-      suspension,
-      attemptCapsuleDigests: Object.freeze([...state.attemptCapsuleDigests])
-    });
-  };
 
   while (state.attempts < policy.maxAttempts) {
     // The declared ceiling covers the run, so an exhausted budget ends the loop
     // rather than buying each remaining attempt its own allowance.
-    const beforeAttempt = meter?.shouldStop();
-    if (beforeAttempt?.stop === true) return budgetExceeded(beforeAttempt.reason ?? "budget");
+    const beforeAttempt = budgetStopReason(run.meter);
+    if (beforeAttempt !== undefined) return budgetExceeded(run, beforeAttempt, lastFailure);
     const attempt = state.attempts + 1;
-    let feedbackWithheld = false;
-    if (lastFailure !== undefined || state.attempts > 0) {
-      if (policy.feedbackToDriver && lastFailure !== undefined) {
-        feedback = await ports.buildFeedback(lastFailure);
-        assertFeedback(feedback);
-      } else {
-        feedback = undefined;
-        // Withholding is a policy decision the evidence must show, not an
-        // omission a reader has to infer (REP-03).
-        feedbackWithheld = lastFailure !== undefined;
-      }
-    }
+    const prepared = await attemptFeedback(run, policy, lastFailure, feedback);
+    feedback = prepared.feedback;
 
-    const result = await ports.attempt({ attempt, feedback, budgetMeter: meter });
-    if (result.suspension !== undefined) return suspended(result.suspension);
-    const previousAttemptDigest = state.attemptCapsuleDigests.at(-1) ?? null;
-    const sealed = await ports.sealAttempt({
-      attempt,
-      passed: result.passed,
-      failure: result.passed ? undefined : result.failure,
-      feedbackWithheld,
-      previousAttemptDigest
-    });
-    if (!DIGEST.test(sealed.capsuleDigest)) fail("VES_REPAIR_STATE_INVALID", "attempt capsule digest is invalid");
-    state.attempts = attempt;
-    state.attemptCapsuleDigests.push(sealed.capsuleDigest);
+    const result = await ports.attempt({ attempt, feedback, budgetMeter: run.meter });
+    if (result.suspension !== undefined) return suspended(run, result.suspension);
+    await sealAndRecord(run, attempt, result, prepared.feedbackWithheld);
 
-    if (result.passed) {
-      await ports.saveState({
-        stage: "converged",
-        attempts: state.attempts,
-        attemptCapsuleDigests: state.attemptCapsuleDigests,
-        budgetLedger: ledger()
-      });
-      return Object.freeze({
-        status: "CONVERGED",
-        attempts: state.attempts,
-        attemptCapsuleDigests: Object.freeze([...state.attemptCapsuleDigests])
-      });
-    }
+    if (result.passed) return converged(run);
 
-    if (result.failure === undefined || !SAFE.test(result.failure.failedGateId))
-      fail("VES_REPAIR_INPUT_INVALID", "gate failure evidence is missing");
-    lastFailure = result.failure;
-
-    // The budget outcome wins over escalation, for the same reason it wins over
-    // the driver's own cancellation report: ESCALATED invites a human to
-    // approve more attempts, and there is nothing left to spend on them. A
-    // converged attempt is still converged, which is why this sits after the
-    // passed branch rather than before it.
-    const afterAttempt = meter?.shouldStop();
-    if (afterAttempt?.stop === true) return budgetExceeded(afterAttempt.reason ?? "budget");
-
-    // Escalation wins over further retries: no autonomous attempt past the
-    // declared escalation point under any circumstances (REP-04). Exhaustion of
-    // a declared policy is handled after the loop and also escalates.
-    if (declared && state.attempts >= policy.escalateAfter && state.attempts < policy.maxAttempts) {
-      await ports.saveState({
-        stage: "escalated",
-        attempts: state.attempts,
-        attemptCapsuleDigests: state.attemptCapsuleDigests,
-        budgetLedger: ledger()
-      });
-      return Object.freeze({
-        status: "ESCALATED",
-        attempts: state.attempts,
-        failure: lastFailure,
-        attemptCapsuleDigests: Object.freeze([...state.attemptCapsuleDigests])
-      });
-    }
-
-    // The repair stage is only durable state between attempts; the terminal
-    // stage after the last attempt is written once, below.
-    if (state.attempts < policy.maxAttempts) {
-      await ports.saveState({
-        stage: "repair",
-        attempts: state.attempts,
-        attemptCapsuleDigests: state.attemptCapsuleDigests,
-        budgetLedger: ledger()
-      });
-    }
+    lastFailure = gateFailure(result);
+    const stop = await afterFailedAttempt(run, policy, declared, lastFailure);
+    if (stop !== undefined) return stop;
   }
 
-  if (lastFailure === undefined) fail("VES_REPAIR_STATE_INVALID", "repair loop ended without a recorded failure");
-  await ports.saveState({
-    stage: declared ? "escalated" : "gate-failed",
-    attempts: state.attempts,
-    attemptCapsuleDigests: state.attemptCapsuleDigests,
-    budgetLedger: ledger()
-  });
-  return Object.freeze({
-    status: declared ? "ESCALATED" : "GATE_FAILED",
-    attempts: state.attempts,
-    failure: lastFailure,
-    attemptCapsuleDigests: Object.freeze([...state.attemptCapsuleDigests])
-  });
+  return exhausted(run, declared, lastFailure);
 }

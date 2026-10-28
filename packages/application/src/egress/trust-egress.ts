@@ -222,6 +222,59 @@ export interface EgressAuthorityPort {
 
 type EgressVerdict = Readonly<Record<string, unknown>> & { readonly allowed: boolean; readonly code: string };
 
+type EgressRequest = Parameters<DataEgressFirewall["authorize"]>[0];
+
+function identitiesValid(input: EgressRequest): boolean {
+  try {
+    StableId.parse(input.workspaceId, "workspace");
+    StableId.parse(input.runId, "run");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// The route checks that need nothing but the profile and the request, in the
+// order their denials take precedence.
+function routeDenial(destination: DestinationProfile, input: EgressRequest): string | undefined {
+  if (
+    destination.workspaceId !== input.workspaceId ||
+    input.fragments.some((entry) => entry.workspaceId !== input.workspaceId)
+  )
+    return "VES_EGRESS_WORKSPACE_DENIED";
+  if (destination.kind === "external" && input.mode !== "online") return "VES_EGRESS_NETWORK_MODE_DENIED";
+  if (!destination.allowedPurposes.includes(input.purpose)) return "VES_EGRESS_PURPOSE_DENIED";
+  if (!destination.allowedRetention.includes(input.retention)) return "VES_EGRESS_RETENTION_DENIED";
+  return undefined;
+}
+
+function egressManifest(input: EgressRequest, destination: DestinationProfile) {
+  return Object.freeze({
+    schemaVersion: 1,
+    workspaceId: input.workspaceId,
+    runId: input.runId,
+    mode: input.mode,
+    destinationId: input.destinationId,
+    destinationKind: destination.kind,
+    endpoint: destination.endpoint,
+    purpose: input.purpose,
+    retention: input.retention,
+    fragments: Object.freeze(
+      input.fragments.map((entry) =>
+        Object.freeze({
+          fragmentId: entry.fragmentId,
+          classification: entry.classification,
+          trust: entry.trust,
+          contentDigest: entry.contentDigest,
+          ...(entry.declassificationEvidenceId === undefined
+            ? {}
+            : { declassificationEvidenceId: entry.declassificationEvidenceId })
+        })
+      )
+    )
+  });
+}
+
 export class DataEgressFirewall {
   readonly #digest: ContentDigestPort;
   readonly #destinations: ReadonlyMap<string, DestinationProfile>;
@@ -262,95 +315,20 @@ export class DataEgressFirewall {
     readonly capabilityRef: string;
   }): Promise<EgressVerdict> {
     const deny = (code: string): EgressVerdict => Object.freeze({ allowed: false, code });
-    try {
-      StableId.parse(input.workspaceId, "workspace");
-      StableId.parse(input.runId, "run");
-    } catch {
-      return deny("VES_EGRESS_INPUT_INVALID");
-    }
-    if (input.fragments.length === 0) return deny("VES_EGRESS_FRAGMENT_INVALID");
-    for (const fragment of input.fragments) {
-      try {
-        DataClassification.parse(fragment.classification);
-        const declassificationParts = [
-          fragment.declassificationEvidenceId,
-          fragment.declassification,
-          fragment.declassificationEvidence
-        ].filter((value) => value !== undefined).length;
-        if (
-          !TRUST_CLASSES.includes(fragment.trust) ||
-          fragment.contentDigest !== this.#digest.sha256(fragment.content) ||
-          fragment.declassificationEvidenceId !== fragment.declassification?.evidenceId ||
-          (declassificationParts !== 0 && declassificationParts !== 3)
-        )
-          return deny("VES_EGRESS_FRAGMENT_INVALID");
-      } catch {
-        return deny("VES_EGRESS_FRAGMENT_INVALID");
-      }
-    }
+    if (!identitiesValid(input)) return deny("VES_EGRESS_INPUT_INVALID");
+    if (input.fragments.length === 0 || !input.fragments.every((fragment) => this.#fragmentIntact(fragment)))
+      return deny("VES_EGRESS_FRAGMENT_INVALID");
     const destination = this.#destinations.get(input.destinationId);
     if (destination === undefined) return deny("VES_EGRESS_DESTINATION_DENIED");
-    if (
-      destination.workspaceId !== input.workspaceId ||
-      input.fragments.some((entry) => entry.workspaceId !== input.workspaceId)
-    )
-      return deny("VES_EGRESS_WORKSPACE_DENIED");
-    if (destination.kind === "external" && input.mode !== "online") return deny("VES_EGRESS_NETWORK_MODE_DENIED");
-    if (!destination.allowedPurposes.includes(input.purpose)) return deny("VES_EGRESS_PURPOSE_DENIED");
-    if (!destination.allowedRetention.includes(input.retention)) return deny("VES_EGRESS_RETENTION_DENIED");
-    for (const fragment of input.fragments) {
-      if (
-        fragment.declassification !== undefined &&
-        (!(await this.#validDeclassification(fragment)) ||
-          fragment.declassification.purpose !== input.purpose ||
-          fragment.declassification.destinationId !== input.destinationId ||
-          IsoInstant.parse(fragment.declassification.expiresAt).compare(IsoInstant.parse(this.#now())) <= 0)
-      )
-        return deny("VES_EGRESS_DECLASSIFICATION_DENIED");
-    }
+    const denial = routeDenial(destination, input);
+    if (denial !== undefined) return deny(denial);
+    if (await this.#declassificationDenied(input)) return deny("VES_EGRESS_DECLASSIFICATION_DENIED");
     const ceiling = DataClassification.parse(destination.maximumClassification);
     if (input.fragments.some((entry) => DataClassification.parse(entry.classification).rank > ceiling.rank))
       return deny("VES_EGRESS_CLASSIFICATION_DENIED");
-    if (destination.kind === "external") {
-      let authority;
-      try {
-        authority = await this.#authority.verify({
-          workspaceId: input.workspaceId,
-          runId: input.runId,
-          approvalRef: input.approvalRef,
-          capabilityRef: input.capabilityRef,
-          destinationId: input.destinationId,
-          purpose: input.purpose
-        });
-      } catch {
-        return deny("VES_EGRESS_AUTHORITY_DENIED");
-      }
-      if (!authority.approvalValid || !authority.capabilityValid) return deny("VES_EGRESS_AUTHORITY_DENIED");
-    }
-    const manifest = Object.freeze({
-      schemaVersion: 1,
-      workspaceId: input.workspaceId,
-      runId: input.runId,
-      mode: input.mode,
-      destinationId: input.destinationId,
-      destinationKind: destination.kind,
-      endpoint: destination.endpoint,
-      purpose: input.purpose,
-      retention: input.retention,
-      fragments: Object.freeze(
-        input.fragments.map((entry) =>
-          Object.freeze({
-            fragmentId: entry.fragmentId,
-            classification: entry.classification,
-            trust: entry.trust,
-            contentDigest: entry.contentDigest,
-            ...(entry.declassificationEvidenceId === undefined
-              ? {}
-              : { declassificationEvidenceId: entry.declassificationEvidenceId })
-          })
-        )
-      )
-    });
+    if (destination.kind === "external" && !(await this.#authorityGranted(input)))
+      return deny("VES_EGRESS_AUTHORITY_DENIED");
+    const manifest = egressManifest(input, destination);
     let policy;
     try {
       policy = await this.#policy.authorize(manifest);
@@ -366,6 +344,56 @@ export class DataEgressFirewall {
       fragmentIds: Object.freeze(input.fragments.map((entry) => entry.fragmentId)),
       destinationId: input.destinationId
     });
+  }
+
+  #fragmentIntact(fragment: TrustEnvelope): boolean {
+    try {
+      DataClassification.parse(fragment.classification);
+      const declassificationParts = [
+        fragment.declassificationEvidenceId,
+        fragment.declassification,
+        fragment.declassificationEvidence
+      ].filter((value) => value !== undefined).length;
+      return (
+        TRUST_CLASSES.includes(fragment.trust) &&
+        fragment.contentDigest === this.#digest.sha256(fragment.content) &&
+        fragment.declassificationEvidenceId === fragment.declassification?.evidenceId &&
+        (declassificationParts === 0 || declassificationParts === 3)
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  async #declassificationDenied(input: EgressRequest): Promise<boolean> {
+    for (const fragment of input.fragments) {
+      if (
+        fragment.declassification !== undefined &&
+        (!(await this.#validDeclassification(fragment)) ||
+          fragment.declassification.purpose !== input.purpose ||
+          fragment.declassification.destinationId !== input.destinationId ||
+          IsoInstant.parse(fragment.declassification.expiresAt).compare(IsoInstant.parse(this.#now())) <= 0)
+      )
+        return true;
+    }
+    return false;
+  }
+
+  async #authorityGranted(input: EgressRequest): Promise<boolean> {
+    let authority;
+    try {
+      authority = await this.#authority.verify({
+        workspaceId: input.workspaceId,
+        runId: input.runId,
+        approvalRef: input.approvalRef,
+        capabilityRef: input.capabilityRef,
+        destinationId: input.destinationId,
+        purpose: input.purpose
+      });
+    } catch {
+      return false;
+    }
+    return authority.approvalValid && authority.capabilityValid;
   }
 
   async #validDeclassification(fragment: TrustEnvelope): Promise<boolean> {

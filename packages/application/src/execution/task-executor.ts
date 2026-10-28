@@ -515,6 +515,90 @@ function driverOutcome(
   return { outputRefs };
 }
 
+type WorktreeHandle = { readonly worktreeRef: string; readonly baseCommit: string };
+type BudgetStop = (reason: string, failure: TaskExecutorError | BudgetMeterError) => void;
+
+function assertRecoveredCheckpoint(checkpoint: ExecutionCheckpoint, input: TaskExecutionInput): void {
+  if (
+    checkpoint.workspaceId !== input.workspaceId ||
+    checkpoint.runId !== input.runId ||
+    checkpoint.taskId !== input.task.taskId ||
+    !SAFE.test(checkpoint.stage) ||
+    (checkpoint.checkpointRef !== undefined && !SAFE.test(checkpoint.checkpointRef)) ||
+    !Number.isSafeInteger(checkpoint.sequence) ||
+    checkpoint.sequence < 0
+  )
+    fail("VES_EXECUTOR_INPUT_INVALID", "recovered checkpoint is invalid");
+}
+
+function assertCoordination(coordination: { readonly coordinationRef: string; readonly expiresAt: string }): void {
+  if (!SAFE.test(coordination.coordinationRef) || !Number.isFinite(Date.parse(coordination.expiresAt)))
+    fail("VES_EXECUTOR_COORDINATION_INVALID", "writer coordination is invalid");
+}
+
+function assertWorktree(worktree: WorktreeHandle): void {
+  if (!SAFE.test(worktree.worktreeRef) || !/^[a-f0-9]{40,64}$/u.test(worktree.baseCommit))
+    fail("VES_EXECUTOR_WORKTREE_INVALID", "isolated worktree handle is invalid");
+}
+
+function assertContext(
+  context: { readonly contextRef: string; readonly contextDigest: string },
+  input: TaskExecutionInput
+): void {
+  if (!SAFE.test(context.contextRef) || context.contextDigest !== input.contextManifestDigest)
+    fail("VES_EXECUTOR_CONTEXT_INVALID", "compiled execution Context is invalid");
+}
+
+function resolveMeter(
+  supplied: BudgetMeter | undefined,
+  budgets: DeclaredBudgets | undefined
+): BudgetMeter | undefined {
+  if (supplied !== undefined) return supplied;
+  return budgets === undefined ? undefined : createBudgetMeter({ budgets, priceTable: modelPriceTable });
+}
+
+function startDurationTimer(
+  meter: BudgetMeter | undefined,
+  stop: BudgetStop
+): ReturnType<typeof setTimeout> | undefined {
+  if (meter === undefined) return undefined;
+  return setTimeout(
+    () =>
+      stop(
+        "duration-threshold",
+        new TaskExecutorError("VES_EXECUTOR_BUDGET_EXCEEDED", "declared duration budget was reached")
+      ),
+    Math.max(1, Math.ceil(meter.remainingDurationMs()))
+  );
+}
+
+function usageReporter(meter: BudgetMeter | undefined, stop: BudgetStop): (event: UsageEvent) => void {
+  return (event) => {
+    if (meter === undefined) return;
+    const decision = recordUsageAndDecide(meter, event);
+    if (!decision.stop) return;
+    stop(
+      decision.reason,
+      decision.failure ??
+        new TaskExecutorError("VES_EXECUTOR_BUDGET_EXCEEDED", `declared ${decision.reason} was reached`)
+    );
+  };
+}
+
+function failureCheckpoint(
+  error: unknown,
+  input: TaskExecutionInput
+): { readonly stage: "cancelled" | "failed"; readonly data: Row } {
+  const cancelled = error instanceof TaskExecutorError && error.code === "VES_EXECUTOR_CANCELLED";
+  return {
+    stage: cancelled ? "cancelled" : "failed",
+    data: {
+      errorCode: error instanceof TaskExecutorError ? error.code : "VES_EXECUTOR_DRIVER_FAILED",
+      requirementIds: input.task.requirementIds
+    }
+  };
+}
+
 export class TaskExecutionCoordinator {
   readonly #ports: TaskExecutorPorts;
 
@@ -533,22 +617,13 @@ export class TaskExecutionCoordinator {
     if (options.signal?.aborted === true) fail("VES_EXECUTOR_CANCELLED", "Task execution was cancelled before start");
     const input = normalizeInput(inputValue);
     let coordinationRef: string | undefined;
-    let worktree: { readonly worktreeRef: string; readonly baseCommit: string } | undefined;
+    let worktree: WorktreeHandle | undefined;
     let driverStarted = false;
     let suspended: TaskExecutionSuspended | undefined;
     let sequence = 0;
     let lastCheckpoint = await this.#ports.checkpoints.load(input.workspaceId, input.runId, input.task.taskId);
     if (lastCheckpoint !== undefined) {
-      if (
-        lastCheckpoint.workspaceId !== input.workspaceId ||
-        lastCheckpoint.runId !== input.runId ||
-        lastCheckpoint.taskId !== input.task.taskId ||
-        !SAFE.test(lastCheckpoint.stage) ||
-        (lastCheckpoint.checkpointRef !== undefined && !SAFE.test(lastCheckpoint.checkpointRef)) ||
-        !Number.isSafeInteger(lastCheckpoint.sequence) ||
-        lastCheckpoint.sequence < 0
-      )
-        fail("VES_EXECUTOR_INPUT_INVALID", "recovered checkpoint is invalid");
+      assertRecoveredCheckpoint(lastCheckpoint, input);
       sequence = lastCheckpoint.sequence;
     }
     const toolReceiptRefs: string[] = [];
@@ -575,8 +650,7 @@ export class TaskExecutionCoordinator {
         mode: input.mode,
         changeScope: input.task.changeScope
       });
-      if (!SAFE.test(coordination.coordinationRef) || !Number.isFinite(Date.parse(coordination.expiresAt)))
-        fail("VES_EXECUTOR_COORDINATION_INVALID", "writer coordination is invalid");
+      assertCoordination(coordination);
       coordinationRef = coordination.coordinationRef;
       worktree = await this.#ports.worktrees.create({
         workspaceId: input.workspaceId,
@@ -587,8 +661,7 @@ export class TaskExecutionCoordinator {
         changeScope: input.task.changeScope,
         protectedPaths: input.task.protectedPaths
       });
-      if (!SAFE.test(worktree.worktreeRef) || !/^[a-f0-9]{40,64}$/u.test(worktree.baseCommit))
-        fail("VES_EXECUTOR_WORKTREE_INVALID", "isolated worktree handle is invalid");
+      assertWorktree(worktree);
       const context = await this.#ports.context.compile({
         task: input.task,
         executionPackageDigest: input.executionPackageDigest,
@@ -596,21 +669,16 @@ export class TaskExecutionCoordinator {
         worktreeRef: worktree.worktreeRef,
         checkpoint: lastCheckpoint
       });
-      if (!SAFE.test(context.contextRef) || context.contextDigest !== input.contextManifestDigest)
-        fail("VES_EXECUTOR_CONTEXT_INVALID", "compiled execution Context is invalid");
+      assertContext(context, input);
       driverStarted = true;
       // A supplied meter already carries this run's consumption; constructing
       // one here would hand every attempt a fresh ceiling.
-      const meter: BudgetMeter | undefined =
-        options.budgetMeter ??
-        (input.budgets === undefined
-          ? undefined
-          : createBudgetMeter({ budgets: input.budgets, priceTable: modelPriceTable }));
+      const meter = resolveMeter(options.budgetMeter, input.budgets);
       // The budget stop must survive the driver's own cancellation report: a
       // run that dies because its ceiling was reached is a budget outcome, not
       // a generic cancellation.
       let budgetStop: { readonly reason: string; readonly failure: TaskExecutorError | BudgetMeterError } | undefined;
-      const stopForBudget = (reason: string, failure: TaskExecutorError | BudgetMeterError): void => {
+      const stopForBudget: BudgetStop = (reason, failure) => {
         if (budgetStop !== undefined) return;
         budgetStop = { reason, failure };
         void saveCheckpoint("budget-exceeded", { reason, meter: meter?.snapshot() ?? null }).catch(() => {
@@ -630,17 +698,7 @@ export class TaskExecutionCoordinator {
       // Duration is enforced by a timer rather than by usage events, so a
       // driver that goes silent cannot outrun its own deadline. The timer runs
       // for the run's remaining time, not for a fresh share of it.
-      const durationTimer =
-        meter === undefined
-          ? undefined
-          : setTimeout(
-              () =>
-                stopForBudget(
-                  "duration-threshold",
-                  new TaskExecutorError("VES_EXECUTOR_BUDGET_EXCEEDED", "declared duration budget was reached")
-                ),
-              Math.max(1, Math.ceil(meter.remainingDurationMs()))
-            );
+      const durationTimer = startDurationTimer(meter, stopForBudget);
       let driverResult: unknown;
       try {
         driverResult = await this.#ports.driver.execute(
@@ -656,26 +714,9 @@ export class TaskExecutionCoordinator {
           {
             signal: options.signal,
             checkpoint: saveCheckpoint,
-            reportUsage: (event) => {
-              if (meter === undefined) return;
-              const decision = recordUsageAndDecide(meter, event);
-              if (!decision.stop) return;
-              stopForBudget(
-                decision.reason,
-                decision.failure ??
-                  new TaskExecutorError("VES_EXECUTOR_BUDGET_EXCEEDED", `declared ${decision.reason} was reached`)
-              );
-            },
-            invokeTool: async (requestValue) => {
-              const request = this.#normalizeToolRequest(requestValue, input);
-              await this.#assertAuthority(input, "tool-effect");
-              const result = await this.#ports.tools.invoke({ ...request, worktreeRef: worktree!.worktreeRef });
-              if (!SAFE.test(result.receiptRef) || (result.outputRef !== undefined && !SAFE.test(result.outputRef)))
-                fail("VES_EXECUTOR_TOOL_INVALID", "Tool result is invalid");
-              toolReceiptRefs.push(result.receiptRef);
-              if (result.outputRef !== undefined) toolOutputRefs.push(result.outputRef);
-              return result;
-            }
+            reportUsage: usageReporter(meter, stopForBudget),
+            invokeTool: (requestValue) =>
+              this.#invokeTool(requestValue, input, worktree!.worktreeRef, toolReceiptRefs, toolOutputRefs)
           }
         );
       } finally {
@@ -714,36 +755,67 @@ export class TaskExecutionCoordinator {
         outputRefs: [...driven.outputRefs, ...toolOutputRefs]
       });
     } catch (error) {
-      if (error === suspended) {
-        await this.#release(coordinationRef);
-        throw error;
-      }
-      const cancelled = error instanceof TaskExecutorError && error.code === "VES_EXECUTOR_CANCELLED";
-      if (driverStarted && worktree !== undefined) {
-        try {
-          await this.#ports.driver.cancel(worktree.worktreeRef);
-        } catch {
-          // The original failure remains authoritative.
-        }
-      }
-      if (worktree !== undefined) {
-        try {
-          await saveCheckpoint(cancelled ? "cancelled" : "failed", {
-            errorCode: error instanceof TaskExecutorError ? error.code : "VES_EXECUTOR_DRIVER_FAILED",
-            requirementIds: input.task.requirementIds
-          });
-        } catch {
-          // Checkpoint failure must not replace the primary execution failure.
-        }
-        try {
-          await this.#ports.worktrees.cleanup(worktree);
-        } catch {
-          // Cleanup is reconciled later; preserve the primary failure.
-        }
-      }
-      await this.#release(coordinationRef);
+      await this.#abandon(error, { suspended, driverStarted, worktree, coordinationRef }, input, saveCheckpoint);
       throw error;
     }
+  }
+
+  // The failure path. A suspension keeps its worktree and only releases the
+  // writer coordination; any other failure cancels a started driver, records
+  // the failure, and cleans the worktree up before releasing.
+  async #abandon(
+    error: unknown,
+    run: {
+      readonly suspended: TaskExecutionSuspended | undefined;
+      readonly driverStarted: boolean;
+      readonly worktree: WorktreeHandle | undefined;
+      readonly coordinationRef: string | undefined;
+    },
+    input: TaskExecutionInput,
+    saveCheckpoint: (stage: string, data: unknown) => Promise<string>
+  ): Promise<void> {
+    if (error === run.suspended) {
+      await this.#release(run.coordinationRef);
+      return;
+    }
+    if (run.driverStarted && run.worktree !== undefined) {
+      try {
+        await this.#ports.driver.cancel(run.worktree.worktreeRef);
+      } catch {
+        // The original failure remains authoritative.
+      }
+    }
+    if (run.worktree !== undefined) {
+      const failure = failureCheckpoint(error, input);
+      try {
+        await saveCheckpoint(failure.stage, failure.data);
+      } catch {
+        // Checkpoint failure must not replace the primary execution failure.
+      }
+      try {
+        await this.#ports.worktrees.cleanup(run.worktree);
+      } catch {
+        // Cleanup is reconciled later; preserve the primary failure.
+      }
+    }
+    await this.#release(run.coordinationRef);
+  }
+
+  async #invokeTool(
+    requestValue: unknown,
+    input: TaskExecutionInput,
+    worktreeRef: string,
+    toolReceiptRefs: string[],
+    toolOutputRefs: string[]
+  ): Promise<{ readonly receiptRef: string; readonly outputRef?: string }> {
+    const request = this.#normalizeToolRequest(requestValue, input);
+    await this.#assertAuthority(input, "tool-effect");
+    const result = await this.#ports.tools.invoke({ ...request, worktreeRef });
+    if (!SAFE.test(result.receiptRef) || (result.outputRef !== undefined && !SAFE.test(result.outputRef)))
+      fail("VES_EXECUTOR_TOOL_INVALID", "Tool result is invalid");
+    toolReceiptRefs.push(result.receiptRef);
+    if (result.outputRef !== undefined) toolOutputRefs.push(result.outputRef);
+    return result;
   }
 
   async #release(coordinationRef: string | undefined): Promise<void> {

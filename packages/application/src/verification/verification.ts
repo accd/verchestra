@@ -481,6 +481,15 @@ function gapCode(status: string): string {
   return "INVALID_SENSOR";
 }
 
+// A sensor whose active state moved during the run cannot vouch for any of its
+// results; only a mutation that never ran keeps its own status.
+function invalidateSensorReports(mutationReports: Readonly<Row>[]): void {
+  for (let index = 0; index < mutationReports.length; index += 1) {
+    const prior = mutationReports[index];
+    if (prior?.["status"] !== "MISSING") mutationReports[index] = freeze({ ...prior, status: "INVALID_SENSOR" });
+  }
+}
+
 export class IndependentVerificationCoordinator {
   private readonly ports: VerificationPorts;
 
@@ -496,49 +505,10 @@ export class IndependentVerificationCoordinator {
       outcomes.set(criterion.criterionId, expectedOutcome(await this.ports.expectations.derive(criterion)));
 
     const criterionReports: Readonly<Row>[] = [];
-    for (const criterion of input.criteria) {
-      const outcome = outcomes.get(criterion.criterionId) as ExpectedOutcome;
-      const claim = input.evidenceClaims.find((entry) => entry.criterionId === criterion.criterionId);
-      let status: "COVERED" | "UNCOVERED" | "OUTCOME_MISMATCH" = "UNCOVERED";
-      let evidence: readonly Readonly<Row>[] = [];
-      if (claim !== undefined && claim.expectedOutcomeDigest !== outcome.expectedOutcomeDigest)
-        status = "OUTCOME_MISMATCH";
-      else if (claim !== undefined) {
-        const inspected = inspectionCovered(
-          await this.ports.evidence.inspect({
-            commitId: input.commit.commitId,
-            criterion,
-            claim,
-            expectedOutcomeDigest: outcome.expectedOutcomeDigest
-          }),
-          input.commit.commitId,
-          outcome.expectedOutcomeDigest
-        );
-        if (inspected.covered) {
-          status = "COVERED";
-          evidence = [
-            freeze({
-              evidenceRef: claim.evidenceRef,
-              file: claim.file,
-              lineStart: claim.lineStart,
-              lineEnd: claim.lineEnd,
-              assertionRef: claim.assertionRef,
-              ...inspected.evidence
-            })
-          ];
-        }
-      }
+    for (const criterion of input.criteria)
       criterionReports.push(
-        freeze({
-          criterionId: criterion.criterionId,
-          requirementId: criterion.requirementId,
-          status,
-          expectedOutcomeRef: outcome.expectedOutcomeRef,
-          expectedOutcomeDigest: outcome.expectedOutcomeDigest,
-          evidence
-        })
+        await this.criterionReport(input, criterion, outcomes.get(criterion.criterionId) as ExpectedOutcome)
       );
-    }
 
     const baseline = digest(
       await this.ports.sensor.activeStateDigest(),
@@ -546,50 +516,16 @@ export class IndependentVerificationCoordinator {
       "VES_VERIFIER_SENSOR_INVALID"
     );
     const mutationReports: Readonly<Row>[] = [];
-    for (const criterion of input.criteria) {
-      const mutation = input.mutations.find((entry) => entry.criterionId === criterion.criterionId);
-      if (mutation === undefined) {
-        mutationReports.push(
-          freeze({
-            criterionId: criterion.criterionId,
-            requirementId: criterion.requirementId,
-            status: "MISSING",
-            evidence: []
-          })
-        );
-        continue;
-      }
-      const result = sensorResult(
-        await this.ports.sensor.run({
-          commitId: input.commit.commitId,
-          criterion,
-          mutation,
-          expectedOutcomeDigest: (outcomes.get(criterion.criterionId) as ExpectedOutcome).expectedOutcomeDigest
-        }),
-        baseline
-      );
+    for (const criterion of input.criteria)
       mutationReports.push(
-        freeze({
-          mutationId: mutation.mutationId,
-          criterionId: criterion.criterionId,
-          requirementId: criterion.requirementId,
-          operator: mutation.operator,
-          status: result.status,
-          evidence: [result.evidenceRef]
-        })
+        await this.mutationReport(input, criterion, outcomes.get(criterion.criterionId) as ExpectedOutcome, baseline)
       );
-    }
     const finalActive = digest(
       await this.ports.sensor.activeStateDigest(),
       "final active state digest",
       "VES_VERIFIER_SENSOR_INVALID"
     );
-    if (finalActive !== baseline) {
-      for (let index = 0; index < mutationReports.length; index += 1) {
-        const prior = mutationReports[index];
-        if (prior?.["status"] !== "MISSING") mutationReports[index] = freeze({ ...prior, status: "INVALID_SENSOR" });
-      }
-    }
+    if (finalActive !== baseline) invalidateSensorReports(mutationReports);
 
     const gaps = [
       ...criterionReports.filter((entry) => entry["status"] !== "COVERED"),
@@ -649,6 +585,84 @@ export class IndependentVerificationCoordinator {
       reportDigest: reportReceipt["reportDigest"],
       nextState: decision.nextState,
       repairCycles: decision.snapshot.repairCycles
+    });
+  }
+
+  private async criterionReport(
+    input: VerificationInput,
+    criterion: Criterion,
+    outcome: ExpectedOutcome
+  ): Promise<Readonly<Row>> {
+    const claim = input.evidenceClaims.find((entry) => entry.criterionId === criterion.criterionId);
+    let status: "COVERED" | "UNCOVERED" | "OUTCOME_MISMATCH" = "UNCOVERED";
+    let evidence: readonly Readonly<Row>[] = [];
+    if (claim !== undefined && claim.expectedOutcomeDigest !== outcome.expectedOutcomeDigest)
+      status = "OUTCOME_MISMATCH";
+    else if (claim !== undefined) {
+      const inspected = inspectionCovered(
+        await this.ports.evidence.inspect({
+          commitId: input.commit.commitId,
+          criterion,
+          claim,
+          expectedOutcomeDigest: outcome.expectedOutcomeDigest
+        }),
+        input.commit.commitId,
+        outcome.expectedOutcomeDigest
+      );
+      if (inspected.covered) {
+        status = "COVERED";
+        evidence = [
+          freeze({
+            evidenceRef: claim.evidenceRef,
+            file: claim.file,
+            lineStart: claim.lineStart,
+            lineEnd: claim.lineEnd,
+            assertionRef: claim.assertionRef,
+            ...inspected.evidence
+          })
+        ];
+      }
+    }
+    return freeze({
+      criterionId: criterion.criterionId,
+      requirementId: criterion.requirementId,
+      status,
+      expectedOutcomeRef: outcome.expectedOutcomeRef,
+      expectedOutcomeDigest: outcome.expectedOutcomeDigest,
+      evidence
+    });
+  }
+
+  private async mutationReport(
+    input: VerificationInput,
+    criterion: Criterion,
+    outcome: ExpectedOutcome,
+    baseline: Digest
+  ): Promise<Readonly<Row>> {
+    const mutation = input.mutations.find((entry) => entry.criterionId === criterion.criterionId);
+    if (mutation === undefined)
+      return freeze({
+        criterionId: criterion.criterionId,
+        requirementId: criterion.requirementId,
+        status: "MISSING",
+        evidence: []
+      });
+    const result = sensorResult(
+      await this.ports.sensor.run({
+        commitId: input.commit.commitId,
+        criterion,
+        mutation,
+        expectedOutcomeDigest: outcome.expectedOutcomeDigest
+      }),
+      baseline
+    );
+    return freeze({
+      mutationId: mutation.mutationId,
+      criterionId: criterion.criterionId,
+      requirementId: criterion.requirementId,
+      operator: mutation.operator,
+      status: result.status,
+      evidence: [result.evidenceRef]
     });
   }
 }
