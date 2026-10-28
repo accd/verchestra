@@ -93,7 +93,11 @@ jobs:
 
   site:
     name: Site quality
-    runs-on: ubuntu-latest
+    # why: pinned, not ubuntu-latest. That label moved to Ubuntu 26.04 on
+    # 2026-10-28, whose libicu78 the qualified Playwright WebKit build cannot
+    # load (it links libicu74), so every WebKit launch failed. Moving off 24.04
+    # waits for a Playwright that supports 26.04, a dependency change of its own.
+    runs-on: ubuntu-24.04
     # The bounded steps below compose to roughly 53 minutes worst case: three
     # 5-minute apt attempts, two waits of up to 15 minutes for the apt-get a
     # timed-out attempt leaves behind, and an 8-minute browser install. A

@@ -54,7 +54,12 @@ for (const [label, mode, code] of [
   ["an envelope bound to another Workspace", "foreign-workspace", "VES_PROBE_ENVELOPE_WORKSPACE"],
   ["a byte-identical frame replay", "replay", "VES_PROBE_SEQUENCE_REPLAY"],
   ["a replayed sequence number under a new message id", "stale-sequence", "VES_PROBE_SEQUENCE_GAP"],
-  ["a self-reported component digest that differs from the approved one", "lie-digest", "VES_PROBE_HANDSHAKE_COMPONENT"]
+  [
+    "a self-reported component digest that differs from the approved one",
+    "lie-digest",
+    "VES_PROBE_HANDSHAKE_COMPONENT"
+  ],
+  ["a frame under an unknown payload schema version", "future-schema", "VES_PROBE_PAYLOAD_SCHEMA_UNSUPPORTED"]
 ]) {
   test(`a spawned worker sending ${label} is terminated`, async (t) => {
     if (WIN32_HOST) return probeHostRefusedOnWin32(t);
@@ -159,6 +164,18 @@ test("the worker environment is built from nothing and inherits no ambient secre
   } finally {
     delete process.env[ambient];
   }
+});
+
+// invariant: T6 (#570). The worker runs the private copy of its entry, readable
+// and executable by this user only, inside a directory only this user may enter.
+test("the worker runs a 0500 copy of its entry inside a 0700 directory", async (t) => {
+  if (WIN32_HOST) return probeHostRefusedOnWin32(t);
+  const results = new ObservingResultSink();
+  const fixture = await spawnedProbe({ mode: "report-environment", results });
+  assert.equal((await fixture.supervisor.execute()).status, "complete");
+  const [report] = results.observed;
+  assert.equal(report.cwdMode.toString(8), "700", "the private directory");
+  assert.equal(report.entryMode.toString(8), "500", "the private copy of the entry");
 });
 
 for (const name of [
