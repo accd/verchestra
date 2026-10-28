@@ -408,7 +408,8 @@ class ScheduleRun {
   readonly #running = new Map<string, { readonly scope: readonly string[]; readonly promise: Promise<SettledTask> }>();
   readonly #settled: SettledTask[] = [];
   #wake: () => void = () => undefined;
-  #waitForSettled: Promise<void>;
+  // why: declared after #wake, so the first wait arms with the field set.
+  #waitForSettled: Promise<void> = this.#armWait();
   #halt = false;
   #cancelled = false;
 
@@ -416,7 +417,6 @@ class ScheduleRun {
     this.#input = input;
     this.#start = start;
     this.#states = new Map<string, TaskState>(input.tasks.map((task) => [task.taskId, "pending"]));
-    this.#waitForSettled = this.#armWait();
   }
 
   get idle(): boolean {
