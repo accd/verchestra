@@ -4,7 +4,7 @@
 // review.
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 
 const read = (path) => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
@@ -45,6 +45,36 @@ test("coverage is measured by exactly the scopes test-scope declares a report fo
     scopes[1].trim().split(" "),
     [...reports[1].matchAll(/(\w+):/gu)].map((match) => `test:${match[1]}`)
   );
+});
+
+// invariant: a product file the test scopes never measure reads as 0 % covered
+// on every pull request that touches it, so each one is either measured or
+// excluded from coverage, never neither.
+test("every app and package code file is either measured or excluded from coverage", () => {
+  const glob = (pattern) =>
+    new RegExp(
+      `^${pattern.replaceAll(".", "\\.").replaceAll("**", "\u0000").replaceAll("*", "[^/]*").replaceAll("\u0000", ".*")}$`,
+      "u"
+    );
+  const covered = /COVERED_SOURCES = \[([^\]]+)\]/u.exec(read("scripts/test-scope.mjs"));
+  assert.ok(covered, "test-scope.mjs must declare its covered sources in one list");
+  const measured = [...covered[1].matchAll(/"([^"]+)"/gu)].map((match) => glob(match[1]));
+  const excluded = property("sonar.coverage.exclusions").split(",").map(glob);
+  const sourceExcluded = property("sonar.exclusions").split(",").map(glob);
+  const files = ["apps", "packages"]
+    .flatMap((root) =>
+      readdirSync(new URL(`../../${root}/`, import.meta.url), { recursive: true }).map(
+        (path) => `${root}/${path.replaceAll("\\", "/")}`
+      )
+    )
+    .filter(
+      (path) => /\.(?:ts|mts|mjs|js)$/u.test(path) && !path.includes("/node_modules/") && !path.includes("/dist/")
+    );
+  assert.ok(files.length > 100);
+  const neither = files.filter(
+    (path) => ![...measured, ...excluded, ...sourceExcluded].some((pattern) => pattern.test(path))
+  );
+  assert.deepEqual(neither, []);
 });
 
 test("runs for pull requests and main, with read-only defaults", () => {
