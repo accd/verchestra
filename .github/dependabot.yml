@@ -46,7 +46,9 @@ updates:
         update-types:
           - version-update:semver-minor
           - version-update:semver-patch
-      # why: json-schema-to-typescript 16 breaks the contract generator (#563).
+      # why: a json-schema-to-typescript major may change the generated
+      # contracts, so it moves only with a drift check or a reviewed
+      # regeneration (#563).
       - dependency-name: json-schema-to-typescript
         update-types:
           - version-update:semver-major
