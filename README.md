@@ -461,7 +461,7 @@ pnpm --filter @verchestra/site exec playwright install chromium firefox webkit
 
 ## Community
 
-Use [GitHub Discussions](https://github.com/accd/verchestra/discussions) for questions and design conversations. Use GitHub Issues for reproducible bugs and scoped feature proposals.
+Use [GitHub Discussions](https://github.com/accd/verchestra/discussions) for questions and design conversations. Beta testers can share what they tried and what confused them in the [Beta feedback thread](https://github.com/accd/verchestra/discussions/670). Use GitHub Issues for reproducible bugs and scoped feature proposals.
 
 Please read the [Code of Conduct](CODE_OF_CONDUCT.md) before participating.
 

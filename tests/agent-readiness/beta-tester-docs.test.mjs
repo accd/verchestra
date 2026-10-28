@@ -237,6 +237,16 @@ test("SUPPORT lists what to attach", () => {
     assert.ok(attach.includes(command), `SUPPORT.md does not ask for ${command}`);
 });
 
+// why: #594 item 5. Feedback that is not a reproducible bug has one pinned
+// thread, and both entry points a tester reads send them to it.
+test("README and SUPPORT link the Beta feedback thread", () => {
+  for (const path of ["README.md", "SUPPORT.md"])
+    assert.ok(
+      read(path).includes("[Beta feedback thread](https://github.com/accd/verchestra/discussions/670)"),
+      `${path} does not link the Beta feedback thread`
+    );
+});
+
 test("the CHANGELOG has a section per published sequence", () => {
   const changelog = read("CHANGELOG.md");
   // why: every later publication adds its own sequence, so the CHANGELOG
