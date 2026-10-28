@@ -75,7 +75,7 @@
     "json-schema-to-typescript": "16.0.0",
     "opencode-ai": "1.19.4",
     "prettier": "3.9.6",
-    "prettier-plugin-astro": "1.1.0",
+    "prettier-plugin-astro": "1.1.2",
     "sqlite-vec": "0.1.9",
     "tuf-js": "5.0.1",
     "typescript": "6.0.3",
