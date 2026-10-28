@@ -10,6 +10,8 @@ export interface CliOptionManifest {
   readonly values?: readonly string[];
   // why: a repeatable option collects every value it is given, in order, and
   // takes the next token as given, so `--arg --no-warnings` passes a flag.
+  // `--output`, `--help` and `--version` are read before any command option,
+  // so none of them can be such a value.
   readonly repeatable?: boolean;
 }
 

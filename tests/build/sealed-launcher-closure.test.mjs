@@ -90,7 +90,12 @@ const SEALED_COMMANDS = Object.freeze([
   "task status",
   "task resume",
   "task cancel",
-  "task review"
+  "task review",
+  "extension add",
+  "extension approve",
+  "extension list",
+  "extension revoke",
+  "extension check"
 ]);
 const NATIVE_PLACEHOLDERS = Object.freeze({
   "native/sqlite-vec": Buffer.alloc(4096, 7),
