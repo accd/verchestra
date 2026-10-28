@@ -6,7 +6,7 @@ import { codeUnitCompare } from "@verchestra/domain";
 // from the package index that re-exports the drivers, so no driver is
 // evaluated through a cycle with the barrel.
 export const DIGEST = /^sha256:[a-f0-9]{64}$/u;
-export const SAFE = /^[A-Za-z0-9][A-Za-z0-9._:@/+\-]{0,511}$/u;
+export const SAFE = /^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,511}$/u;
 
 export class DriverProtocolError extends Error {
   readonly code: string;

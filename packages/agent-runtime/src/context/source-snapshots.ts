@@ -19,7 +19,7 @@ import { codeUnitCompare } from "./code-unit-compare.ts";
 
 const SOURCE_KINDS = ["repository", "tracker", "knowledge", "memory"] as const;
 const PRIORITIES = ["mandatory", "high", "medium", "low"] as const;
-const SAFE_VALUE = /^[A-Za-z0-9][A-Za-z0-9._:@/+\-]{0,511}$/u;
+const SAFE_VALUE = /^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,511}$/u;
 const TRUST_CLASSES = ["verified-evidence", "untrusted-data"] as const;
 
 export type ContextSourceStatus =

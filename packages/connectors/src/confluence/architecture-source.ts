@@ -19,7 +19,7 @@ import {
 
 export const ARCHITECTURE_CONFLUENCE_CAPABILITIES = Object.freeze(["search", "page-read", "attachment-read"] as const);
 
-const SAFE_TOKEN = /^[A-Za-z0-9][A-Za-z0-9:._/@+\-]{0,511}$/u;
+const SAFE_TOKEN = /^[A-Za-z0-9][A-Za-z0-9:._/@+-]{0,511}$/u;
 const SPACE_KEY = /^[A-Z][A-Z0-9_]{1,31}$/u;
 const MEDIA_TYPE = /^[a-z0-9][a-z0-9.+-]{0,63}\/[a-z0-9][a-z0-9.+-]{0,127}$/u;
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;

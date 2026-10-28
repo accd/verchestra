@@ -19,7 +19,7 @@ import {
 } from "@verchestra/domain";
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
-const SAFE = /^[A-Za-z0-9][A-Za-z0-9:._/@+\-]{0,511}$/u;
+const SAFE = /^[A-Za-z0-9][A-Za-z0-9:._/@+-]{0,511}$/u;
 const SPACE = /^[A-Z][A-Z0-9_]{1,31}$/u;
 const STATUSES = new Set(["EXECUTION_READY", "IMPLEMENTING", "VALIDATING", "HUMAN_REVIEW", "COMPLETED", "BLOCKED"]);
 const START_TOKEN = "<!-- verchestra:delivery:start";

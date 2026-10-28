@@ -5,7 +5,7 @@ import { canonicalizeJsonV2, codeUnitCompare } from "@verchestra/domain";
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/u;
 const NODE_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
-const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9:._@+\/-]{0,255}$/u;
+const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9:._@+/-]{0,255}$/u;
 const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const PLATFORMS = new Set(["win32", "linux", "darwin"]);
 const ARCHES = new Set(["x64", "arm64"]);
@@ -110,7 +110,7 @@ const logicalPath = (value: unknown): string => {
         segment.endsWith(".") ||
         segment.endsWith(" ") ||
         RESERVED.test(segment) ||
-        !/^[A-Za-z0-9._@+\-]+$/u.test(segment)
+        !/^[A-Za-z0-9._@+-]+$/u.test(segment)
     )
   ) {
     fail("VES_DISTRIBUTION_INPUT_INVALID", "logicalPath contains an unsafe segment");

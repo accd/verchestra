@@ -383,7 +383,7 @@ const repositoryPath = (value: string): string => {
         segment === ".." ||
         segment.endsWith(".") ||
         RESERVED_PATH.test(segment) ||
-        !/^[A-Za-z0-9._@+\-]+$/u.test(segment)
+        !/^[A-Za-z0-9._@+-]+$/u.test(segment)
     )
   )
     fail("VES_TUF_SOURCE_PATH_INVALID", "repository path has an unsafe segment");

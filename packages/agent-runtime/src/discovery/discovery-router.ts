@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { canonicalizeJsonV2, codeUnitCompare, dropUndefinedMembers } from "@verchestra/domain";
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
-const SAFE = /^[a-z0-9][a-z0-9._:@/+\-]{0,255}$/u;
+const SAFE = /^[a-z0-9][a-z0-9._:@/+-]{0,255}$/u;
 const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const REQUIRED_INTAKE = [
   "stack",
