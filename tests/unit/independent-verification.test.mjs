@@ -126,6 +126,38 @@ test("a tampered active-state digest fails closed even though both driver identi
   });
 });
 
+test("an active state that moves during the sensor run invalidates every result that ran, not a missing mutation", async () => {
+  const input = verificationInput();
+  input.mutations = input.mutations.filter((mutation) => mutation.criterionId !== "AC-002");
+  let reads = 0;
+  const { state, ports } = verificationPorts({
+    sensor: {
+      activeStateDigest: async () => sha(reads++ === 0 ? "active-state" : "moved-during-run"),
+      run: async (request) => ({
+        scratchIsolationVerified: true,
+        killed: true,
+        expectedFailureObserved: true,
+        evidenceRef: `evidence:${request.mutation.mutationId}`,
+        activeStateBeforeDigest: sha("active-state"),
+        activeStateAfterDigest: sha("active-state")
+      })
+    }
+  });
+  const result = await coordinator(ports).verify(input);
+  assert.equal(result.verdict, "FAIL");
+  assert.deepEqual(
+    state.reports[0].mutations.map((entry) => [entry.criterionId, entry.status]),
+    [
+      ["AC-001", "INVALID_SENSOR"],
+      ["AC-002", "MISSING"]
+    ]
+  );
+  assert.deepEqual(
+    state.reports[0].gaps.map((gap) => gap.code),
+    ["INVALID_SENSOR", "MISSING_MUTATION"]
+  );
+});
+
 test("missing criterion evidence is evidence-or-zero and requests repair", async () => {
   const input = verificationInput();
   input.evidenceClaims = input.evidenceClaims.filter((claim) => claim.criterionId !== "AC-002");

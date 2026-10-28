@@ -197,8 +197,17 @@ function validateConfig(raw: CanonicalBootstrapConfig): CanonicalBootstrapConfig
     fail("Workspace identity is invalid", error);
   }
   if (!Array.isArray(raw.roles) || raw.roles.length === 0) fail("Role requirements are invalid");
+  const roleIds = validateRoles(raw.roles);
+  validateIndependence(raw.roles, roleIds);
+  if (!Array.isArray(raw.requiredSecrets) || !Array.isArray(raw.databases)) fail("Binding declarations are invalid");
+  for (const secret of raw.requiredSecrets) validateSecret(secret);
+  for (const database of raw.databases) validateDatabase(database);
+  return raw;
+}
+
+function validateRoles(roles: readonly RoleRequirement[]): ReadonlySet<string> {
   const roleIds = new Set<string>();
-  for (const role of raw.roles) {
+  for (const role of roles) {
     const keys = ["roleId", "requiredCapabilities", "independence"];
     if (role.independentFromRole !== undefined) keys.push("independentFromRole");
     exactKeys(role, keys, "Role requirement");
@@ -208,23 +217,25 @@ function validateConfig(raw: CanonicalBootstrapConfig): CanonicalBootstrapConfig
     if (roleIds.has(role.roleId)) fail("Role identity is duplicated");
     roleIds.add(role.roleId);
   }
-  for (const role of raw.roles) {
+  return roleIds;
+}
+
+function validateIndependence(roles: readonly RoleRequirement[], roleIds: ReadonlySet<string>): void {
+  for (const role of roles) {
     if (role.independence === "none" && role.independentFromRole !== undefined)
       fail("Unexpected independence reference");
     if (role.independence !== "none" && !roleIds.has(role.independentFromRole ?? "")) {
       fail("Independent role reference is invalid");
     }
   }
-  if (!Array.isArray(raw.requiredSecrets) || !Array.isArray(raw.databases)) fail("Binding declarations are invalid");
-  for (const secret of raw.requiredSecrets) {
-    exactKeys(secret, ["logicalName", "purpose", "blockedCapability", "required"], "Secret requirement");
-    stringValue(secret.logicalName, "Logical secret name");
-    stringValue(secret.purpose, "Secret purpose", /^.{1,512}$/u);
-    stringValue(secret.blockedCapability, "Blocked capability", CAPABILITY);
-    if (typeof secret.required !== "boolean") fail("Secret requirement flag is invalid");
-  }
-  for (const database of raw.databases) validateDatabase(database);
-  return raw;
+}
+
+function validateSecret(secret: CanonicalSecretRequirement): void {
+  exactKeys(secret, ["logicalName", "purpose", "blockedCapability", "required"], "Secret requirement");
+  stringValue(secret.logicalName, "Logical secret name");
+  stringValue(secret.purpose, "Secret purpose", /^.{1,512}$/u);
+  stringValue(secret.blockedCapability, "Blocked capability", CAPABILITY);
+  if (typeof secret.required !== "boolean") fail("Secret requirement flag is invalid");
 }
 
 function validateDatabase(database: CanonicalDatabaseRegistration): void {

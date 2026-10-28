@@ -19,6 +19,98 @@ import {
 import type { HandoffPorts, PackageProof, PreparedArtifact } from "./types.ts";
 import { canonical, digest, exact, freeze, strings, token, type Digest, type Row } from "./validation.ts";
 
+function normalizePublishInput(value: unknown) {
+  const code = "VES_HANDOFF_INPUT_INVALID" as const;
+  const row = exact(
+    value,
+    "publish input",
+    ["schemaVersion", "workspaceId", "source", "handoffRef", "handoffDigest", "publicationApproval"],
+    code
+  );
+  if (row.schemaVersion !== 1) fail(code, "schemaVersion is invalid");
+  return freeze({
+    workspaceId: token(row.workspaceId, "workspaceId", code),
+    source: normalizeRun(row.source, "HANDOFF_PREPARING", code),
+    handoffRef: token(row.handoffRef, "handoffRef", code),
+    handoffDigest: digest(row.handoffDigest, "handoffDigest", code),
+    publicationApproval: row.publicationApproval
+  });
+}
+
+type PublishInput = ReturnType<typeof normalizePublishInput>;
+
+// What a publication settles before its terminal transition: the source run,
+// the publication receipt, and the claim disposition.
+interface PreterminalState {
+  readonly source: RunSnapshot;
+  readonly publication: Readonly<Row>;
+  readonly claim: Readonly<Row>;
+}
+
+function assertProgressBinding(progress: Row | undefined, input: PublishInput): void {
+  if (
+    progress !== undefined &&
+    (progress["workspaceId"] !== input.workspaceId ||
+      progress["handoffRef"] !== input.handoffRef ||
+      progress["handoffDigest"] !== input.handoffDigest)
+  )
+    fail("VES_HANDOFF_FINAL_RECORD_INVALID", "publication progress belongs to different Handoff content");
+}
+
+function resumedPreterminal(progress: Row, artifact: PreparedArtifact): PreterminalState {
+  const source = normalizeRun(
+    progress["source"],
+    artifact.destination.kind === "remote" ? "AWAITING_HANDOFF_PUBLICATION_APPROVAL" : "HANDOFF_PREPARING",
+    "VES_HANDOFF_FINAL_RECORD_INVALID"
+  );
+  const savedPublication = exact(
+    progress["publication"],
+    "saved publication",
+    ["receiptRef", "receiptDigest"],
+    "VES_HANDOFF_FINAL_RECORD_INVALID"
+  );
+  const publication = freeze({
+    receiptRef: token(savedPublication.receiptRef, "saved publication receiptRef", "VES_HANDOFF_FINAL_RECORD_INVALID"),
+    receiptDigest: digest(
+      savedPublication.receiptDigest,
+      "saved publication receiptDigest",
+      "VES_HANDOFF_FINAL_RECORD_INVALID"
+    )
+  });
+  const savedClaim = exact(
+    progress["claim"],
+    "saved claim",
+    ["claimDispositionRef", "claimDispositionDigest"],
+    "VES_HANDOFF_CLAIM_INVALID"
+  );
+  const claim = freeze({
+    claimDispositionRef: token(
+      savedClaim.claimDispositionRef,
+      "saved claimDispositionRef",
+      "VES_HANDOFF_CLAIM_INVALID"
+    ),
+    claimDispositionDigest: digest(
+      savedClaim.claimDispositionDigest,
+      "saved claimDispositionDigest",
+      "VES_HANDOFF_CLAIM_INVALID"
+    )
+  });
+  return { source, publication, claim };
+}
+
+function resumedCapsule(progress: Row): Readonly<Row> {
+  const savedCapsule = exact(
+    progress["capsule"],
+    "saved capsule",
+    ["capsuleRef", "capsuleDigest"],
+    "VES_HANDOFF_CAPSULE_INVALID"
+  );
+  return freeze({
+    capsuleRef: token(savedCapsule.capsuleRef, "saved capsuleRef", "VES_HANDOFF_CAPSULE_INVALID"),
+    capsuleDigest: digest(savedCapsule.capsuleDigest, "saved capsuleDigest", "VES_HANDOFF_CAPSULE_INVALID")
+  });
+}
+
 export class PortableHandoffCoordinator {
   private readonly ports: HandoffPorts;
 
@@ -105,21 +197,7 @@ export class PortableHandoffCoordinator {
   }
 
   async publish(value: unknown): Promise<Readonly<Row>> {
-    const code = "VES_HANDOFF_INPUT_INVALID" as const;
-    const row = exact(
-      value,
-      "publish input",
-      ["schemaVersion", "workspaceId", "source", "handoffRef", "handoffDigest", "publicationApproval"],
-      code
-    );
-    if (row.schemaVersion !== 1) fail(code, "schemaVersion is invalid");
-    const input = freeze({
-      workspaceId: token(row.workspaceId, "workspaceId", code),
-      source: normalizeRun(row.source, "HANDOFF_PREPARING", code),
-      handoffRef: token(row.handoffRef, "handoffRef", code),
-      handoffDigest: digest(row.handoffDigest, "handoffDigest", code),
-      publicationApproval: row.publicationApproval
-    });
+    const input = normalizePublishInput(value);
     const artifact = await openArtifact(this.ports, input);
     const existing = await this.ports.records.loadFinal(input.handoffRef);
     if (existing !== undefined) return publishedResult(existing);
@@ -128,269 +206,18 @@ export class PortableHandoffCoordinator {
     const proof = packageProof(await this.ports.packages.verify(packageRequest(input.workspaceId, artifact.package)));
     validatePackageBinding(proof, input.workspaceId, artifact.package, artifact.semanticObligationsDigest);
     let progress = (await this.ports.records.loadProgress(input.handoffRef)) as Row | undefined;
-    if (
-      progress !== undefined &&
-      (progress["workspaceId"] !== input.workspaceId ||
-        progress["handoffRef"] !== input.handoffRef ||
-        progress["handoffDigest"] !== input.handoffDigest)
-    )
-      fail("VES_HANDOFF_FINAL_RECORD_INVALID", "publication progress belongs to different Handoff content");
-    let source: RunSnapshot;
-    let publication: Readonly<Row>;
-    let normalizedClaim: Readonly<Row>;
-    if (progress?.["claim"] !== undefined) {
-      source = normalizeRun(
-        progress["source"],
-        artifact.destination.kind === "remote" ? "AWAITING_HANDOFF_PUBLICATION_APPROVAL" : "HANDOFF_PREPARING",
-        "VES_HANDOFF_FINAL_RECORD_INVALID"
-      );
-      const savedPublication = exact(
-        progress["publication"],
-        "saved publication",
-        ["receiptRef", "receiptDigest"],
-        "VES_HANDOFF_FINAL_RECORD_INVALID"
-      );
-      publication = freeze({
-        receiptRef: token(
-          savedPublication.receiptRef,
-          "saved publication receiptRef",
-          "VES_HANDOFF_FINAL_RECORD_INVALID"
-        ),
-        receiptDigest: digest(
-          savedPublication.receiptDigest,
-          "saved publication receiptDigest",
-          "VES_HANDOFF_FINAL_RECORD_INVALID"
-        )
-      });
-      const savedClaim = exact(
-        progress["claim"],
-        "saved claim",
-        ["claimDispositionRef", "claimDispositionDigest"],
-        "VES_HANDOFF_CLAIM_INVALID"
-      );
-      normalizedClaim = freeze({
-        claimDispositionRef: token(
-          savedClaim.claimDispositionRef,
-          "saved claimDispositionRef",
-          "VES_HANDOFF_CLAIM_INVALID"
-        ),
-        claimDispositionDigest: digest(
-          savedClaim.claimDispositionDigest,
-          "saved claimDispositionDigest",
-          "VES_HANDOFF_CLAIM_INVALID"
-        )
-      });
-    } else {
-      source = input.source;
-      publication = freeze({
-        receiptRef: "receipt:local-publication",
-        receiptDigest: artifact.package.packageDigest
-      });
-      if (artifact.destination.kind === "remote") {
-        source = workflowAccepted(
-          await this.ports.workflow.apply(
-            source,
-            freeze({
-              type: "REQUEST_HANDOFF_PUBLICATION_APPROVAL",
-              expectedVersion: source.version,
-              actorRole: "controller",
-              actorId: "actor:handoff-controller",
-              evidence: ["signed-package"]
-            })
-          ),
-          "AWAITING_HANDOFF_PUBLICATION_APPROVAL"
-        );
-        const approvalInput = exact(
-          input.publicationApproval,
-          "publicationApproval",
-          ["approvalRef", "approvalDigest"],
-          code
-        );
-        const approvalRef = token(approvalInput.approvalRef, "publicationApproval.approvalRef", code);
-        const approvalDigest = digest(approvalInput.approvalDigest, "publicationApproval.approvalDigest", code);
-        const approval = exact(
-          await this.ports.publicationApproval.verify(
-            freeze({
-              action: "handoff-publication",
-              workspaceId: input.workspaceId,
-              sourceRunId: source.runId,
-              handoffRef: input.handoffRef,
-              handoffDigest: input.handoffDigest,
-              packageDigest: artifact.package.packageDigest,
-              destinationDigest: artifact.destination.destinationDigest,
-              approvalRef,
-              approvalDigest
-            })
-          ),
-          "publication Approval proof",
-          ["valid", "action", "approvalRef", "bindingDigest"],
-          "VES_HANDOFF_PUBLICATION_APPROVAL_INVALID"
-        );
-        if (
-          approval.valid !== true ||
-          approval.action !== "handoff-publication" ||
-          approval.approvalRef !== approvalRef
-        )
-          fail("VES_HANDOFF_PUBLICATION_APPROVAL_INVALID", "publication Approval is invalid");
-        digest(approval.bindingDigest, "publication Approval binding", "VES_HANDOFF_PUBLICATION_APPROVAL_INVALID");
-        const idempotencyKey = this.publicationKey(artifact);
-        const effect = exact(
-          await this.ports.effects.publish(
-            freeze({
-              idempotencyKey,
-              workspaceId: input.workspaceId,
-              handoffRef: input.handoffRef,
-              handoffDigest: input.handoffDigest,
-              targetRef: artifact.destination.targetRef,
-              destinationDigest: artifact.destination.destinationDigest,
-              packageRef: artifact.package.packageRef,
-              packageDigest: artifact.package.packageDigest,
-              approvalRef
-            })
-          ),
-          "publication effect",
-          ["status", "idempotencyKey", "receiptRef", "receiptDigest"],
-          "VES_HANDOFF_PUBLICATION_INVALID"
-        );
-        if (effect.status === "uncertain")
-          fail("VES_HANDOFF_RECONCILIATION_REQUIRED", "remote publication outcome is unknown");
-        if (effect.status !== "completed" || effect.idempotencyKey !== idempotencyKey)
-          fail("VES_HANDOFF_PUBLICATION_INVALID", "remote publication receipt is invalid");
-        publication = freeze({
-          receiptRef: token(effect.receiptRef, "publication.receiptRef", "VES_HANDOFF_PUBLICATION_INVALID"),
-          receiptDigest: digest(effect.receiptDigest, "publication.receiptDigest", "VES_HANDOFF_PUBLICATION_INVALID")
-        });
-      }
-      const claim = exact(
-        await this.ports.claims.dispose(
-          freeze({
-            workspaceId: input.workspaceId,
-            sourceRunId: source.runId,
-            successorRunId: artifact.successorRunId,
-            claimRef: artifact.claim.claimRef,
-            disposition: artifact.claim.disposition,
-            handoffDigest: input.handoffDigest
-          })
-        ),
-        "claim disposition",
-        ["valid", "claimDispositionRef", "claimDispositionDigest"],
-        "VES_HANDOFF_CLAIM_INVALID"
-      );
-      if (claim.valid !== true) fail("VES_HANDOFF_CLAIM_INVALID", "claim disposition is invalid");
-      normalizedClaim = freeze({
-        claimDispositionRef: token(claim.claimDispositionRef, "claimDispositionRef", "VES_HANDOFF_CLAIM_INVALID"),
-        claimDispositionDigest: digest(
-          claim.claimDispositionDigest,
-          "claimDispositionDigest",
-          "VES_HANDOFF_CLAIM_INVALID"
-        )
-      });
-      progress = (await this.ports.records.saveProgress(
-        freeze({
-          schemaVersion: 1,
-          stage: "PRETERMINAL_READY",
-          workspaceId: input.workspaceId,
-          handoffRef: input.handoffRef,
-          handoffDigest: input.handoffDigest,
-          source,
-          publication,
-          claim: normalizedClaim
-        })
-      )) as Row;
-    }
-    const evidence = ["signed-package"];
-    if (artifact.destination.kind === "remote")
-      evidence.push("handoff-publication-approval", "handoff-publication-receipt");
+    assertProgressBinding(progress, input);
+    let settled: PreterminalState;
+    if (progress?.["claim"] !== undefined) settled = resumedPreterminal(progress, artifact);
+    else ({ settled, progress } = await this.settlePreterminal(input, artifact));
     let terminalSource: RunSnapshot;
-    if (progress?.["terminalSource"] !== undefined) {
+    if (progress?.["terminalSource"] !== undefined)
       terminalSource = normalizeRun(progress["terminalSource"], "HANDED_OFF", "VES_HANDOFF_FINAL_RECORD_INVALID");
-    } else {
-      terminalSource = workflowAccepted(
-        await this.ports.workflow.apply(
-          source,
-          freeze({
-            type: "COMPLETE_HANDOFF",
-            expectedVersion: source.version,
-            actorRole: "controller",
-            actorId: "actor:handoff-controller",
-            evidence,
-            publicationRequired: artifact.destination.kind === "remote"
-          })
-        ),
-        "HANDED_OFF"
-      );
-      progress = (await this.ports.records.saveProgress(
-        freeze({
-          schemaVersion: 1,
-          stage: "TERMINAL_COMMITTED",
-          workspaceId: input.workspaceId,
-          handoffRef: input.handoffRef,
-          handoffDigest: input.handoffDigest,
-          source,
-          publication,
-          claim: normalizedClaim,
-          terminalSource
-        })
-      )) as Row;
-    }
-    let normalizedCapsule: Readonly<Row>;
-    if (progress?.["capsule"] !== undefined) {
-      const savedCapsule = exact(
-        progress["capsule"],
-        "saved capsule",
-        ["capsuleRef", "capsuleDigest"],
-        "VES_HANDOFF_CAPSULE_INVALID"
-      );
-      normalizedCapsule = freeze({
-        capsuleRef: token(savedCapsule.capsuleRef, "saved capsuleRef", "VES_HANDOFF_CAPSULE_INVALID"),
-        capsuleDigest: digest(savedCapsule.capsuleDigest, "saved capsuleDigest", "VES_HANDOFF_CAPSULE_INVALID")
-      });
-    } else {
-      const capsule = exact(
-        await this.ports.capsules.seal(
-          freeze({ artifact, source: terminalSource, publication, claim: normalizedClaim })
-        ),
-        "Handoff capsule",
-        [
-          "capsuleRef",
-          "capsuleDigest",
-          "status",
-          "sourceRunId",
-          "successorRunId",
-          "packageRef",
-          "packageDigest",
-          "receiverApprovalInherited"
-        ],
-        "VES_HANDOFF_CAPSULE_INVALID"
-      );
-      if (
-        capsule.status !== "HANDED_OFF" ||
-        capsule.sourceRunId !== terminalSource.runId ||
-        capsule.successorRunId !== artifact.successorRunId ||
-        capsule.packageRef !== artifact.package.packageRef ||
-        capsule.packageDigest !== artifact.package.packageDigest ||
-        capsule.receiverApprovalInherited !== false
-      )
-        fail("VES_HANDOFF_CAPSULE_INVALID", "Handoff capsule proof is invalid");
-      normalizedCapsule = freeze({
-        capsuleRef: token(capsule.capsuleRef, "capsuleRef", "VES_HANDOFF_CAPSULE_INVALID"),
-        capsuleDigest: digest(capsule.capsuleDigest, "capsuleDigest", "VES_HANDOFF_CAPSULE_INVALID")
-      });
-      await this.ports.records.saveProgress(
-        freeze({
-          schemaVersion: 1,
-          stage: "CAPSULE_SEALED",
-          workspaceId: input.workspaceId,
-          handoffRef: input.handoffRef,
-          handoffDigest: input.handoffDigest,
-          source,
-          publication,
-          claim: normalizedClaim,
-          terminalSource,
-          capsule: normalizedCapsule
-        })
-      );
-    }
+    else ({ terminalSource, progress } = await this.commitTerminal(input, artifact, settled));
+    const capsule =
+      progress?.["capsule"] !== undefined
+        ? resumedCapsule(progress)
+        : await this.sealCapsule(input, artifact, settled, terminalSource);
     const record = freeze({
       status: "HANDED_OFF",
       workspaceId: input.workspaceId,
@@ -398,9 +225,9 @@ export class PortableHandoffCoordinator {
       handoffDigest: input.handoffDigest,
       artifact,
       source: terminalSource,
-      publication,
-      claim: normalizedClaim,
-      capsule: normalizedCapsule
+      publication: settled.publication,
+      claim: settled.claim,
+      capsule
     });
     const saved = await this.ports.records.saveFinal(record);
     const savedRow = exact(
@@ -424,6 +251,238 @@ export class PortableHandoffCoordinator {
     token(savedRow.recordRef, "recordRef", "VES_HANDOFF_FINAL_RECORD_INVALID");
     digest(savedRow.recordDigest, "recordDigest", "VES_HANDOFF_FINAL_RECORD_INVALID");
     return publishedResult(savedRow);
+  }
+
+  // The first pass of a publication: a remote destination is approved and
+  // published, the claim is disposed of, and the pre-terminal progress is
+  // saved so a retry resumes after it.
+  private async settlePreterminal(
+    input: PublishInput,
+    artifact: PreparedArtifact
+  ): Promise<{ readonly settled: PreterminalState; readonly progress: Row }> {
+    let source = input.source;
+    let publication: Readonly<Row> = freeze({
+      receiptRef: "receipt:local-publication",
+      receiptDigest: artifact.package.packageDigest
+    });
+    if (artifact.destination.kind === "remote")
+      ({ source, publication } = await this.publishRemote(input, artifact, source));
+    const claim = await this.disposeClaim(input, artifact, source);
+    const progress = (await this.ports.records.saveProgress(
+      freeze({
+        schemaVersion: 1,
+        stage: "PRETERMINAL_READY",
+        workspaceId: input.workspaceId,
+        handoffRef: input.handoffRef,
+        handoffDigest: input.handoffDigest,
+        source,
+        publication,
+        claim
+      })
+    )) as Row;
+    return { settled: { source, publication, claim }, progress };
+  }
+
+  private async publishRemote(
+    input: PublishInput,
+    artifact: PreparedArtifact,
+    preparing: RunSnapshot
+  ): Promise<{ readonly source: RunSnapshot; readonly publication: Readonly<Row> }> {
+    const code = "VES_HANDOFF_INPUT_INVALID" as const;
+    const source = workflowAccepted(
+      await this.ports.workflow.apply(
+        preparing,
+        freeze({
+          type: "REQUEST_HANDOFF_PUBLICATION_APPROVAL",
+          expectedVersion: preparing.version,
+          actorRole: "controller",
+          actorId: "actor:handoff-controller",
+          evidence: ["signed-package"]
+        })
+      ),
+      "AWAITING_HANDOFF_PUBLICATION_APPROVAL"
+    );
+    const approvalInput = exact(
+      input.publicationApproval,
+      "publicationApproval",
+      ["approvalRef", "approvalDigest"],
+      code
+    );
+    const approvalRef = token(approvalInput.approvalRef, "publicationApproval.approvalRef", code);
+    const approvalDigest = digest(approvalInput.approvalDigest, "publicationApproval.approvalDigest", code);
+    const approval = exact(
+      await this.ports.publicationApproval.verify(
+        freeze({
+          action: "handoff-publication",
+          workspaceId: input.workspaceId,
+          sourceRunId: source.runId,
+          handoffRef: input.handoffRef,
+          handoffDigest: input.handoffDigest,
+          packageDigest: artifact.package.packageDigest,
+          destinationDigest: artifact.destination.destinationDigest,
+          approvalRef,
+          approvalDigest
+        })
+      ),
+      "publication Approval proof",
+      ["valid", "action", "approvalRef", "bindingDigest"],
+      "VES_HANDOFF_PUBLICATION_APPROVAL_INVALID"
+    );
+    if (approval.valid !== true || approval.action !== "handoff-publication" || approval.approvalRef !== approvalRef)
+      fail("VES_HANDOFF_PUBLICATION_APPROVAL_INVALID", "publication Approval is invalid");
+    digest(approval.bindingDigest, "publication Approval binding", "VES_HANDOFF_PUBLICATION_APPROVAL_INVALID");
+    const idempotencyKey = this.publicationKey(artifact);
+    const effect = exact(
+      await this.ports.effects.publish(
+        freeze({
+          idempotencyKey,
+          workspaceId: input.workspaceId,
+          handoffRef: input.handoffRef,
+          handoffDigest: input.handoffDigest,
+          targetRef: artifact.destination.targetRef,
+          destinationDigest: artifact.destination.destinationDigest,
+          packageRef: artifact.package.packageRef,
+          packageDigest: artifact.package.packageDigest,
+          approvalRef
+        })
+      ),
+      "publication effect",
+      ["status", "idempotencyKey", "receiptRef", "receiptDigest"],
+      "VES_HANDOFF_PUBLICATION_INVALID"
+    );
+    if (effect.status === "uncertain")
+      fail("VES_HANDOFF_RECONCILIATION_REQUIRED", "remote publication outcome is unknown");
+    if (effect.status !== "completed" || effect.idempotencyKey !== idempotencyKey)
+      fail("VES_HANDOFF_PUBLICATION_INVALID", "remote publication receipt is invalid");
+    return {
+      source,
+      publication: freeze({
+        receiptRef: token(effect.receiptRef, "publication.receiptRef", "VES_HANDOFF_PUBLICATION_INVALID"),
+        receiptDigest: digest(effect.receiptDigest, "publication.receiptDigest", "VES_HANDOFF_PUBLICATION_INVALID")
+      })
+    };
+  }
+
+  private async disposeClaim(
+    input: PublishInput,
+    artifact: PreparedArtifact,
+    source: RunSnapshot
+  ): Promise<Readonly<Row>> {
+    const claim = exact(
+      await this.ports.claims.dispose(
+        freeze({
+          workspaceId: input.workspaceId,
+          sourceRunId: source.runId,
+          successorRunId: artifact.successorRunId,
+          claimRef: artifact.claim.claimRef,
+          disposition: artifact.claim.disposition,
+          handoffDigest: input.handoffDigest
+        })
+      ),
+      "claim disposition",
+      ["valid", "claimDispositionRef", "claimDispositionDigest"],
+      "VES_HANDOFF_CLAIM_INVALID"
+    );
+    if (claim.valid !== true) fail("VES_HANDOFF_CLAIM_INVALID", "claim disposition is invalid");
+    return freeze({
+      claimDispositionRef: token(claim.claimDispositionRef, "claimDispositionRef", "VES_HANDOFF_CLAIM_INVALID"),
+      claimDispositionDigest: digest(
+        claim.claimDispositionDigest,
+        "claimDispositionDigest",
+        "VES_HANDOFF_CLAIM_INVALID"
+      )
+    });
+  }
+
+  private async commitTerminal(
+    input: PublishInput,
+    artifact: PreparedArtifact,
+    settled: PreterminalState
+  ): Promise<{ readonly terminalSource: RunSnapshot; readonly progress: Row }> {
+    const evidence = ["signed-package"];
+    if (artifact.destination.kind === "remote")
+      evidence.push("handoff-publication-approval", "handoff-publication-receipt");
+    const terminalSource = workflowAccepted(
+      await this.ports.workflow.apply(
+        settled.source,
+        freeze({
+          type: "COMPLETE_HANDOFF",
+          expectedVersion: settled.source.version,
+          actorRole: "controller",
+          actorId: "actor:handoff-controller",
+          evidence,
+          publicationRequired: artifact.destination.kind === "remote"
+        })
+      ),
+      "HANDED_OFF"
+    );
+    const progress = (await this.ports.records.saveProgress(
+      freeze({
+        schemaVersion: 1,
+        stage: "TERMINAL_COMMITTED",
+        workspaceId: input.workspaceId,
+        handoffRef: input.handoffRef,
+        handoffDigest: input.handoffDigest,
+        source: settled.source,
+        publication: settled.publication,
+        claim: settled.claim,
+        terminalSource
+      })
+    )) as Row;
+    return { terminalSource, progress };
+  }
+
+  private async sealCapsule(
+    input: PublishInput,
+    artifact: PreparedArtifact,
+    settled: PreterminalState,
+    terminalSource: RunSnapshot
+  ): Promise<Readonly<Row>> {
+    const capsule = exact(
+      await this.ports.capsules.seal(
+        freeze({ artifact, source: terminalSource, publication: settled.publication, claim: settled.claim })
+      ),
+      "Handoff capsule",
+      [
+        "capsuleRef",
+        "capsuleDigest",
+        "status",
+        "sourceRunId",
+        "successorRunId",
+        "packageRef",
+        "packageDigest",
+        "receiverApprovalInherited"
+      ],
+      "VES_HANDOFF_CAPSULE_INVALID"
+    );
+    if (
+      capsule.status !== "HANDED_OFF" ||
+      capsule.sourceRunId !== terminalSource.runId ||
+      capsule.successorRunId !== artifact.successorRunId ||
+      capsule.packageRef !== artifact.package.packageRef ||
+      capsule.packageDigest !== artifact.package.packageDigest ||
+      capsule.receiverApprovalInherited !== false
+    )
+      fail("VES_HANDOFF_CAPSULE_INVALID", "Handoff capsule proof is invalid");
+    const normalizedCapsule = freeze({
+      capsuleRef: token(capsule.capsuleRef, "capsuleRef", "VES_HANDOFF_CAPSULE_INVALID"),
+      capsuleDigest: digest(capsule.capsuleDigest, "capsuleDigest", "VES_HANDOFF_CAPSULE_INVALID")
+    });
+    await this.ports.records.saveProgress(
+      freeze({
+        schemaVersion: 1,
+        stage: "CAPSULE_SEALED",
+        workspaceId: input.workspaceId,
+        handoffRef: input.handoffRef,
+        handoffDigest: input.handoffDigest,
+        source: settled.source,
+        publication: settled.publication,
+        claim: settled.claim,
+        terminalSource,
+        capsule: normalizedCapsule
+      })
+    );
+    return normalizedCapsule;
   }
 
   async verify(value: unknown): Promise<Readonly<Row>> {

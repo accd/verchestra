@@ -54,7 +54,7 @@
       14
     ],
     "packages/application/src/bootstrap/machine-bootstrap.ts :: Function 'validateConfig'": [
-      24
+      13
     ],
     "packages/application/src/coordination/work-claims.ts :: Async method 'acquire'": [
       11
@@ -63,7 +63,7 @@
       11
     ],
     "packages/application/src/egress/trust-egress.ts :: Async method 'authorize'": [
-      31
+      12
     ],
     "packages/application/src/egress/trust-egress.ts :: Async method 'declassify'": [
       12
@@ -73,9 +73,6 @@
     ],
     "packages/application/src/execution/budget-meter.ts :: Function 'createBudgetMeter'": [
       23
-    ],
-    "packages/application/src/execution/gate-repair.ts :: Async function 'runGateRepairLoop'": [
-      29
     ],
     "packages/application/src/execution/gate-repair.ts :: Function 'normalizePolicy'": [
       12
@@ -87,12 +84,6 @@
       13
     ],
     "packages/application/src/execution/task-executor.ts :: Async method 'execute'": [
-      40
-    ],
-    "packages/application/src/execution/task-scheduler.ts :: Async method 'execute'": [
-      26
-    ],
-    "packages/application/src/execution/task-scheduler.ts :: Function 'assertValidGraph'": [
       13
     ],
     "packages/application/src/execution/task-scheduler.ts :: Function 'normalizeTaskSchedule'": [
@@ -101,26 +92,14 @@
     "packages/application/src/handoff/coordinator.ts :: Async method 'continue'": [
       13
     ],
-    "packages/application/src/handoff/coordinator.ts :: Async method 'publish'": [
-      31
-    ],
     "packages/application/src/handoff/coordinator.ts :: Async method 'verify'": [
       11
-    ],
-    "packages/application/src/sync/workspace-reconcile.ts :: Async method 'execute'": [
-      15
-    ],
-    "packages/application/src/sync/workspace-reconcile.ts :: Function 'assertValid'": [
-      15
-    ],
-    "packages/application/src/sync/workspace-reconcile.ts :: Function 'topologyOperations'": [
-      22
     ],
     "packages/application/src/verification/verification.ts :: Async method 'review'": [
       15
     ],
     "packages/application/src/verification/verification.ts :: Async method 'verify'": [
-      19
+      11
     ],
     "packages/connectors/src/confluence/architecture-source.ts :: Private method #normalizeRequest": [
       13
