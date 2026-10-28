@@ -51,7 +51,7 @@ const ENTRY_KEYS = Object.freeze([
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const DIGEST_PREFIX = /^sha256:[a-f0-9]{8,63}$/u;
 const URL_PREFIX = /^(?:[A-Za-z0-9._-]+\/)*$/u;
-const RUN_ID = /^[0-9]{1,20}$/u;
+const RUN_ID = /^\d{1,20}$/u;
 const EVIDENCE_PATH = /^(?:[A-Za-z0-9._-]+\/)*[A-Za-z0-9._-]+$/u;
 
 export class PublicationLedgerError extends Error {

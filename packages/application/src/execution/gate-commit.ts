@@ -6,7 +6,7 @@ type Row = Record<string, unknown>;
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const OBJECT_ID = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
 const SAFE = /^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,511}$/u;
-const REQUIREMENT = /^VES-[A-Z]{3}-[0-9]{3}$/u;
+const REQUIREMENT = /^VES-[A-Z]{3}-\d{3}$/u;
 const TASK_PATH = Object.freeze({ test: isTaskPath });
 const PRINTABLE = /^[\x20-\x7e]{1,512}$/u;
 

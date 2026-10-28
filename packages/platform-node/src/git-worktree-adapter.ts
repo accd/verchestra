@@ -229,7 +229,7 @@ export class NodeGitWorktreeAdapter implements ExecutionWorktreePort {
     const commitCountText = (
       await this.#git(target, ["rev-list", "--count", `${handle.baseCommit}..HEAD`])
     ).stdout.trim();
-    if (!/^[0-9]+$/u.test(commitCountText))
+    if (!/^\d+$/u.test(commitCountText))
       fail("VES_GIT_WORKTREE_COMMAND_FAILED", "Git returned an invalid commit count");
     return Object.freeze({
       changedPaths,

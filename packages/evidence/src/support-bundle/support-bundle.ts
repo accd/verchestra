@@ -13,7 +13,7 @@ type Digest = `sha256:${string}`;
 type DiagnosticValue = string | number | boolean | readonly string[];
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
-const SEMVER = /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?$/u;
+const SEMVER = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/u;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,239}$/u;
 const CODE = /^[A-Z][A-Z0-9_:.@/-]{0,127}$/u;
 const REFERENCE = /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,239}$/u;

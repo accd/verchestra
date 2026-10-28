@@ -12,7 +12,7 @@ type Digest = `sha256:${string}`;
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const COMMIT = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u;
 const SAFE = /^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,511}$/u;
-const REQUIREMENT = /^VES-[A-Z]{3}-[0-9]{3}$/u;
+const REQUIREMENT = /^VES-[A-Z]{3}-\d{3}$/u;
 
 export type VerificationErrorCode =
   | "VES_VERIFIER_INPUT_INVALID"
