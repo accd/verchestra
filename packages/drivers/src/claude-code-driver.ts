@@ -135,10 +135,10 @@ export interface ClaudeManagedPolicySources {
 // why: the Windows sources Claude Code reads (SSI-74): the managed settings
 // directory under Program Files, the machine policy key, and the user policy
 // key, each with a `Settings` value; the legacy ProgramData path is not read.
-export const CLAUDE_WINDOWS_POLICY_DIRECTORY = "C:\\Program Files\\ClaudeCode";
+export const CLAUDE_WINDOWS_POLICY_DIRECTORY = String.raw`C:\Program Files\ClaudeCode`;
 export const CLAUDE_WINDOWS_POLICY_KEYS: readonly string[] = Object.freeze([
-  "HKLM\\SOFTWARE\\Policies\\ClaudeCode",
-  "HKCU\\SOFTWARE\\Policies\\ClaudeCode"
+  String.raw`HKLM\SOFTWARE\Policies\ClaudeCode`,
+  String.raw`HKCU\SOFTWARE\Policies\ClaudeCode`
 ]);
 const POLICY_KEY = /^HK(?:LM|CU)\\SOFTWARE\\Policies\\[A-Za-z0-9._-]{1,64}$/u;
 

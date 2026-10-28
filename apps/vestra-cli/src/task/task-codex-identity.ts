@@ -124,8 +124,11 @@ export async function codexLoginSecrets(directory: string): Promise<readonly str
   return [...new Set(secrets.filter((value): value is string => typeof value === "string" && value !== ""))];
 }
 
+// A single quote closes the POSIX quoted string, adds an escaped quote, and reopens it.
+const QUOTED_QUOTE = String.raw`'\''`;
+
 function shellQuoted(value: string): string {
-  return `'${value.replaceAll("'", "'\\''")}'`;
+  return `'${value.replaceAll("'", QUOTED_QUOTE)}'`;
 }
 
 // why: PowerShell takes a single-quoted string literally except for a quote,

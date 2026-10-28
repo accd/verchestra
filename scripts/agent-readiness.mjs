@@ -174,11 +174,11 @@ function isHistoricalReport(taskId) {
 // from the same task-id fragment and can no longer diverge.
 const TASK_ID = String.raw`\d+[a-z]?`;
 export const QUALIFICATION_REPORT_FILE = new RegExp(String.raw`^t(${TASK_ID})-validation\.md$`, "u");
-export const QUALIFICATION_REPORT_ROUTE = new RegExp(String.raw`^qualification/t(${TASK_ID})-validation$`, "u");
+export const QUALIFICATION_REPORT_ROUTE = new RegExp(`^qualification/t(${TASK_ID})-validation$`, "u");
 // A file that announces itself as a task report but is named outside the
 // convention is reported rather than skipped. Silent non-discovery is what let
 // one report sit on disk while the counter never moved.
-const QUALIFICATION_TASK_FILE = new RegExp(String.raw`^t${TASK_ID}-`, "u");
+const QUALIFICATION_TASK_FILE = new RegExp(`^t${TASK_ID}-`, "u");
 
 // A gate name is only meaningful if it is one of the declared gates. Any package
 // script would let `format:check` alone stand in for a security surface.

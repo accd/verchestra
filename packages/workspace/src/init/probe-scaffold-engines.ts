@@ -240,12 +240,12 @@ function mysqlFamily(engine: "mysql" | "mariadb"): ProbeEngineTemplate {
   const observation = "MySqlFamilyPrincipalObservation";
   const mysql = engine === "mysql";
   const versionCheck = mysql
-    ? `function versionSupported(version: string): boolean {
-  const match = /^(\\d+)\\.\\d+\\.\\d+/u.exec(version);
+    ? String.raw`function versionSupported(version: string): boolean {
+  const match = /^(\d+)\.\d+\.\d+/u.exec(version);
   return match !== null && Number(match[1]) >= 8 && !/mariadb/iu.test(version);
 }`
-    : `function versionSupported(version: string): boolean {
-  const match = /^(\\d+)\\.(\\d+)\\.\\d+/u.exec(version);
+    : String.raw`function versionSupported(version: string): boolean {
+  const match = /^(\d+)\.(\d+)\.\d+/u.exec(version);
   if (match === null || !/mariadb/iu.test(version)) return false;
   const major = Number(match[1]);
   return major > 10 || (major === 10 && Number(match[2]) >= 2);

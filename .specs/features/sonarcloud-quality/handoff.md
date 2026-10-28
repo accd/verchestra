@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: sonarcloud-quality
 issue: null
 status: in_progress
-branch: test/linear-growth-rounds
-baseRevision: aa7f45010068eaf0a1a3e7262f670ad6023a9733
+branch: refactor/sonar-s7780-string-raw
+baseRevision: ff557cf2a31e39625b77b9f11db65ec073742ffb
 lastCompletedTask: T8
 nextTask: T8
 lastGate: pnpm gate:quick plus pnpm test:architecture
-updatedAt: 2026-10-27T20:00:00Z
+updatedAt: 2026-10-28T09:00:00Z
 ---
 
 # Scope
@@ -20,6 +20,20 @@ own changes, one rule family each, as listed in `tasks.md`.
 
 # Completed Evidence
 
+T8, S7780 (`String.raw` for backslash-escaped strings, 19 TypeScript + 2
+JavaScript) on `refactor/sonar-s7780-string-raw`: Windows program paths,
+registry keys, a PowerShell guard line, four regular expressions built from
+templates and the generated probe `versionSupported` source now use
+`String.raw`; the two JavaScript issues were the reverse, `String.raw` with
+no backslash in `agent-readiness.mjs`, now plain templates. The POSIX quote
+escape moved to a `QUOTED_QUOTE` constant so no template nests another.
+`tests/unit/string-raw-literals.test.mjs` (4) spells every expected path and
+key with ordinary escapes; it passes against `main`'s sources as well
+(equivalence run), and the probe-scaffold digest table pins the generated
+bytes unchanged.
+
+PR #634 (`e7ec8478`, `a78645d6`) merged by content; the first `main`
+SonarCloud run after it passed first time (19:57Z: gate OK, 656 smells).
 Linearity sensor hardening on `test/linear-growth-rounds`: T7's
 `withoutLeadingTitle` assertion measured 8.1x once on CI (`Quality gate` of
 #633, run 40568010443, green on re-run), the second such near-miss after
@@ -363,12 +377,13 @@ issues; 179 bugs, 32 vulnerabilities, 924 code smells; quality gate ERROR.
 
 # Next Exact Action
 
-After the S3735 change merges, confirm on the next `main` analysis that
-`typescript:S3735` reads 8 (the accepted ones; the owner marks them
-Accepted, keys in `validation.md`) and the quality gate is still OK
-(`api/issues/search?componentKeys=accd_verchestra&rules=typescript:S6582&resolved=false&ps=1`).
+After the S7780 change merges, confirm on the next `main` analysis that
+`typescript:S7780` and `javascript:S7780` read 0 and the quality gate is still OK
+(`api/issues/search?componentKeys=accd_verchestra&rules=typescript:S7780,javascript:S7780&resolved=false&ps=1`).
+The eight S3735 issues in `validation.md` still wait for the owner to mark
+them Accepted.
 Then continue T8 with the next maintainability rule family, one per change
-(by count: S7780 19, S3358 18, S6535 16, S6353 15; S7503, S9382 and S3776 need
+(by count: S3358 16, S6535 16, S6353 15, S7758 7; S7503, S9382 and S3776 need
 a per-site decision first):
 list the open code smells by rule
 (`api/issues/search?componentKeys=accd_verchestra&types=CODE_SMELL&resolved=false&facets=rules&ps=1`)
