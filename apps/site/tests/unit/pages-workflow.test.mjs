@@ -132,6 +132,15 @@ test("an unresolvable Playwright version refuses to cache instead of sharing one
   assert.match(workflow, /refusing to cache browsers under an ambiguous key/u);
 });
 
+test("the site job runs on the Ubuntu release the qualified WebKit build loads on", () => {
+  // ubuntu-latest moved to 26.04 on 2026-10-28. Its libicu78 cannot satisfy the
+  // libicu74 the qualified Playwright WebKit build links, so every WebKit launch
+  // failed. The pin moves only with a Playwright that supports the newer release.
+  const site = /\n {2}site:\n([\s\S]*?)\n {2}deploy:/u.exec(workflow)?.[1];
+  assert.ok(site, "the site job is missing");
+  assert.match(site, /\n {4}runs-on: ubuntu-24\.04\n/u);
+});
+
 test("the site job budget exceeds the bounds of the steps it contains", () => {
   // Three 5-minute apt attempts, the two 15-minute lock waits before the
   // retries, and an 8-minute browser install come to about 53 minutes before
