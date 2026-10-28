@@ -21,8 +21,11 @@ export const CONSERVATIVE_GATES = Object.freeze(["gate:full", "gate:release"]);
 // CLIs the fleet qualifies the drivers against and the check of their install,
 // and the gate machinery itself (a change to how gates are composed or selected
 // must run the most verification, not the least).
-const CONSERVATIVE_PATH =
-  /^(?:docs\/qualification\/t\d+[a-z]?-validation\.md|\.github\/(?:workflows\/|qualified-providers\/|dependabot\.yml$)|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|\.npmrc$|scripts\/(?:gate|gate-stages|gate-selection|gate-output|select-gates|test-scope|verify-provider-install)\.mjs$)/u;
+const CONSERVATIVE_PATHS = Object.freeze([
+  /^(?:docs\/qualification\/t\d+[a-z]?-validation\.md|\.github\/(?:workflows\/|qualified-providers\/|dependabot\.yml$))/u,
+  /^(?:package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.npmrc)$/u,
+  /^scripts\/(?:gate|gate-stages|gate-selection|gate-output|select-gates|test-scope|verify-provider-install)\.mjs$/u
+]);
 
 const RULES = Object.freeze([
   {
@@ -101,7 +104,7 @@ export function selectGates(changedPaths, options) {
     const normalized = path.replaceAll("\\", "/").replace(/^\.\/+/u, "");
     if (normalized.length === 0) continue;
     selectCensusGate(normalized, censusPaths, selected, reasons);
-    if (CONSERVATIVE_PATH.test(normalized)) {
+    if (CONSERVATIVE_PATHS.some((pattern) => pattern.test(normalized))) {
       for (const gate of CONSERVATIVE_GATES) {
         selected.add(gate);
         reasons.set(gate, "CI or qualification control surface");

@@ -94,6 +94,26 @@ test("rejects an envelope from another Workspace", () => {
   assert.throws(() => decoder.push(encodeFrame(envelope({ workspaceId: "workspace-b" }))), { code: "VES_ENVELOPE_WORKSPACE_MISMATCH", grantsRevoked: true, terminationRequired: true });
 });
 
+// SonarCloud S6582 (T8): a falsy JSON body is refused by the envelope schema
+// check, not by a property access on it.
+test("a falsy JSON envelope body fails schema validation", () => {
+  for (const body of ["null", "false", "0", "\"\""]) {
+    const decoder = new FrameDecoder({ workspaceId: "workspace-a" });
+    const frame = Buffer.from(`Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`, "utf8");
+    assert.throws(() => decoder.push(frame), { code: "VES_ENVELOPE_SCHEMA_INVALID", grantsRevoked: true, terminationRequired: true }, body);
+  }
+});
+
+// SonarCloud S7757 (T8): each guard starts at sequence zero with its own record.
+test("a new sequence guard starts at zero and shares no state with another", () => {
+  const first = new SequenceGuard();
+  assert.equal(first.nextSequence, 0);
+  first.accept(envelope());
+  const second = new SequenceGuard();
+  assert.equal(second.nextSequence, 0);
+  assert.deepEqual(second.accept(envelope()), { accepted: true, duplicate: false, nextSequence: 1 });
+});
+
 test("sequence gaps terminate the protocol grant", () => {
   const guard = new SequenceGuard();
   assert.deepEqual(guard.accept(envelope()), { accepted: true, duplicate: false, nextSequence: 1 });

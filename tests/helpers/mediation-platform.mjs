@@ -53,7 +53,10 @@ export async function windowsMediationPath(t) {
         { code: "VES_CLAUDE_MEDIATION_INVALID" },
         `${kind} without an owner-only proof`
       );
-      assert.ok(new ClaudeCodeDriver({ ...options, profile: { kind, ownerOnlyProof: NO_PROOF } }), kind);
+      assert.doesNotThrow(
+        () => new ClaudeCodeDriver({ ...options, profile: { kind, ownerOnlyProof: NO_PROOF } }),
+        kind
+      );
     }
   } finally {
     await rm(socketRoot, { recursive: true, force: true });

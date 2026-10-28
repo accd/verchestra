@@ -40,7 +40,7 @@ export function encodeFrame(envelope) {
 }
 
 function validateEnvelope(envelope, workspaceId) {
-  if (!envelope || envelope.protocol !== "verchestra/1" || typeof envelope.messageId !== "string" ||
+  if (envelope?.protocol !== "verchestra/1" || typeof envelope.messageId !== "string" ||
       typeof envelope.correlationId !== "string" || !Number.isSafeInteger(envelope.sequence) || envelope.sequence < 0 ||
       typeof envelope.payloadSchema !== "string" || Number.isNaN(Date.parse(envelope.sentAt))) {
     throw failure("VES_ENVELOPE_SCHEMA_INVALID", "protocol envelope failed schema validation", TERMINATE);
@@ -103,10 +103,8 @@ export class FrameDecoder {
 }
 
 export class SequenceGuard {
-  constructor() {
-    this.nextSequence = 0;
-    this.messages = new Map();
-  }
+  nextSequence = 0;
+  messages = new Map();
 
   accept(envelope) {
     const recorded = this.messages.get(envelope.messageId);

@@ -177,13 +177,18 @@ export function localCanonicalizerFacts(source) {
   });
 }
 
+// why: a missing or non-numeric count is not positive, so "<= 0" would keep it.
+function carriesCanonicalizer(entry) {
+  return entry.signals?.canonicalizer > 0;
+}
+
 // why: the census test binds every entry's signals to the live source, so the
 // inventory, not a second scan, decides which files carry a canonicalizer.
 export async function collectLocalCanonicalizerFacts(root, inventory) {
   const entries = Array.isArray(inventory?.entries) ? inventory.entries : [];
   const facts = [];
   for (const entry of entries) {
-    if (entry.classification !== "migrated-v2" || !(entry.signals?.canonicalizer > 0)) continue;
+    if (entry.classification !== "migrated-v2" || !carriesCanonicalizer(entry)) continue;
     facts.push({ path: entry.path, ...localCanonicalizerFacts(await readFile(join(root, entry.path), "utf8")) });
   }
   return facts.sort((left, right) => Number(left.path > right.path) - Number(left.path < right.path));
