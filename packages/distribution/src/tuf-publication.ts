@@ -3,6 +3,7 @@ import { lstat, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 
 import { canonicalize } from "@tufjs/canonical-json";
+import { codeUnitCompare } from "@verchestra/domain";
 
 import { verifyHermeticDistributionBundle, type HermeticDistributionBundle } from "./hermetic-bundle.ts";
 import { verifyReleaseCandidate, type ReleaseCandidate } from "./release-candidate.ts";
@@ -164,15 +165,6 @@ const cloneBytes = (value: Uint8Array, label: string): Uint8Array => {
   if (!(value instanceof Uint8Array) || value.byteLength === 0)
     fail("VES_TUF_PUBLICATION_BYTES_INVALID", `${label} must contain non-empty bytes`);
   return Buffer.from(value);
-};
-
-const codeUnitCompare = (left: string, right: string): number => {
-  const length = Math.min(left.length, right.length);
-  for (let index = 0; index < length; index += 1) {
-    const difference = left.charCodeAt(index) - right.charCodeAt(index);
-    if (difference !== 0) return difference;
-  }
-  return left.length - right.length;
 };
 
 const safeRelativePath = (value: unknown, label: string): string => {
