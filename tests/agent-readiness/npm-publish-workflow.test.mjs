@@ -60,8 +60,11 @@ test("the npm publication workflow is manual and takes exactly its four inputs",
 });
 
 test("only the publish job can mint an OIDC token, and only inside the npm-publication environment", () => {
-  assert.match(workflow, /^permissions:\r?\n {2}actions: read\r?\n {2}contents: read\r?\n/mu);
+  // why: every job states its own scopes (SonarCloud S8264), so a job added
+  // later inherits nothing.
+  assert.match(workflow, /^permissions: \{\}$/mu);
   assert.deepEqual(Object.keys(jobs), ["verify", "publish"]);
+  assert.match(jobs.verify, /^ {4}permissions:\n {6}actions: read\n {6}contents: read\n(?! {6})/mu);
   assert.doesNotMatch(jobs.verify, /id-token|environment:|: write$/mu);
   assert.match(jobs.publish, /^ {4}environment: npm-publication$/mu);
   assert.match(jobs.publish, /^ {4}needs: verify$/mu);

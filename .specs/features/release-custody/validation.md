@@ -123,15 +123,16 @@ for #596 item 3. Its guard is `tests/agent-readiness/npm-publish-workflow.test.m
 | Claim | Assertion |
 | --- | --- |
 | Manual dispatch with exactly `revision`, `publication_run_id`, `version`, `dist_tag`; one run at a time | "the npm publication workflow is manual and takes exactly its four inputs" |
-| Top-level `actions: read`, `contents: read`; only the `publish` job, bound to `npm-publication` and needing `verify`, holds `id-token: write`; no other write scope | "only the publish job can mint an OIDC token, and only inside the npm-publication environment" |
+| No top-level scope (`permissions: {}`, SonarCloud S8264); `verify` holds `actions: read`, `contents: read`; only the `publish` job, bound to `npm-publication` and needing `verify`, holds `id-token: write`; no other write scope | "only the publish job can mint an OIDC token, and only inside the npm-publication environment" |
 | No other workflow binds `npm-publication` or runs `npm publish` | "no workflow other than this one binds npm-publication or runs npm publish" |
 | No secret, registry configuration or npm auth variable | "no npm token exists: no secret, no registry-url, no auth variable" |
 | `publish` checks out nothing, runs no pnpm, checks the tarball's sha512 against `verify`'s, and runs exactly `npm publish "dist/$TARBALL" --provenance --access public --tag "$DIST_TAG"` | "the publish job runs no repository code and publishes only the verified tarball" |
 | `verify` downloads the publication run's pinned inputs and package, rebuilds, `diff -r`s, activates the package from the live endpoint, then packs; no credential persists and no cache is restored | "the verify job rebuilds from the publication run, compares byte for byte, and activates live first" |
 | Dispatch inputs reach the shell only through `env` | "dispatch inputs reach the shell only through env" |
 
-Nine faults injected into the workflow, one at a time with the file restored,
-each failed the guard: no environment, no `id-token`, no `diff -r`, no
+Eleven faults injected into the workflow, one at a time with the file restored,
+each failed the guard: a top-level scope granted, `verify` granted a write,
+no environment, no `id-token`, no `diff -r`, no
 integrity check, no `--provenance`, no live activation, Git credentials
 persisted, an input interpolated into a script, and packing the unverified copy.
 The integrity-check fault first survived: the ordering assertion compared
