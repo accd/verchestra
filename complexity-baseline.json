@@ -11,14 +11,11 @@
     "apps/site/src/lib/repository-content.ts :: Function 'validateRoadmapChain'": [
       17
     ],
-    "apps/vestra-cli/src/cli.ts :: Async function 'runCli'": [
-      12
-    ],
     "apps/vestra-cli/src/cli.ts :: Function 'assertManifest'": [
-      15
+      11
     ],
     "apps/vestra-cli/src/cli.ts :: Function 'parseCliArguments'": [
-      21
+      13
     ],
     "packages/agent-runtime/src/context/backend-serializers.ts :: Function 'exactText'": [
       35

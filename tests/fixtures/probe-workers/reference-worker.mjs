@@ -9,7 +9,14 @@
 // integration suites; the default is a conforming worker.
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync, statSync } from "node:fs";
+import { readFileSync, statSync, writeFileSync } from "node:fs";
+
+// why: the extension command journeys prove that no command starts a worker
+// (.specs/features/probe-host-composition/plan.md, AC 14). A journey that sets
+// this variable sees a marker file if anything starts the worker; without it
+// the worker behaves exactly as before.
+if (process.env.PROBE_FIXTURE_START_MARKER !== undefined)
+  writeFileSync(process.env.PROBE_FIXTURE_START_MARKER, `${process.pid}\n`);
 
 const mode = process.env.PROBE_FIXTURE_MODE ?? "reference";
 const IDLE = "setInterval(() => {}, 1000)";
