@@ -59,7 +59,12 @@ export class TaskAuthority {
     // why: `ArtifactSealer` takes a signer even to verify, and its `verify`
     // never signs, so the one it gets here refuses.
     const verifier = new ArtifactSealer({
-      signer: { publicKeyRef: options.trust.keys[0]!, sign: async () => Promise.reject(new Error("verify only")) }
+      signer: {
+        publicKeyRef: options.trust.keys[0]!,
+        sign: async () => {
+          throw new Error("verify only");
+        }
+      }
     });
     this.#approvals = new ApprovalVerifier({
       store: this.#store,

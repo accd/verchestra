@@ -134,25 +134,26 @@ function codex(events: DriverEvent[]): (review: DriverReviewFacts) => Promise<vo
   };
 }
 
+async function* openCodeEvents() {
+  yield {
+    type: "message.part.updated",
+    properties: {
+      sessionID: "self-test-session",
+      part: { type: "text", text: "done", time: { end: 1 } }
+    }
+  };
+  yield {
+    type: "message.part.updated",
+    properties: {
+      sessionID: "self-test-session",
+      part: { type: "step-finish", tokens: { input: 4, output: 2, reasoning: 1, cache: { read: 0, write: 0 } } }
+    }
+  };
+  yield { type: "session.status", properties: { sessionID: "self-test-session", status: { type: "idle" } } };
+}
+
 function openCodeFactory() {
   return async () => {
-    const stream = async function* () {
-      yield {
-        type: "message.part.updated",
-        properties: {
-          sessionID: "self-test-session",
-          part: { type: "text", text: "done", time: { end: 1 } }
-        }
-      };
-      yield {
-        type: "message.part.updated",
-        properties: {
-          sessionID: "self-test-session",
-          part: { type: "step-finish", tokens: { input: 4, output: 2, reasoning: 1, cache: { read: 0, write: 0 } } }
-        }
-      };
-      yield { type: "session.status", properties: { sessionID: "self-test-session", status: { type: "idle" } } };
-    };
     return {
       client: {
         provider: {
@@ -170,7 +171,7 @@ function openCodeFactory() {
             }
           })
         },
-        event: { subscribe: async () => ({ stream: stream() }) },
+        event: { subscribe: async () => ({ stream: openCodeEvents() }) },
         session: {
           create: async () => ({ data: { id: "self-test-session" } }),
           prompt: async () => ({ data: {} }),

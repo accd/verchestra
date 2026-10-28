@@ -77,8 +77,8 @@ function isIdentityClaim(name: string): boolean {
 function identityClaims(payload: unknown): readonly unknown[] {
   const claims: unknown[] = [];
   const pending: unknown[] = [payload];
-  for (let index = 0; index < pending.length; index += 1) {
-    const value = pending[index];
+  // why: a for...of over an array visits members pushed during the walk.
+  for (const value of pending) {
     if (value === null || typeof value !== "object") continue;
     for (const [name, member] of Object.entries(value)) {
       if (typeof member !== "string") pending.push(member);
