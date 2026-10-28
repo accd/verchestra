@@ -28,13 +28,13 @@ interface NodeSqliteModule {
   readonly constants: unknown;
 }
 
-const SQLITE_WARNING = /^SQLite is an experimental feature/u;
+const SQLITE_WARNING = "SQLite is an experimental feature";
 
 function loadWithoutSqliteWarning(): NodeSqliteModule {
   const emitWarning = process.emitWarning;
   process.emitWarning = ((warning: string | Error, ...rest: unknown[]) => {
     const text = typeof warning === "string" ? warning : warning.message;
-    if (rest[0] === "ExperimentalWarning" && SQLITE_WARNING.test(text)) return;
+    if (rest[0] === "ExperimentalWarning" && text.startsWith(SQLITE_WARNING)) return;
     Reflect.apply(emitWarning, process, [warning, ...rest]);
   }) as typeof process.emitWarning;
   try {

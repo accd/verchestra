@@ -95,6 +95,16 @@ test("scope classification separates production from tests and site sources", ()
   assert.equal(scopeOf("apps/site/tests/unit/example.test.mjs"), "site-tests");
 });
 
+test("scope classification matches whole leading path segments only", () => {
+  assert.equal(scopeOf("apps/vestra-cli/srcs/cli.ts"), "other");
+  assert.equal(scopeOf("apps/vestra-launcher/src"), "other");
+  assert.equal(scopeOf("apps/site/source/index.ts"), "other");
+  assert.equal(scopeOf("scripts.mjs"), "other");
+  assert.equal(scopeOf("apps/site/tests-old/a.mjs"), "other");
+  assert.equal(scopeOf("unit/tests/a.mjs"), "other");
+  assert.equal(scopeOf("vendor/scripts/gate.mjs"), "other");
+});
+
 test("the ratchet fails closed in every drift direction", () => {
   const baseline = { target: 10, variant: "classic", hotspots: { "packages/a/src/x.ts :: Function 'f'": [15] } };
   const same = { target: 10, variant: "classic", hotspots: { "packages/a/src/x.ts :: Function 'f'": [15] } };
