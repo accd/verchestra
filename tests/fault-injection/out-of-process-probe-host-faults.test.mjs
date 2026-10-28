@@ -18,6 +18,11 @@ const BOUNDS = { timeoutMs: 400, rowLimit: 100, byteLimit: 100_000, concurrencyL
 // kill that never completes.
 const CUT_WITHIN_BOUNDS = 2;
 const OPTIONS = { timeout: 30_000 };
+// why: these workers report descendants they start first, which takes two
+// Node startups. On a loaded macOS x64 runner that outlasted 400 ms (fleet run
+// 40704061361), so the bound fired before the report and the case had nothing
+// to check. The bound is not what these cases measure.
+const REPORTING_BOUNDS = { ...BOUNDS, timeoutMs: 3_000 };
 
 function reap(t, pids) {
   t.after(() => {
@@ -81,7 +86,7 @@ for (const [label, mode] of [
 test("a worker that forks grandchildren has its whole tree killed, including a setsid escapee", async (t) => {
   if (WIN32_HOST) return probeHostRefusedOnWin32(t);
   const results = new ObservingResultSink();
-  const fixture = await spawnedProbe({ mode: "fork", results, request: { bounds: BOUNDS } });
+  const fixture = await spawnedProbe({ mode: "fork", results, request: { bounds: REPORTING_BOUNDS } });
   await assert.rejects(fixture.supervisor.execute(), { code: "VES_PROBE_TIMEOUT" });
   const [descendants] = results.observed;
   assert.ok(Number.isSafeInteger(descendants?.sameGroup), "the worker reported its same-group grandchild");
@@ -112,9 +117,11 @@ test("a grandchild linked through a child in its own group is ended at the time 
   if (WIN32_HOST) return probeHostRefusedOnWin32(t);
   const results = new ObservingResultSink();
   reapObserved(t, results);
-  const fixture = await spawnedProbe({ mode: "setsid-tree", results, request: { bounds: BOUNDS } });
+  const fixture = await spawnedProbe({ mode: "setsid-tree", results, request: { bounds: REPORTING_BOUNDS } });
   await assert.rejects(fixture.supervisor.execute(), { code: "VES_PROBE_TIMEOUT" });
-  const [{ child, grandchild }] = results.observed;
+  const [tree] = results.observed;
+  assert.ok(Number.isSafeInteger(tree?.grandchild), "the worker reported its tree before the bound");
+  const { child, grandchild } = tree;
   assert.equal(await eventuallyDead(child), true, "the child in its own group is dead");
   assert.equal(await eventuallyDead(grandchild), true, "its grandchild is dead");
   assert.equal(results.rollbacks, 1);
@@ -150,7 +157,7 @@ test("a descendant that outlives the kill while holding the worker's output fail
   const fixture = await spawnedProbe({
     mode: "double-fork-holder",
     results,
-    request: { bounds: BOUNDS },
+    request: { bounds: REPORTING_BOUNDS },
     limits: { exitWaitMs: 300 }
   });
   await assert.rejects(fixture.supervisor.execute(), (error) => {
@@ -158,8 +165,8 @@ test("a descendant that outlives the kill while holding the worker's output fail
     assert.equal(error.revokeGrant, true);
     return true;
   });
-  const [{ escaped }] = results.observed;
-  assert.ok(Number.isSafeInteger(escaped), "the worker reported its orphaned grandchild");
+  const [holder] = results.observed;
+  assert.ok(Number.isSafeInteger(holder?.escaped), "the worker reported its orphaned grandchild");
   assert.equal(results.rollbacks, 1);
   assert.equal(results.commits, 0);
   assert.equal(fixture.framed.parameterFrameZeroized, true, "a failed termination still zeroizes");
