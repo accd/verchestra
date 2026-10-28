@@ -20,9 +20,8 @@ on:
         required: true
         type: string
 
-permissions:
-  actions: read
-  contents: read
+# why: each job states exactly the scopes it needs (SonarCloud S8264).
+permissions: {}
 
 # why: two runs racing to publish would leave the dist-tag on whichever ended
 # last; a second dispatch waits instead.
@@ -42,6 +41,9 @@ jobs:
     name: Rebuild, compare, and activate the package
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
     outputs:
       tarball: ${{ steps.pack.outputs.tarball }}
       integrity: ${{ steps.pack.outputs.integrity }}
