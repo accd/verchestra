@@ -191,7 +191,10 @@ SonarCloud's quality gate failed on #679's new code on two conditions:
 (above 3 %). The follow-up branch `sonar/679-extension-follow-up` starts at
 #679's head, `985f3b8f`, and changes no behaviour. Every existing assertion
 is unchanged, and the extension, CLI surface, launcher, sealed closure,
-architecture and task suites pass as they are.
+architecture and task suites pass as they are. After slice 1 landed as #681,
+its six commits were rebased cleanly onto main `73f3ae24` as
+`sonar/681-extension-follow-up`; the figures below were measured on the
+original base.
 
 ### Duplication
 
