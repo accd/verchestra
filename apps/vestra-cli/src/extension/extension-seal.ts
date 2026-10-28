@@ -67,12 +67,7 @@ export async function openRecord(
     // why: `ArtifactSealer` takes a signer even to verify, and its `verify`
     // never signs, so the one it gets here refuses.
     const verifier = new ArtifactSealer({
-      signer: {
-        publicKeyRef: key,
-        sign: async () => {
-          throw new Error("verify only");
-        }
-      }
+      signer: { publicKeyRef: key, sign: () => Promise.reject(new Error("verify only")) }
     });
     const result = await verifier.verify(artifact, trust, {
       schema: { name: schema, version: 1 },

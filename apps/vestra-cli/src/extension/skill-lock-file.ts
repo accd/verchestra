@@ -113,7 +113,7 @@ export class SkillLockFile {
 
   async #bytes(): Promise<Buffer | undefined> {
     const directory = await lstat(this.#directory).catch(() => undefined);
-    if (directory === undefined || !directory.isDirectory()) throw lockInvalid("The .verchestra directory is not real");
+    if (!directory?.isDirectory()) throw lockInvalid("The .verchestra directory is not real");
     let metadata;
     try {
       metadata = await lstat(this.#path);
