@@ -1,4 +1,4 @@
-import type { CliCommand, CommandBus, InvocationContext } from "@verchestra/application";
+import type { CliCommand, CliOptionValue, CommandBus, InvocationContext } from "@verchestra/application";
 import type { CliOutput } from "@verchestra/contracts";
 import { PublicErrorException, type PublicErrorEnvelope } from "@verchestra/domain";
 
@@ -181,7 +181,7 @@ function optionValue(option: CliOptionManifest, token: string, value: string | u
 
 // why: returns how many tokens after the option it consumed.
 function assignOption(
-  values: Record<string, string | boolean | readonly string[]>,
+  values: Record<string, CliOptionValue>,
   option: CliOptionManifest,
   token: string,
   next: string | undefined
@@ -232,8 +232,8 @@ function findCommandManifest(manifest: InstalledCliManifest, rest: readonly stri
 function parseCommandOptions(
   commandManifest: CliCommandManifest,
   rest: readonly string[]
-): Record<string, string | boolean | readonly string[]> {
-  const values: Record<string, string | boolean | readonly string[]> = {};
+): Record<string, CliOptionValue> {
+  const values: Record<string, CliOptionValue> = {};
   const declared = new Map(commandManifest.options.map((entry) => [entry.name, entry]));
   for (let index = commandManifest.name.split(" ").length; index < rest.length; index += 1) {
     const token = rest[index] as string;

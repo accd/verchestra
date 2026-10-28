@@ -15,6 +15,7 @@ export {
 } from "./artifacts/artifact-planning.ts";
 export {
   type CliCommand,
+  type CliOptionValue,
   type CommandBus,
   type CommandResult,
   type InvocationContext

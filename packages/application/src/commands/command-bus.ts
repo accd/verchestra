@@ -1,7 +1,9 @@
+// why: a repeatable option collects its values in the order given.
+export type CliOptionValue = string | boolean | readonly string[];
+
 export interface CliCommand {
   readonly name: string;
-  // why: a repeatable option collects its values in the order given.
-  readonly options: Readonly<Record<string, string | boolean | readonly string[]>>;
+  readonly options: Readonly<Record<string, CliOptionValue>>;
 }
 
 export interface InvocationContext {
