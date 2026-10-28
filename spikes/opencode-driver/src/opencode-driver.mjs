@@ -129,9 +129,8 @@ export class OpenCodeDriver {
     try {
       const catalogResponse = await client.provider.list();
       const candidate = flattenCatalog(catalogResponse.data).find((entry) => entry.id === model && entry.connected);
-      if (!candidate) return { ...result, error: { code: "VES_OPENCODE_MODEL_UNAVAILABLE", message: `no connected Passport candidate for ${model}` } };
-      const unmediatedTool = tools.find((name) => !/^vestra_[a-z0-9_]+$/i.test(name));
-      if (unmediatedTool) return { ...result, error: { code: "VES_OPENCODE_TOOL_UNMEDIATED", message: `tool must be exposed through the Verchestra effect bridge: ${unmediatedTool}` } };
+      const refusal = runRefusal(candidate, model, tools);
+      if (refusal) return { ...result, error: refusal };
       result.resolvedModel = { provider: candidate.provider, model: candidate.model };
       result.events.push({ type: "session.started" }, { type: "model.resolved", ...result.resolvedModel });
 
@@ -149,36 +148,14 @@ export class OpenCodeDriver {
       const subscribed = await client.event.subscribe();
       const consume = (async () => {
         for await (const event of subscribed.stream) {
-          if (!event || typeof event.type !== "string") throw Object.assign(new Error("OpenCode emitted an invalid event envelope"), { code: "VES_OPENCODE_STREAM_INVALID" });
-          const properties = event.properties ?? {};
-          if (properties.sessionID && properties.sessionID !== sessionID) continue;
+          const properties = eventProperties(event);
+          if (belongsToOtherSession(properties, sessionID)) continue;
           if (event.type === "permission.asked") {
-            const request = { type: "tool.requested", id: properties.id, name: properties.permission, patterns: properties.patterns ?? [], input: sanitizeObject(properties.metadata?.input ?? properties.metadata, redact) };
+            const request = permissionRequest(properties, redact);
             result.events.push(request);
             const allowed = await authorizeTool(request);
             await client.permission.reply({ requestID: properties.id, reply: allowed ? "once" : "reject" });
-          } else if (event.type === "message.part.updated") {
-            const part = properties.part ?? {};
-            if (part.type === "text" && part.time?.end) {
-              const text = redact(part.text ?? "");
-              result.outputText += text;
-              result.events.push({ type: "content.delta", text });
-            } else if (part.type === "step-finish") {
-              result.usage = {
-                inputTokens: Number(part.tokens?.input ?? 0),
-                outputTokens: Number(part.tokens?.output ?? 0),
-                reasoningTokens: Number(part.tokens?.reasoning ?? 0),
-                cacheReadTokens: Number(part.tokens?.cache?.read ?? 0),
-                cacheWriteTokens: Number(part.tokens?.cache?.write ?? 0),
-                costUsd: Number(part.cost ?? 0)
-              };
-            }
-          } else if (event.type === "session.error") {
-            result.stopReason = "error";
-            result.error = { code: "VES_OPENCODE_EXECUTION_FAILED", message: redact(properties.error?.data?.message ?? properties.error?.message ?? properties.error?.name ?? "OpenCode failed") };
-          } else if (event.type === "session.status" && properties.status?.type === "idle") {
-            result.stopReason = result.error ? "error" : "stop";
-            result.events.push({ type: "session.closed" });
+          } else if (applyStreamEvent(event.type, properties, { result, redact })) {
             return;
           }
         }
@@ -190,18 +167,93 @@ export class OpenCodeDriver {
         tools: Object.fromEntries(tools.map((name) => [name, true])),
         parts: [{ type: "text", text: prompt }]
       });
-      if (promptResponse.error) throw new Error(redact(promptResponse.error.message ?? "OpenCode prompt failed"));
+      assertPromptAccepted(promptResponse, redact);
       await Promise.race([consume, abortedPromise]);
       if (!aborted) await consume;
     } catch (error) {
-      if (!aborted) result.error = { code: error?.code ?? "VES_OPENCODE_PROTOCOL_FAILED", message: redact(error instanceof Error ? error.message : "OpenCode protocol failed") };
+      if (!aborted) result.error = protocolFailure(error, redact);
     } finally {
       if (sessionID && !aborted) await client.session.delete({ sessionID }).catch(() => {});
       server.close();
       signal?.removeEventListener("abort", abort);
     }
-    if (aborted) return { ...result, stopReason: "aborted", error: { code: "VES_OPENCODE_ABORTED", message: "aborted by controller" } };
-    if (!result.events.some((event) => event.type === "session.closed") && !result.error) return { ...result, stopReason: "error", error: { code: "VES_OPENCODE_STREAM_INCOMPLETE", message: "OpenCode stream ended without idle status" } };
-    return result;
+    return finalResult(result, aborted);
   }
+}
+
+function runRefusal(candidate, model, tools) {
+  if (!candidate) return { code: "VES_OPENCODE_MODEL_UNAVAILABLE", message: `no connected Passport candidate for ${model}` };
+  const unmediatedTool = tools.find((name) => !/^vestra_[a-z0-9_]+$/i.test(name));
+  if (unmediatedTool) return { code: "VES_OPENCODE_TOOL_UNMEDIATED", message: `tool must be exposed through the Verchestra effect bridge: ${unmediatedTool}` };
+  return undefined;
+}
+
+function assertPromptAccepted(promptResponse, redact) {
+  if (promptResponse.error) throw new Error(redact(promptResponse.error.message ?? "OpenCode prompt failed"));
+}
+
+function protocolFailure(error, redact) {
+  return { code: error?.code ?? "VES_OPENCODE_PROTOCOL_FAILED", message: redact(error instanceof Error ? error.message : "OpenCode protocol failed") };
+}
+
+function finalResult(result, aborted) {
+  if (aborted) return { ...result, stopReason: "aborted", error: { code: "VES_OPENCODE_ABORTED", message: "aborted by controller" } };
+  if (!result.events.some((event) => event.type === "session.closed") && !result.error) return { ...result, stopReason: "error", error: { code: "VES_OPENCODE_STREAM_INCOMPLETE", message: "OpenCode stream ended without idle status" } };
+  return result;
+}
+
+function eventProperties(event) {
+  if (!event || typeof event.type !== "string") throw Object.assign(new Error("OpenCode emitted an invalid event envelope"), { code: "VES_OPENCODE_STREAM_INVALID" });
+  return event.properties ?? {};
+}
+
+function belongsToOtherSession(properties, sessionID) {
+  return Boolean(properties.sessionID) && properties.sessionID !== sessionID;
+}
+
+function permissionRequest(properties, redact) {
+  return { type: "tool.requested", id: properties.id, name: properties.permission, patterns: properties.patterns ?? [], input: sanitizeObject(properties.metadata?.input ?? properties.metadata, redact) };
+}
+
+function applyPartUpdate(properties, { result, redact }) {
+  const part = properties.part ?? {};
+  if (part.type === "text" && part.time?.end) {
+    const text = redact(part.text ?? "");
+    result.outputText += text;
+    result.events.push({ type: "content.delta", text });
+  } else if (part.type === "step-finish") {
+    result.usage = {
+      inputTokens: Number(part.tokens?.input ?? 0),
+      outputTokens: Number(part.tokens?.output ?? 0),
+      reasoningTokens: Number(part.tokens?.reasoning ?? 0),
+      cacheReadTokens: Number(part.tokens?.cache?.read ?? 0),
+      cacheWriteTokens: Number(part.tokens?.cache?.write ?? 0),
+      costUsd: Number(part.cost ?? 0)
+    };
+  }
+  return false;
+}
+
+function applySessionError(properties, { result, redact }) {
+  result.stopReason = "error";
+  result.error = { code: "VES_OPENCODE_EXECUTION_FAILED", message: redact(properties.error?.data?.message ?? properties.error?.message ?? properties.error?.name ?? "OpenCode failed") };
+  return false;
+}
+
+function applySessionStatus(properties, { result }) {
+  if (properties.status?.type !== "idle") return false;
+  result.stopReason = result.error ? "error" : "stop";
+  result.events.push({ type: "session.closed" });
+  return true;
+}
+
+const STREAM_EVENTS = new Map([
+  ["message.part.updated", applyPartUpdate],
+  ["session.error", applySessionError],
+  ["session.status", applySessionStatus]
+]);
+
+// Returns true once the session has gone idle, which ends consumption.
+function applyStreamEvent(type, properties, context) {
+  return STREAM_EVENTS.get(type)?.(properties, context) ?? false;
 }

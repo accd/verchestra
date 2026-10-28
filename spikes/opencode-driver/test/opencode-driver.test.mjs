@@ -13,6 +13,11 @@ function fakeFactory(mode = "success", calls = [], hooks = {}) {
     const events = async function* () {
       if (mode === "hang") { await new Promise((resolve) => setTimeout(resolve, 10_000)); return; }
       if (mode === "malformed") { yield { nope: true }; return; }
+      if (mode === "unfinished") {
+        yield { type: "message.part.updated", properties: { sessionID: "other-session", part: { type: "text", text: "foreign", time: { end: 1 } } } };
+        yield { type: "session.status", properties: { sessionID: "private-session", status: { type: "busy" } } };
+        return;
+      }
       if (mode === "permission") yield { type: "permission.asked", properties: { id: "permission-1", sessionID: "private-session", permission: "vestra_write", patterns: ["src/a.ts"], metadata: { input: { path: "src/a.ts" } }, always: [] } };
       if (mode === "secret") yield { type: "message.part.updated", properties: { part: { sessionID: "private-session", type: "text", text: `value:${process.env.TEST_SECRET ?? "qualification-secret-value"}`, time: { end: 1 } } } };
       else if (mode !== "error") yield { type: "message.part.updated", properties: { part: { sessionID: "private-session", type: "text", text: "done", time: { end: 1 } } } };
@@ -178,6 +183,14 @@ test("normalizes model identity, content, usage, cost, and close", async () => {
 test("fails closed on an unknown event envelope", async () => {
   const result = await driver("malformed").run({ prompt: "x", model: "company/qwen3-coder-480b" });
   assert.equal(result.error.code, "VES_OPENCODE_STREAM_INVALID");
+});
+
+test("ignores another session's events and a busy status, so a stream that never idles is incomplete", async () => {
+  const result = await driver("unfinished").run({ prompt: "x", model: "company/qwen3-coder-480b" });
+  assert.equal(result.outputText, "");
+  assert.equal(result.stopReason, "error");
+  assert.deepEqual(result.error, { code: "VES_OPENCODE_STREAM_INCOMPLETE", message: "OpenCode stream ended without idle status" });
+  assert.deepEqual(result.events.map((event) => event.type), ["session.started", "model.resolved"]);
 });
 
 test("normalizes provider failures", async () => {

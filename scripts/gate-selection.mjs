@@ -95,6 +95,29 @@ function censusPathsFrom(options) {
   return options?.censusPaths ?? DEFAULT_CENSUS_PATHS;
 }
 
+function addConservativeGates(selected, reasons, reason) {
+  for (const gate of CONSERVATIVE_GATES) {
+    selected.add(gate);
+    reasons.set(gate, reason);
+  }
+}
+
+// Returns false when no rule claims the path, so the caller records it as unmapped.
+function selectPathGates(normalized, selected, reasons) {
+  if (CONSERVATIVE_PATHS.some((pattern) => pattern.test(normalized))) {
+    addConservativeGates(selected, reasons, "CI or qualification control surface");
+    return true;
+  }
+  // A path can sit on more than one surface, so every matching rule applies.
+  // Selecting only the first would silently drop a gate the change needs.
+  const matched = RULES.filter((candidate) => candidate.match.test(normalized));
+  for (const rule of matched) {
+    selected.add(rule.gate);
+    if (!reasons.has(rule.gate)) reasons.set(rule.gate, rule.reason);
+  }
+  return matched.length > 0;
+}
+
 export function selectGates(changedPaths, options) {
   const censusPaths = censusPathsFrom(options);
   const selected = new Set([ALWAYS_GATE]);
@@ -104,31 +127,9 @@ export function selectGates(changedPaths, options) {
     const normalized = path.replaceAll("\\", "/").replace(/^\.\/+/u, "");
     if (normalized.length === 0) continue;
     selectCensusGate(normalized, censusPaths, selected, reasons);
-    if (CONSERVATIVE_PATHS.some((pattern) => pattern.test(normalized))) {
-      for (const gate of CONSERVATIVE_GATES) {
-        selected.add(gate);
-        reasons.set(gate, "CI or qualification control surface");
-      }
-      continue;
-    }
-    // A path can sit on more than one surface, so every matching rule applies.
-    // Selecting only the first would silently drop a gate the change needs.
-    const matched = RULES.filter((candidate) => candidate.match.test(normalized));
-    if (matched.length === 0) {
-      unmapped.push(normalized);
-      continue;
-    }
-    for (const rule of matched) {
-      selected.add(rule.gate);
-      if (!reasons.has(rule.gate)) reasons.set(rule.gate, rule.reason);
-    }
+    if (!selectPathGates(normalized, selected, reasons)) unmapped.push(normalized);
   }
-  if (unmapped.length > 0) {
-    for (const gate of CONSERVATIVE_GATES) {
-      selected.add(gate);
-      reasons.set(gate, "unmapped path");
-    }
-  }
+  if (unmapped.length > 0) addConservativeGates(selected, reasons, "unmapped path");
   return {
     gates: [...selected].sort(codeUnitCompare),
     reasons: Object.fromEntries([...reasons].sort(([left], [right]) => left.localeCompare(right))),
