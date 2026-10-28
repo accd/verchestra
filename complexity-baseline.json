@@ -228,9 +228,6 @@
     "packages/distribution/src/transactional-activation.ts :: Arrow function": [
       23
     ],
-    "packages/distribution/src/transactional-activation.ts :: Private async method #acquireLock": [
-      18
-    ],
     "packages/distribution/src/transactional-activation.ts :: Private async method #openStage": [
       17
     ],
@@ -273,15 +270,6 @@
     "packages/evidence/src/execution-package/execution-package.ts :: Async method 'verify'": [
       21
     ],
-    "packages/evidence/src/execution-package/execution-package.ts :: Function 'normalizeBuildInput'": [
-      21
-    ],
-    "packages/evidence/src/integrity/artifact-sealer.ts :: Async method 'verify'": [
-      20
-    ],
-    "packages/evidence/src/integrity/canonical.ts :: Function 'assertJsonValue'": [
-      22
-    ],
     "packages/evidence/src/recovery-bundle/recovery-bundle.ts :: Async method 'open'": [
       20
     ],
@@ -300,12 +288,6 @@
     "packages/evidence/src/run-capsule/run-capsule.ts :: Function 'inspectPrivateMaterial'": [
       11
     ],
-    "packages/evidence/src/run-capsule/run-capsule.ts :: Function 'normalizePayload'": [
-      44
-    ],
-    "packages/evidence/src/support-bundle/support-bundle.ts :: Async method 'open'": [
-      34
-    ],
     "packages/evidence/src/support-bundle/support-bundle.ts :: Function 'assertNormalizedValue'": [
       22
     ],
@@ -313,7 +295,7 @@
       21
     ],
     "packages/evidence/src/support-bundle/support-bundle.ts :: Private method #assertPlan": [
-      36
+      15
     ],
     "packages/evidence/src/support-bundle/support-bundle.ts :: Private method #scan": [
       18
@@ -327,17 +309,8 @@
     "packages/extension-host/src/testing.ts :: Async generator method 'execute'": [
       11
     ],
-    "packages/memory/src/memory-lifecycle.ts :: Async function 'assertSafeTarget'": [
-      14
-    ],
-    "packages/memory/src/memory-lifecycle.ts :: Async method 'applyGarbageCollection'": [
-      19
-    ],
     "packages/memory/src/memory-lifecycle.ts :: Async method 'applyPromotion'": [
       22
-    ],
-    "packages/memory/src/memory-lifecycle.ts :: Async method 'forget'": [
-      25
     ],
     "packages/memory/src/memory-lifecycle.ts :: Async method 'invalidateObject'": [
       14
@@ -347,12 +320,6 @@
     ],
     "packages/memory/src/memory-lifecycle.ts :: Method 'planGarbageCollection'": [
       13
-    ],
-    "packages/memory/src/memory-retriever.ts :: Arrow function": [
-      11
-    ],
-    "packages/memory/src/memory-retriever.ts :: Async method 'search'": [
-      16
     ],
     "packages/memory/src/memory-retriever.ts :: Function 'normalizeRank'": [
       11
@@ -364,7 +331,7 @@
       13
     ],
     "packages/memory/src/memory-retriever.ts :: Method 'search'": [
-      36
+      11
     ],
     "packages/memory/src/memory-store.ts :: Arrow function": [
       11
@@ -374,9 +341,6 @@
     ],
     "packages/memory/src/memory-vector-index.ts :: Constructor": [
       17
-    ],
-    "packages/memory/src/memory-vector-index.ts :: Method 'buildGeneration'": [
-      26
     ],
     "packages/memory/src/memory-vector-index.ts :: Method 'open'": [
       15
@@ -410,9 +374,6 @@
     ],
     "packages/platform-node/src/runtime-store/runtime-store.ts :: Method 'saveSyncState'": [
       11
-    ],
-    "packages/policy/src/cedar-policy.ts :: Private method #compile": [
-      21
     ],
     "packages/policy/src/policy-activation.ts :: Async method 'activate'": [
       15

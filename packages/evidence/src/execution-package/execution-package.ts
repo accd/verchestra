@@ -590,21 +590,11 @@ const BASE_KEYS = [
   "bindings"
 ] as const;
 
-function normalizeBuildInput(value: unknown): ExecutionPackageBuildInput {
-  rejectPrivateShape(value);
-  rejectAbsoluteStrings(value);
-  const row = record(value, "Execution Package", BASE_KEYS);
-  const version = schemaVersion(row["schemaVersion"]);
-  const bindings = normalizeBindings(row["bindings"], version);
-  const requirements = normalizeRequirements(row["requirements"], version);
-  const tasks = normalizeTasks(row["tasks"], new Set(requirements.map((entry) => entry.requirementId)), version);
-  const completedTaskEvidence = normalizeCompletions(
-    row["completedTaskEvidence"],
-    tasks,
-    sourceStateDigest(bindings.sourceState, version),
-    version
-  );
-  const roles = array(row["roleRequirements"], "roleRequirements").map((entry, index) => {
+type GateFailurePolicy = NonNullable<ExecutionPackagePayload["onGateFailure"]>;
+type ProbeEvidence = NonNullable<ExecutionPackagePayload["probeEvidence"]>[number];
+
+function normalizeRoleRequirements(value: unknown): ExecutionPackagePayload["roleRequirements"] {
+  const roles = array(value, "roleRequirements").map((entry, index) => {
     const role = record(entry, `roleRequirements[${index}]`, [
       "role",
       "capabilities",
@@ -620,7 +610,11 @@ function normalizeBuildInput(value: unknown): ExecutionPackageBuildInput {
   });
   if (roles.length === 0 || new Set(roles.map((entry) => entry.role)).size !== roles.length)
     fail("VES_EXECUTION_PACKAGE_INVALID", "roleRequirements are invalid");
-  const gates = array(row["gates"], "gates").map((entry, index) => {
+  return roles;
+}
+
+function normalizeGates(value: unknown): ExecutionPackagePayload["gates"] {
+  const gates = array(value, "gates").map((entry, index) => {
     const gate = record(entry, `gates[${index}]`, ["gateId", "command", "evidenceRequired"]);
     if (typeof gate["evidenceRequired"] !== "boolean") fail("VES_EXECUTION_PACKAGE_INVALID", "gate is invalid");
     return Object.freeze({
@@ -631,81 +625,87 @@ function normalizeBuildInput(value: unknown): ExecutionPackageBuildInput {
   });
   if (gates.length === 0 || new Set(gates.map((entry) => entry.gateId)).size !== gates.length)
     fail("VES_EXECUTION_PACKAGE_INVALID", "gates are invalid");
-  const workClaim = record(row["workClaimRequirement"], "workClaimRequirement", ["scopeDigest", "mode"]);
-  const budgets = record(row["budgets"], "budgets", ["maximumCostUsd", "maximumTokens", "maximumDurationMs"]);
-  let onGateFailure;
-  if (row["onGateFailure"] !== undefined) {
-    const policy = record(row["onGateFailure"], "onGateFailure", ["maxAttempts", "feedbackToDriver", "escalateAfter"]);
-    const maxAttempts = policy["maxAttempts"];
-    const escalateAfter = policy["escalateAfter"];
-    // Bounded and totally ordered: unbounded retries are an autonomy leak, and
-    // an escalation point past the last attempt could never fire.
-    if (!Number.isSafeInteger(maxAttempts) || (maxAttempts as number) < 1 || (maxAttempts as number) > 5)
-      fail("VES_EXECUTION_PACKAGE_INVALID", "onGateFailure.maxAttempts must be an integer within [1, 5]");
-    if (typeof policy["feedbackToDriver"] !== "boolean")
-      fail("VES_EXECUTION_PACKAGE_INVALID", "onGateFailure.feedbackToDriver must be a boolean");
-    if (
-      !Number.isSafeInteger(escalateAfter) ||
-      (escalateAfter as number) < 1 ||
-      (escalateAfter as number) > (maxAttempts as number)
-    )
-      fail("VES_EXECUTION_PACKAGE_INVALID", "onGateFailure.escalateAfter must be an integer within [1, maxAttempts]");
-    onGateFailure = Object.freeze({
-      maxAttempts: maxAttempts as number,
-      feedbackToDriver: policy["feedbackToDriver"] as boolean,
-      escalateAfter: escalateAfter as number
-    });
-  }
-  const policyBundleDigest =
-    row["policyBundleDigest"] === undefined ? undefined : digest(row["policyBundleDigest"], "policyBundleDigest");
-  let probeEvidence;
-  if (row["probeEvidence"] !== undefined) {
-    const entries = array(row["probeEvidence"], "probeEvidence");
-    if (entries.length === 0) fail("VES_EXECUTION_PACKAGE_INVALID", "probeEvidence is present but empty");
-    probeEvidence = Object.freeze(
-      entries.map((entry, index) => {
-        const probe = record(entry, `probeEvidence[${index}]`, [
-          "resultDigest",
-          "schemaIdentityDigest",
-          "registrationDigest",
-          "queryFingerprint",
-          "producingRunId",
-          "protectedResultRef",
-          "classification",
-          "redactionApplied",
-          "sanitizedClaimCount"
-        ]);
-        const classification = probe["classification"];
-        if (!["public", "internal", "confidential", "restricted"].includes(classification as string))
-          fail("VES_EXECUTION_PACKAGE_INVALID", "probeEvidence classification is not a declared class");
-        if (typeof probe["redactionApplied"] !== "boolean")
-          fail("VES_EXECUTION_PACKAGE_INVALID", "probeEvidence redactionApplied must be a boolean");
-        const claimCount = probe["sanitizedClaimCount"];
-        if (!Number.isSafeInteger(claimCount) || (claimCount as number) < 0)
-          fail("VES_EXECUTION_PACKAGE_INVALID", "probeEvidence sanitizedClaimCount is invalid");
-        // Anything above public must already have been redacted before it was
-        // promoted. Sealing an unredacted confidential probe would put the
-        // decision's inputs beyond the boundary that classified them.
-        if (classification !== "public" && probe["redactionApplied"] !== true)
-          fail("VES_EXECUTION_PACKAGE_INVALID", "probeEvidence above public class must be redacted");
-        return Object.freeze({
-          resultDigest: digest(probe["resultDigest"], "probeEvidence.resultDigest"),
-          schemaIdentityDigest: digest(probe["schemaIdentityDigest"], "probeEvidence.schemaIdentityDigest"),
-          registrationDigest: digest(probe["registrationDigest"], "probeEvidence.registrationDigest"),
-          queryFingerprint: digest(probe["queryFingerprint"], "probeEvidence.queryFingerprint"),
-          producingRunId: safe(probe["producingRunId"], "probeEvidence.producingRunId"),
-          protectedResultRef: safe(probe["protectedResultRef"], "probeEvidence.protectedResultRef"),
-          classification: classification as "public" | "internal" | "confidential" | "restricted",
-          redactionApplied: probe["redactionApplied"] as boolean,
-          sanitizedClaimCount: claimCount as number
-        });
-      })
-    );
-    const digests = probeEvidence.map((entry) => entry.resultDigest);
-    if (new Set(digests).size !== digests.length)
-      fail("VES_EXECUTION_PACKAGE_INVALID", "probeEvidence repeats a result digest");
-  }
-  const completionCriteria = array(row["completionCriteria"], "completionCriteria").map((entry, index) => {
+  return gates;
+}
+
+function normalizeGateFailurePolicy(value: unknown): GateFailurePolicy | undefined {
+  if (value === undefined) return undefined;
+  const policy = record(value, "onGateFailure", ["maxAttempts", "feedbackToDriver", "escalateAfter"]);
+  const maxAttempts = policy["maxAttempts"];
+  const escalateAfter = policy["escalateAfter"];
+  // Bounded and totally ordered: unbounded retries are an autonomy leak, and
+  // an escalation point past the last attempt could never fire.
+  if (!Number.isSafeInteger(maxAttempts) || (maxAttempts as number) < 1 || (maxAttempts as number) > 5)
+    fail("VES_EXECUTION_PACKAGE_INVALID", "onGateFailure.maxAttempts must be an integer within [1, 5]");
+  if (typeof policy["feedbackToDriver"] !== "boolean")
+    fail("VES_EXECUTION_PACKAGE_INVALID", "onGateFailure.feedbackToDriver must be a boolean");
+  if (
+    !Number.isSafeInteger(escalateAfter) ||
+    (escalateAfter as number) < 1 ||
+    (escalateAfter as number) > (maxAttempts as number)
+  )
+    fail("VES_EXECUTION_PACKAGE_INVALID", "onGateFailure.escalateAfter must be an integer within [1, maxAttempts]");
+  return Object.freeze({
+    maxAttempts: maxAttempts as number,
+    feedbackToDriver: policy["feedbackToDriver"] as boolean,
+    escalateAfter: escalateAfter as number
+  });
+}
+
+function normalizeProbe(entry: unknown, index: number): ProbeEvidence {
+  const probe = record(entry, `probeEvidence[${index}]`, [
+    "resultDigest",
+    "schemaIdentityDigest",
+    "registrationDigest",
+    "queryFingerprint",
+    "producingRunId",
+    "protectedResultRef",
+    "classification",
+    "redactionApplied",
+    "sanitizedClaimCount"
+  ]);
+  const classification = probe["classification"];
+  if (!["public", "internal", "confidential", "restricted"].includes(classification as string))
+    fail("VES_EXECUTION_PACKAGE_INVALID", "probeEvidence classification is not a declared class");
+  if (typeof probe["redactionApplied"] !== "boolean")
+    fail("VES_EXECUTION_PACKAGE_INVALID", "probeEvidence redactionApplied must be a boolean");
+  const claimCount = probe["sanitizedClaimCount"];
+  if (!Number.isSafeInteger(claimCount) || (claimCount as number) < 0)
+    fail("VES_EXECUTION_PACKAGE_INVALID", "probeEvidence sanitizedClaimCount is invalid");
+  // Anything above public must already have been redacted before it was
+  // promoted. Sealing an unredacted confidential probe would put the
+  // decision's inputs beyond the boundary that classified them.
+  if (classification !== "public" && probe["redactionApplied"] !== true)
+    fail("VES_EXECUTION_PACKAGE_INVALID", "probeEvidence above public class must be redacted");
+  return Object.freeze({
+    resultDigest: digest(probe["resultDigest"], "probeEvidence.resultDigest"),
+    schemaIdentityDigest: digest(probe["schemaIdentityDigest"], "probeEvidence.schemaIdentityDigest"),
+    registrationDigest: digest(probe["registrationDigest"], "probeEvidence.registrationDigest"),
+    queryFingerprint: digest(probe["queryFingerprint"], "probeEvidence.queryFingerprint"),
+    producingRunId: safe(probe["producingRunId"], "probeEvidence.producingRunId"),
+    protectedResultRef: safe(probe["protectedResultRef"], "probeEvidence.protectedResultRef"),
+    classification: classification as "public" | "internal" | "confidential" | "restricted",
+    redactionApplied: probe["redactionApplied"] as boolean,
+    sanitizedClaimCount: claimCount as number
+  });
+}
+
+function normalizeProbeEvidence(value: unknown): readonly ProbeEvidence[] | undefined {
+  if (value === undefined) return undefined;
+  const entries = array(value, "probeEvidence");
+  if (entries.length === 0) fail("VES_EXECUTION_PACKAGE_INVALID", "probeEvidence is present but empty");
+  const probeEvidence = Object.freeze(entries.map((entry, index) => normalizeProbe(entry, index)));
+  const digests = probeEvidence.map((entry) => entry.resultDigest);
+  if (new Set(digests).size !== digests.length)
+    fail("VES_EXECUTION_PACKAGE_INVALID", "probeEvidence repeats a result digest");
+  return probeEvidence;
+}
+
+function normalizeCompletionCriteria(
+  value: unknown,
+  requirements: readonly ExecutionRequirement[]
+): ExecutionPackagePayload["completionCriteria"] {
+  const completionCriteria = array(value, "completionCriteria").map((entry, index) => {
     const criterion = record(entry, `completionCriteria[${index}]`, [
       "criterionId",
       "requirementIds",
@@ -721,6 +721,32 @@ function normalizeBuildInput(value: unknown): ExecutionPackageBuildInput {
     });
   });
   if (completionCriteria.length === 0) fail("VES_EXECUTION_PACKAGE_INVALID", "completionCriteria are empty");
+  return completionCriteria;
+}
+
+function normalizeBuildInput(value: unknown): ExecutionPackageBuildInput {
+  rejectPrivateShape(value);
+  rejectAbsoluteStrings(value);
+  const row = record(value, "Execution Package", BASE_KEYS);
+  const version = schemaVersion(row["schemaVersion"]);
+  const bindings = normalizeBindings(row["bindings"], version);
+  const requirements = normalizeRequirements(row["requirements"], version);
+  const tasks = normalizeTasks(row["tasks"], new Set(requirements.map((entry) => entry.requirementId)), version);
+  const completedTaskEvidence = normalizeCompletions(
+    row["completedTaskEvidence"],
+    tasks,
+    sourceStateDigest(bindings.sourceState, version),
+    version
+  );
+  const roles = normalizeRoleRequirements(row["roleRequirements"]);
+  const gates = normalizeGates(row["gates"]);
+  const workClaim = record(row["workClaimRequirement"], "workClaimRequirement", ["scopeDigest", "mode"]);
+  const budgets = record(row["budgets"], "budgets", ["maximumCostUsd", "maximumTokens", "maximumDurationMs"]);
+  const onGateFailure = normalizeGateFailurePolicy(row["onGateFailure"]);
+  const policyBundleDigest =
+    row["policyBundleDigest"] === undefined ? undefined : digest(row["policyBundleDigest"], "policyBundleDigest");
+  const probeEvidence = normalizeProbeEvidence(row["probeEvidence"]);
+  const completionCriteria = normalizeCompletionCriteria(row["completionCriteria"], requirements);
   const location = record(row["canonicalLocation"], "canonicalLocation", ["gitOwnerId", "logicalPath"]);
   return Object.freeze({
     schemaVersion: version,

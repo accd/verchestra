@@ -341,6 +341,58 @@ export function createTrustRoot(input: TrustRootInput): TrustRoot {
   });
 }
 
+type VerificationFailureCode = Extract<VerificationResult, { readonly ok: false }>["code"];
+
+function trustKeyRejection(
+  key: PublicKeyRef,
+  trust: TrustRoot,
+  purpose: string,
+  at: Date
+): VerificationFailureCode | undefined {
+  if (trust.revokedKeyIds.includes(key.keyId)) return "VES_TRUST_KEY_REVOKED";
+  if (!key.purposes.includes(purpose)) return "VES_TRUST_PURPOSE_DENIED";
+  return validityRejection(key, at.getTime());
+}
+
+function validityRejection(key: PublicKeyRef, now: number): VerificationFailureCode | undefined {
+  const validFrom = parseInstant(key.validFrom);
+  const validUntil = parseInstant(key.validUntil);
+  if (key.validFrom !== undefined && validFrom === undefined) return "VES_TRUST_KEY_INVALID";
+  if (key.validUntil !== undefined && validUntil === undefined) return "VES_TRUST_KEY_INVALID";
+  if (validFrom !== undefined && now < validFrom) return "VES_TRUST_KEY_NOT_YET_VALID";
+  if (validUntil !== undefined && now > validUntil) return "VES_TRUST_KEY_EXPIRED";
+  return undefined;
+}
+
+function verifySignature(
+  key: PublicKeyRef,
+  envelope: DsseEnvelope,
+  signedBytes: Buffer,
+  artifact: SealedArtifact
+): VerificationResult {
+  try {
+    const publicKey = createPublicKey({
+      key: Buffer.from(key.publicKey, "base64url"),
+      type: "spki",
+      format: "der"
+    });
+    // Verify over the PAE, never the raw payload: binding the payload type
+    // into the signed bytes is what stops a signature over an in-toto
+    // Statement being replayed as a signature over some other document type.
+    const valid = verifyBytes(
+      null,
+      preAuthenticationEncoding(envelope.payloadType, signedBytes),
+      publicKey,
+      Buffer.from(envelope.signatures[0]?.sig ?? "", "base64url")
+    );
+    return valid
+      ? { ok: true, artifactId: artifact.artifactId, keyId: artifact.keyId }
+      : { ok: false, code: "VES_SIGNATURE_INVALID" };
+  } catch {
+    return { ok: false, code: "VES_TRUST_KEY_INVALID" };
+  }
+}
+
 export class ArtifactSealer {
   readonly #signer: EvidenceSigner;
   readonly #now: () => Date;
@@ -429,49 +481,8 @@ export class ArtifactSealer {
 
     const key = trust.keys.find((candidate) => candidate.keyId === artifact.keyId);
     if (key === undefined) return { ok: false, code: "VES_TRUST_KEY_UNKNOWN" };
-    if (trust.revokedKeyIds.includes(key.keyId)) {
-      return { ok: false, code: "VES_TRUST_KEY_REVOKED" };
-    }
-    if (!key.purposes.includes(artifact.purpose)) {
-      return { ok: false, code: "VES_TRUST_PURPOSE_DENIED" };
-    }
-
-    const now = expected.now.getTime();
-    const validFrom = parseInstant(key.validFrom);
-    const validUntil = parseInstant(key.validUntil);
-    if (key.validFrom !== undefined && validFrom === undefined) {
-      return { ok: false, code: "VES_TRUST_KEY_INVALID" };
-    }
-    if (key.validUntil !== undefined && validUntil === undefined) {
-      return { ok: false, code: "VES_TRUST_KEY_INVALID" };
-    }
-    if (validFrom !== undefined && now < validFrom) {
-      return { ok: false, code: "VES_TRUST_KEY_NOT_YET_VALID" };
-    }
-    if (validUntil !== undefined && now > validUntil) {
-      return { ok: false, code: "VES_TRUST_KEY_EXPIRED" };
-    }
-
-    try {
-      const publicKey = createPublicKey({
-        key: Buffer.from(key.publicKey, "base64url"),
-        type: "spki",
-        format: "der"
-      });
-      // Verify over the PAE, never the raw payload: binding the payload type
-      // into the signed bytes is what stops a signature over an in-toto
-      // Statement being replayed as a signature over some other document type.
-      const valid = verifyBytes(
-        null,
-        preAuthenticationEncoding(envelope.payloadType, signedBytes),
-        publicKey,
-        Buffer.from(envelope.signatures[0]?.sig ?? "", "base64url")
-      );
-      return valid
-        ? { ok: true, artifactId: artifact.artifactId, keyId: artifact.keyId }
-        : { ok: false, code: "VES_SIGNATURE_INVALID" };
-    } catch {
-      return { ok: false, code: "VES_TRUST_KEY_INVALID" };
-    }
+    const rejection = trustKeyRejection(key, trust, artifact.purpose, expected.now);
+    if (rejection !== undefined) return { ok: false, code: rejection };
+    return verifySignature(key, envelope, signedBytes, artifact);
   }
 }

@@ -518,6 +518,236 @@ function degradation(status: SemanticStatus, policy: NormalizedPolicy): readonly
   return Object.freeze([Object.freeze({ code: `semantic-${status}`, affectsConfidence: true })]);
 }
 
+type Instant = ReturnType<typeof instant>;
+
+interface SearchRequest {
+  readonly workspaceId: string;
+  readonly projectId: string;
+  readonly query: string;
+  readonly purpose: string;
+  readonly semanticQueryDigest: string | undefined;
+  readonly evaluatedAt: Instant;
+  readonly limit: number;
+}
+
+interface ScoredEntry extends FusionEntry {
+  readonly lexicalContribution: number;
+  readonly vectorContribution: number;
+  readonly rrfScore: number;
+  readonly freshnessFactor: number;
+  readonly confidence: number;
+  readonly finalScore: number;
+}
+
+interface HitContext {
+  readonly workspaceId: string;
+  readonly projectId: string;
+  readonly lexicalGenerationId: string;
+  readonly vectorGenerationId: string | null;
+}
+
+function searchRequest(row: Row): SearchRequest {
+  if (row["schemaVersion"] !== 1) fail("schemaVersion must equal 1");
+  const workspaceId = safeId(row["workspaceId"], "workspaceId");
+  const projectId = safeId(row["projectId"], "projectId");
+  const query = row["query"];
+  if (typeof query !== "string" || query.trim().length === 0 || query.length > 8_192) fail("query is invalid");
+  const purpose = safeId(row["purpose"], "purpose");
+  const semanticQueryDigest =
+    row["semanticQueryDigest"] === undefined
+      ? undefined
+      : qualifiedDigest(row["semanticQueryDigest"], "semanticQueryDigest");
+  const evaluatedAt = instant(row["evaluatedAt"], "evaluatedAt");
+  const limit = finite(row["limit"], "limit");
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) fail("limit is invalid");
+  return { workspaceId, projectId, query, purpose, semanticQueryDigest, evaluatedAt, limit };
+}
+
+function lexicalSource(value: unknown): { readonly generationId: string; readonly candidates: unknown[] } {
+  const lexicalRow = closed(value, "lexical retrieval", ["generationId", "candidates"]);
+  const generationId = qualifiedDigest(lexicalRow["generationId"], "lexical.generationId");
+  if (!Array.isArray(lexicalRow["candidates"])) fail("lexical.candidates is invalid");
+  return { generationId, candidates: lexicalRow["candidates"] };
+}
+
+function policyEligible(
+  record: NormalizedRecord,
+  evaluatedAt: Instant,
+  policy: NormalizedPolicy,
+  maximumClassificationRank: number
+): boolean {
+  const ageMs = evaluatedAt.milliseconds - record.retrievedAtMs;
+  return (
+    record.state === "active" &&
+    ageMs >= 0 &&
+    ageMs <= policy.maximumAgeSeconds * 1_000 &&
+    (record.validUntilMs === null || record.validUntilMs > evaluatedAt.milliseconds) &&
+    CLASSIFICATIONS.indexOf(record.classification) <= maximumClassificationRank
+  );
+}
+
+function authoritativeRecords(
+  records: readonly unknown[],
+  request: SearchRequest,
+  policy: NormalizedPolicy
+): { readonly known: ReadonlySet<string>; readonly eligible: ReadonlyMap<string, NormalizedRecord> } {
+  const known = new Set<string>();
+  const eligible = new Map<string, NormalizedRecord>();
+  const maximumClassificationRank = CLASSIFICATIONS.indexOf(policy.maximumClassification);
+  for (const value of records) {
+    const scope = scopeOf(value);
+    if (scope.workspaceId !== request.workspaceId || scope.projectId !== request.projectId) continue;
+    const record = normalizeRecord(value);
+    if (known.has(record.logicalKey)) fail("authoritative record identities must be unique");
+    known.add(record.logicalKey);
+    if (!policyEligible(record, request.evaluatedAt, policy, maximumClassificationRank)) continue;
+    if (sha256(record.content) !== record.contentDigest) integrity("authoritative record content digest is invalid");
+    eligible.set(record.logicalKey, record);
+  }
+  return { known, eligible };
+}
+
+function fuseCandidates(
+  lexical: readonly NormalizedRank[],
+  vector: readonly NormalizedRank[],
+  eligible: ReadonlyMap<string, NormalizedRecord>
+): Map<string, FusionEntry> {
+  const fusion = new Map<string, FusionEntry>();
+  for (const candidate of lexical) {
+    const record = eligible.get(candidate.logicalKey);
+    if (record !== undefined) fusion.set(candidate.logicalKey, { record, lexical: candidate });
+  }
+  for (const candidate of vector) {
+    const record = eligible.get(candidate.logicalKey);
+    if (record === undefined) continue;
+    const current = fusion.get(candidate.logicalKey) ?? { record };
+    current.vector = candidate;
+    fusion.set(candidate.logicalKey, current);
+  }
+  return fusion;
+}
+
+function scoreEntry(entry: FusionEntry, idealRrf: number, evaluatedAt: Instant, policy: NormalizedPolicy): ScoredEntry {
+  const lexicalContribution = entry.lexical === undefined ? 0 : 1 / (RRF_CONSTANT + entry.lexical.rank);
+  const vectorContribution = entry.vector === undefined ? 0 : 1 / (RRF_CONSTANT + entry.vector.rank);
+  const rrfScore = lexicalContribution + vectorContribution;
+  const ageRatio = Math.min(
+    1,
+    Math.max(0, (evaluatedAt.milliseconds - entry.record.retrievedAtMs) / (policy.maximumAgeSeconds * 1_000))
+  );
+  const freshnessFactor = 1 - ageRatio * 0.5;
+  const confidence = rounded(Math.min(1, (rrfScore / idealRrf) * freshnessFactor), 6);
+  return {
+    ...entry,
+    lexicalContribution,
+    vectorContribution,
+    rrfScore,
+    freshnessFactor,
+    confidence,
+    finalScore: rrfScore * freshnessFactor
+  };
+}
+
+// invariant: final score, then RRF score, then the logical key ascending; the
+// published ranking order depends on exactly this tie-break chain.
+function compareScored(left: ScoredEntry, right: ScoredEntry): number {
+  return (
+    right.finalScore - left.finalScore ||
+    right.rrfScore - left.rrfScore ||
+    codeUnitCompare(left.record.logicalKey, right.record.logicalKey)
+  );
+}
+
+function materializeHit(entry: ScoredEntry, rank: number, context: HitContext) {
+  return Object.freeze({
+    rank,
+    fragmentId: entry.record.fragmentId,
+    workspaceId: context.workspaceId,
+    projectId: context.projectId,
+    sourceId: entry.record.sourceId,
+    chunkId: entry.record.chunkId,
+    classification: entry.record.classification,
+    trust: "untrusted-data",
+    content: entry.record.content,
+    contentDigest: entry.record.contentDigest,
+    confidence: entry.confidence,
+    provenance: hitProvenance(entry, context),
+    explanation: hitExplanation(entry)
+  });
+}
+
+function hitProvenance(entry: ScoredEntry, context: HitContext) {
+  return Object.freeze({
+    sourceKind: entry.record.kind,
+    sourceId: entry.record.sourceId,
+    revision: entry.record.revision,
+    manifestRef: entry.record.manifestRef,
+    retrievedAt: entry.record.retrievedAt,
+    validUntil: entry.record.validUntil,
+    contentDigest: entry.record.contentDigest,
+    lexicalGenerationId: entry.lexical === undefined ? null : context.lexicalGenerationId,
+    vectorGenerationId: entry.vector === undefined ? null : context.vectorGenerationId
+  });
+}
+
+function hitExplanation(entry: ScoredEntry) {
+  return Object.freeze({
+    algorithm: "rrf-v1",
+    rrfConstant: RRF_CONSTANT,
+    modalityRanks: Object.freeze({
+      lexical: entry.lexical?.rank ?? null,
+      vector: entry.vector?.rank ?? null
+    }),
+    contributions: Object.freeze({
+      lexical: rounded(entry.lexicalContribution, 12),
+      vector: rounded(entry.vectorContribution, 12)
+    }),
+    providerSignals: Object.freeze({
+      lexicalScore: entry.lexical?.score ?? null,
+      vectorDistance: entry.vector?.score ?? null
+    }),
+    rrfScore: rounded(entry.rrfScore, 12),
+    freshnessFactor: rounded(entry.freshnessFactor, 6),
+    finalScore: rounded(entry.finalScore, 12),
+    tieBreaker: entry.record.fragmentId
+  });
+}
+
+function limitOmission(entry: ScoredEntry) {
+  return Object.freeze({
+    fragmentId: entry.record.fragmentId,
+    priority: "normal",
+    reason: "result-limit",
+    estimatedSizeBytes: Buffer.byteLength(entry.record.content, "utf8"),
+    affectsFreshness: false,
+    affectsConfidence: true
+  });
+}
+
+function searchExplanation(
+  policy: NormalizedPolicy,
+  lexicalGenerationId: string,
+  vectorGenerationId: string | null,
+  semanticQueryDigest: string | null,
+  semanticStatus: SemanticStatus
+) {
+  return Object.freeze({
+    algorithm: "policy-filter-rrf-v1",
+    policyRef: policy.policyRef,
+    policyEvidenceDigest: policy.evidenceDigest,
+    classificationFilter: policy.maximumClassification,
+    maximumAgeSeconds: policy.maximumAgeSeconds,
+    scopeFilter: "workspace-project-exact",
+    inactiveAndStaleFilter: "enforced",
+    lexicalGenerationId,
+    vectorGenerationId,
+    semanticQueryDigest,
+    semanticStatus,
+    rrfConstant: RRF_CONSTANT,
+    stableTieBreak: "fragment-id-ascending"
+  });
+}
+
 export class ExplainableMemoryRetriever {
   search(value: unknown): MemorySearchResult {
     const row = closed(value, "memory retrieval", [
@@ -534,183 +764,57 @@ export class ExplainableMemoryRetriever {
       "lexical",
       "vector"
     ]);
-    if (row["schemaVersion"] !== 1) fail("schemaVersion must equal 1");
-    const workspaceId = safeId(row["workspaceId"], "workspaceId");
-    const projectId = safeId(row["projectId"], "projectId");
-    if (typeof row["query"] !== "string" || row["query"].trim().length === 0 || row["query"].length > 8_192)
-      fail("query is invalid");
-    const query = row["query"];
-    const purpose = safeId(row["purpose"], "purpose");
-    const semanticQueryDigest =
-      row["semanticQueryDigest"] === undefined
-        ? undefined
-        : qualifiedDigest(row["semanticQueryDigest"], "semanticQueryDigest");
-    const evaluatedAt = instant(row["evaluatedAt"], "evaluatedAt");
-    const limit = finite(row["limit"], "limit");
-    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) fail("limit is invalid");
+    const request = searchRequest(row);
+    const { workspaceId, projectId, evaluatedAt, limit } = request;
 
     // Policy is deliberately resolved before any candidate content is interpreted.
     const policy = normalizePolicy(row["policy"], workspaceId, projectId);
-    if (policy.purpose !== purpose)
+    if (policy.purpose !== request.purpose)
       throw new MemoryRetrievalError("VES_MEMORY_POLICY_DENIED", "Memory retrieval policy denied the exact purpose");
     const semantic = semanticDescriptor(row["vector"], policy);
-    const lexicalRow = closed(row["lexical"], "lexical retrieval", ["generationId", "candidates"]);
-    const lexicalGenerationId = qualifiedDigest(lexicalRow["generationId"], "lexical.generationId");
-    if (!Array.isArray(lexicalRow["candidates"])) fail("lexical.candidates is invalid");
+    const lexicalRow = lexicalSource(row["lexical"]);
     if (!Array.isArray(row["records"]) || row["records"].length > MAX_RECORDS) fail("records are invalid");
 
-    const known = new Set<string>();
-    const eligible = new Map<string, NormalizedRecord>();
-    const maximumClassificationRank = CLASSIFICATIONS.indexOf(policy.maximumClassification);
-    for (const value of row["records"]) {
-      const scope = scopeOf(value);
-      if (scope.workspaceId !== workspaceId || scope.projectId !== projectId) continue;
-      const record = normalizeRecord(value);
-      if (known.has(record.logicalKey)) fail("authoritative record identities must be unique");
-      known.add(record.logicalKey);
-      const ageMs = evaluatedAt.milliseconds - record.retrievedAtMs;
-      const policyEligible =
-        record.state === "active" &&
-        ageMs >= 0 &&
-        ageMs <= policy.maximumAgeSeconds * 1_000 &&
-        (record.validUntilMs === null || record.validUntilMs > evaluatedAt.milliseconds) &&
-        CLASSIFICATIONS.indexOf(record.classification) <= maximumClassificationRank;
-      if (!policyEligible) continue;
-      if (sha256(record.content) !== record.contentDigest) integrity("authoritative record content digest is invalid");
-      eligible.set(record.logicalKey, record);
-    }
-
-    const lexical = normalizeRanks(lexicalRow["candidates"], "lexical", workspaceId, projectId, known, eligible);
+    const { known, eligible } = authoritativeRecords(row["records"], request, policy);
+    const lexical = normalizeRanks(lexicalRow.candidates, "lexical", workspaceId, projectId, known, eligible);
     const vector =
       semantic.status === "ready"
         ? normalizeRanks(semantic.candidates, "vector", workspaceId, projectId, known, eligible)
         : Object.freeze([]);
-
-    const fusion = new Map<string, FusionEntry>();
-    for (const candidate of lexical) {
-      const record = eligible.get(candidate.logicalKey);
-      if (record !== undefined) fusion.set(candidate.logicalKey, { record, lexical: candidate });
-    }
-    for (const candidate of vector) {
-      const record = eligible.get(candidate.logicalKey);
-      if (record === undefined) continue;
-      const current = fusion.get(candidate.logicalKey) ?? { record };
-      current.vector = candidate;
-      fusion.set(candidate.logicalKey, current);
-    }
+    const fusion = fuseCandidates(lexical, vector, eligible);
 
     const mode: "hybrid" | "lexical" = semantic.status === "ready" ? "hybrid" : "lexical";
-    if (mode === "hybrid" && semanticQueryDigest === undefined) fail("semanticQueryDigest is required in hybrid mode");
-    const activeSemanticQueryDigest = mode === "hybrid" ? (semanticQueryDigest as string) : null;
+    if (mode === "hybrid" && request.semanticQueryDigest === undefined)
+      fail("semanticQueryDigest is required in hybrid mode");
+    const activeSemanticQueryDigest = mode === "hybrid" ? (request.semanticQueryDigest as string) : null;
     const idealRrf = (mode === "hybrid" ? 2 : 1) / (RRF_CONSTANT + 1);
-    const scored = [...fusion.values()].map((entry) => {
-      const lexicalContribution = entry.lexical === undefined ? 0 : 1 / (RRF_CONSTANT + entry.lexical.rank);
-      const vectorContribution = entry.vector === undefined ? 0 : 1 / (RRF_CONSTANT + entry.vector.rank);
-      const rrfScore = lexicalContribution + vectorContribution;
-      const ageRatio = Math.min(
-        1,
-        Math.max(0, (evaluatedAt.milliseconds - entry.record.retrievedAtMs) / (policy.maximumAgeSeconds * 1_000))
-      );
-      const freshnessFactor = 1 - ageRatio * 0.5;
-      const confidence = rounded(Math.min(1, (rrfScore / idealRrf) * freshnessFactor), 6);
-      return {
-        ...entry,
-        lexicalContribution,
-        vectorContribution,
-        rrfScore,
-        freshnessFactor,
-        confidence,
-        finalScore: rrfScore * freshnessFactor
-      };
-    });
-    scored.sort(
-      (left, right) =>
-        right.finalScore - left.finalScore ||
-        right.rrfScore - left.rrfScore ||
-        codeUnitCompare(left.record.logicalKey, right.record.logicalKey)
-    );
+    const scored = [...fusion.values()].map((entry) => scoreEntry(entry, idealRrf, evaluatedAt, policy));
+    scored.sort(compareScored);
 
-    const materialize = (entry: (typeof scored)[number], rank: number) =>
-      Object.freeze({
-        rank,
-        fragmentId: entry.record.fragmentId,
-        workspaceId,
-        projectId,
-        sourceId: entry.record.sourceId,
-        chunkId: entry.record.chunkId,
-        classification: entry.record.classification,
-        trust: "untrusted-data",
-        content: entry.record.content,
-        contentDigest: entry.record.contentDigest,
-        confidence: entry.confidence,
-        provenance: Object.freeze({
-          sourceKind: entry.record.kind,
-          sourceId: entry.record.sourceId,
-          revision: entry.record.revision,
-          manifestRef: entry.record.manifestRef,
-          retrievedAt: entry.record.retrievedAt,
-          validUntil: entry.record.validUntil,
-          contentDigest: entry.record.contentDigest,
-          lexicalGenerationId: entry.lexical === undefined ? null : lexicalGenerationId,
-          vectorGenerationId: entry.vector === undefined ? null : semantic.generationId
-        }),
-        explanation: Object.freeze({
-          algorithm: "rrf-v1",
-          rrfConstant: RRF_CONSTANT,
-          modalityRanks: Object.freeze({
-            lexical: entry.lexical?.rank ?? null,
-            vector: entry.vector?.rank ?? null
-          }),
-          contributions: Object.freeze({
-            lexical: rounded(entry.lexicalContribution, 12),
-            vector: rounded(entry.vectorContribution, 12)
-          }),
-          providerSignals: Object.freeze({
-            lexicalScore: entry.lexical?.score ?? null,
-            vectorDistance: entry.vector?.score ?? null
-          }),
-          rrfScore: rounded(entry.rrfScore, 12),
-          freshnessFactor: rounded(entry.freshnessFactor, 6),
-          finalScore: rounded(entry.finalScore, 12),
-          tieBreaker: entry.record.fragmentId
-        })
-      });
-
-    const results = Object.freeze(scored.slice(0, limit).map((entry, index) => materialize(entry, index + 1)));
-    const omissions = Object.freeze(
-      scored.slice(limit).map((entry) =>
-        Object.freeze({
-          fragmentId: entry.record.fragmentId,
-          priority: "normal",
-          reason: "result-limit",
-          estimatedSizeBytes: Buffer.byteLength(entry.record.content, "utf8"),
-          affectsFreshness: false,
-          affectsConfidence: true
-        })
-      )
+    const hitContext: HitContext = {
+      workspaceId,
+      projectId,
+      lexicalGenerationId: lexicalRow.generationId,
+      vectorGenerationId: semantic.generationId
+    };
+    const results = Object.freeze(
+      scored.slice(0, limit).map((entry, index) => materializeHit(entry, index + 1, hitContext))
     );
+    const omissions = Object.freeze(scored.slice(limit).map(limitOmission));
     const degradations = degradation(semantic.status, policy);
-    const explanation = Object.freeze({
-      algorithm: "policy-filter-rrf-v1",
-      policyRef: policy.policyRef,
-      policyEvidenceDigest: policy.evidenceDigest,
-      classificationFilter: policy.maximumClassification,
-      maximumAgeSeconds: policy.maximumAgeSeconds,
-      scopeFilter: "workspace-project-exact",
-      inactiveAndStaleFilter: "enforced",
-      lexicalGenerationId,
-      vectorGenerationId: mode === "hybrid" ? semantic.generationId : null,
-      semanticQueryDigest: activeSemanticQueryDigest,
-      semanticStatus: semantic.status,
-      rrfConstant: RRF_CONSTANT,
-      stableTieBreak: "fragment-id-ascending"
-    });
+    const explanation = searchExplanation(
+      policy,
+      lexicalRow.generationId,
+      mode === "hybrid" ? semantic.generationId : null,
+      activeSemanticQueryDigest,
+      semantic.status
+    );
     const payload = {
       schemaVersion: 1 as const,
       workspaceId,
       projectId,
-      queryDigest: sha256(query),
-      purpose,
+      queryDigest: sha256(request.query),
+      purpose: request.purpose,
       evaluatedAt: evaluatedAt.value,
       mode,
       results,
@@ -824,6 +928,21 @@ function normalizeVectorResponse(value: unknown): {
   });
 }
 
+type MemoryPolicyRequest = Parameters<MemoryRetrievalPolicyPort["authorize"]>[0];
+type VectorSourceResponse = ReturnType<typeof normalizeVectorResponse>;
+
+function unavailableVectorResponse(): VectorSourceResponse {
+  return Object.freeze({ status: "unavailable", records: Object.freeze([]), candidates: Object.freeze([]) });
+}
+
+function rankerVectorInput(vector: VectorSourceResponse): NonNullable<MemoryRetrievalInput["vector"]> {
+  return {
+    status: vector.status,
+    ...(vector.generationId === undefined ? {} : { generationId: vector.generationId }),
+    candidates: vector.candidates
+  };
+}
+
 function mergeSourceRecords(
   lexical: readonly MemoryRetrievalRecord[],
   vector: readonly MemoryRetrievalRecord[]
@@ -900,14 +1019,7 @@ export class PolicyFilteredMemoryRetrievalService {
       ...(semanticQueryDigest === undefined ? {} : { embeddingDigest: semanticQueryDigest })
     });
 
-    let policy: NormalizedPolicy;
-    try {
-      policy = normalizePolicy(await this.#policy.authorize(policyRequest), request.workspaceId, request.projectId);
-      if (policy.purpose !== request.purpose)
-        throw new MemoryRetrievalError("VES_MEMORY_POLICY_DENIED", "Memory retrieval policy denied the exact purpose");
-    } catch {
-      throw new MemoryRetrievalError("VES_MEMORY_POLICY_DENIED", "Memory retrieval policy denied the request");
-    }
+    const policy = await this.#authorizedPolicy(policyRequest, request);
 
     const candidateRequest = deepFreeze({
       schemaVersion: 1 as const,
@@ -930,18 +1042,7 @@ export class PolicyFilteredMemoryRetrievalService {
       throw sourceError();
     }
 
-    let vector: ReturnType<typeof normalizeVectorResponse> | undefined;
-    if (policy.semanticMode !== "disabled") {
-      if (request.embedding === undefined || this.#vector === undefined) {
-        vector = Object.freeze({ status: "unavailable", records: Object.freeze([]), candidates: Object.freeze([]) });
-      } else {
-        try {
-          vector = normalizeVectorResponse(await this.#vector.retrieve(candidateRequest));
-        } catch {
-          vector = Object.freeze({ status: "unavailable", records: Object.freeze([]), candidates: Object.freeze([]) });
-        }
-      }
-    }
+    const vector = await this.#vectorResponse(policy, request, candidateRequest);
 
     return this.#ranker.search({
       schemaVersion: 1,
@@ -955,15 +1056,39 @@ export class PolicyFilteredMemoryRetrievalService {
       policy,
       records: mergeSourceRecords(lexical.records, vector?.records ?? []),
       lexical: { generationId: lexical.generationId, candidates: lexical.candidates },
-      ...(vector === undefined
-        ? {}
-        : {
-            vector: {
-              status: vector.status,
-              ...(vector.generationId === undefined ? {} : { generationId: vector.generationId }),
-              candidates: vector.candidates
-            }
-          })
+      ...(vector === undefined ? {} : { vector: rankerVectorInput(vector) })
     });
+  }
+
+  async #authorizedPolicy(
+    policyRequest: MemoryPolicyRequest,
+    request: MemoryRetrievalRequest
+  ): Promise<NormalizedPolicy> {
+    try {
+      const policy = normalizePolicy(
+        await this.#policy.authorize(policyRequest),
+        request.workspaceId,
+        request.projectId
+      );
+      if (policy.purpose !== request.purpose)
+        throw new MemoryRetrievalError("VES_MEMORY_POLICY_DENIED", "Memory retrieval policy denied the exact purpose");
+      return policy;
+    } catch {
+      throw new MemoryRetrievalError("VES_MEMORY_POLICY_DENIED", "Memory retrieval policy denied the request");
+    }
+  }
+
+  async #vectorResponse(
+    policy: NormalizedPolicy,
+    request: MemoryRetrievalRequest,
+    candidateRequest: MemoryCandidateRequest
+  ): Promise<VectorSourceResponse | undefined> {
+    if (policy.semanticMode === "disabled") return undefined;
+    if (request.embedding === undefined || this.#vector === undefined) return unavailableVectorResponse();
+    try {
+      return normalizeVectorResponse(await this.#vector.retrieve(candidateRequest));
+    } catch {
+      return unavailableVectorResponse();
+    }
   }
 }

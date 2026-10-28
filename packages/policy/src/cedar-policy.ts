@@ -127,6 +127,20 @@ interface CompiledView {
   readonly policies: { readonly staticPolicies: Readonly<Record<string, string>> };
 }
 
+interface PolicyRejection {
+  readonly code: string;
+  readonly explanation: string;
+}
+
+function validationRejected(checked: unknown): boolean {
+  return (
+    record(checked)["type"] !== "success" ||
+    arrays(checked, "validationErrors").length > 0 ||
+    arrays(checked, "validationWarnings").length > 0 ||
+    arrays(checked, "otherWarnings").length > 0
+  );
+}
+
 export class CedarPolicyAdapter {
   readonly #engine: CedarEnginePort;
   readonly #expectedEngineVersion: string;
@@ -151,121 +165,29 @@ export class CedarPolicyAdapter {
     });
     const policyViewDigest = computePolicyViewDigest(view);
     const policies: Record<string, string> = {};
+    const rejected = (
+      rejection: PolicyRejection,
+      compiledPolicies: CompiledView["policies"] = { staticPolicies: policies }
+    ): CompiledView => ({
+      validation: validationFailure(rejection.code, rejection.explanation, policyViewDigest),
+      normalized,
+      policies: compiledPolicies
+    });
     try {
       normalized = normalizedView(view);
-      if (
-        this.#engine.getCedarVersion() !== this.#expectedEngineVersion ||
-        this.#engine.getCedarSDKVersion() !== this.#expectedEngineVersion
-      ) {
-        return {
-          validation: validationFailure(
-            "VES_POLICY_ENGINE_VERSION_MISMATCH",
-            "Cedar engine version does not match the qualified release",
-            policyViewDigest
-          ),
-          normalized,
-          policies: { staticPolicies: policies }
-        };
-      }
-      if (this.#engine.getCedarLangVersion() !== this.#expectedLanguageVersion) {
-        return {
-          validation: validationFailure(
-            "VES_POLICY_LANGUAGE_VERSION_MISMATCH",
-            "Cedar language version does not match the qualified release",
-            policyViewDigest
-          ),
-          normalized,
-          policies: { staticPolicies: policies }
-        };
-      }
-      if (view.schemaVersion !== 1 || !Number.isSafeInteger(view.generation) || view.generation < 1) {
-        return {
-          validation: validationFailure(
-            "VES_POLICY_VIEW_INVALID",
-            "Policy view schema or generation is invalid",
-            policyViewDigest
-          ),
-          normalized,
-          policies: { staticPolicies: policies }
-        };
-      }
-      if (record(this.#engine.checkParseSchema(normalized.schema))["type"] !== "success") {
-        return {
-          validation: validationFailure("VES_POLICY_SCHEMA_INVALID", "Cedar schema failed to parse", policyViewDigest),
-          normalized,
-          policies: { staticPolicies: policies }
-        };
-      }
-      for (const layer of POLICY_LAYERS) {
-        const layerPolicies = normalized.layers[layer];
-        if (layerPolicies === undefined) continue;
-        if (record(this.#engine.checkParsePolicySet({ staticPolicies: layerPolicies }))["type"] !== "success") {
-          return {
-            validation: validationFailure(
-              "VES_POLICY_PARSE_INVALID",
-              `Policy layer failed to parse: ${layer}`,
-              policyViewDigest
-            ),
-            normalized,
-            policies: { staticPolicies: policies }
-          };
-        }
-        for (const [policyId, policy] of Object.entries(layerPolicies)) {
-          if (!/^[A-Za-z][A-Za-z0-9_-]{0,127}$/u.test(policyId)) {
-            return {
-              validation: validationFailure("VES_POLICY_VIEW_INVALID", "Policy ID is not canonical", policyViewDigest),
-              normalized,
-              policies: { staticPolicies: policies }
-            };
-          }
-          const parsed = record(this.#engine.policyToJson(policy));
-          if (parsed["type"] !== "success") {
-            return {
-              validation: validationFailure(
-                "VES_POLICY_PARSE_INVALID",
-                `Policy failed to parse: ${layer}.${policyId}`,
-                policyViewDigest
-              ),
-              normalized,
-              policies: { staticPolicies: policies }
-            };
-          }
-          if (layer !== "builtIn" && record(parsed["json"])["effect"] !== "forbid") {
-            return {
-              validation: validationFailure(
-                "VES_POLICY_NON_MONOTONIC",
-                `Lower policy layer attempted to expand authority: ${layer}`,
-                policyViewDigest
-              ),
-              normalized,
-              policies: { staticPolicies: policies }
-            };
-          }
-          policies[`${layer}.${policyId}`] = policy;
-        }
-      }
+      const rejection = this.#releaseRejection(view, normalized) ?? this.#layersRejection(normalized, policies);
+      if (rejection !== undefined) return rejected(rejection);
       const compiledPolicies = { staticPolicies: Object.freeze({ ...policies }) };
       const checked = this.#engine.validate({
         schema: normalized.schema,
         policies: compiledPolicies,
         validationSettings: { mode: "strict" }
       });
-      if (
-        record(checked)["type"] !== "success" ||
-        arrays(checked, "validationErrors").length > 0 ||
-        arrays(checked, "validationWarnings").length > 0 ||
-        arrays(checked, "otherWarnings").length > 0
-      ) {
-        return {
-          validation: validationFailure(
-            "VES_POLICY_VALIDATION_FAILED",
-            "Cedar policy validation failed",
-            policyViewDigest
-          ),
-          normalized,
-          policies: compiledPolicies
-        };
-      }
+      if (validationRejected(checked))
+        return rejected(
+          { code: "VES_POLICY_VALIDATION_FAILED", explanation: "Cedar policy validation failed" },
+          compiledPolicies
+        );
       return {
         validation: Object.freeze({
           valid: true,
@@ -277,12 +199,70 @@ export class CedarPolicyAdapter {
         policies: compiledPolicies
       };
     } catch {
-      return {
-        validation: validationFailure("VES_POLICY_ENGINE_FAILURE", "Cedar engine failed closed", policyViewDigest),
-        normalized,
-        policies: { staticPolicies: policies }
-      };
+      return rejected({ code: "VES_POLICY_ENGINE_FAILURE", explanation: "Cedar engine failed closed" });
     }
+  }
+
+  // invariant: the engine identity is checked before the view, and the view's
+  // own shape before its schema is parsed; the first failing check is reported.
+  #releaseRejection(view: PolicyView, normalized: PolicyView): PolicyRejection | undefined {
+    if (
+      this.#engine.getCedarVersion() !== this.#expectedEngineVersion ||
+      this.#engine.getCedarSDKVersion() !== this.#expectedEngineVersion
+    )
+      return {
+        code: "VES_POLICY_ENGINE_VERSION_MISMATCH",
+        explanation: "Cedar engine version does not match the qualified release"
+      };
+    if (this.#engine.getCedarLangVersion() !== this.#expectedLanguageVersion)
+      return {
+        code: "VES_POLICY_LANGUAGE_VERSION_MISMATCH",
+        explanation: "Cedar language version does not match the qualified release"
+      };
+    if (view.schemaVersion !== 1 || !Number.isSafeInteger(view.generation) || view.generation < 1)
+      return { code: "VES_POLICY_VIEW_INVALID", explanation: "Policy view schema or generation is invalid" };
+    if (record(this.#engine.checkParseSchema(normalized.schema))["type"] !== "success")
+      return { code: "VES_POLICY_SCHEMA_INVALID", explanation: "Cedar schema failed to parse" };
+    return undefined;
+  }
+
+  #layersRejection(normalized: PolicyView, policies: Record<string, string>): PolicyRejection | undefined {
+    for (const layer of POLICY_LAYERS) {
+      const layerPolicies = normalized.layers[layer];
+      if (layerPolicies === undefined) continue;
+      const rejection = this.#layerRejection(layer, layerPolicies, policies);
+      if (rejection !== undefined) return rejection;
+    }
+    return undefined;
+  }
+
+  #layerRejection(
+    layer: PolicyLayer,
+    layerPolicies: Readonly<Record<string, string>>,
+    policies: Record<string, string>
+  ): PolicyRejection | undefined {
+    if (record(this.#engine.checkParsePolicySet({ staticPolicies: layerPolicies }))["type"] !== "success")
+      return { code: "VES_POLICY_PARSE_INVALID", explanation: `Policy layer failed to parse: ${layer}` };
+    for (const [policyId, policy] of Object.entries(layerPolicies)) {
+      const rejection = this.#policyRejection(layer, policyId, policy);
+      if (rejection !== undefined) return rejection;
+      policies[`${layer}.${policyId}`] = policy;
+    }
+    return undefined;
+  }
+
+  #policyRejection(layer: PolicyLayer, policyId: string, policy: string): PolicyRejection | undefined {
+    if (!/^[A-Za-z][A-Za-z0-9_-]{0,127}$/u.test(policyId))
+      return { code: "VES_POLICY_VIEW_INVALID", explanation: "Policy ID is not canonical" };
+    const parsed = record(this.#engine.policyToJson(policy));
+    if (parsed["type"] !== "success")
+      return { code: "VES_POLICY_PARSE_INVALID", explanation: `Policy failed to parse: ${layer}.${policyId}` };
+    if (layer !== "builtIn" && record(parsed["json"])["effect"] !== "forbid")
+      return {
+        code: "VES_POLICY_NON_MONOTONIC",
+        explanation: `Lower policy layer attempted to expand authority: ${layer}`
+      };
+    return undefined;
   }
 
   validateView(view: PolicyView): PolicyValidation {

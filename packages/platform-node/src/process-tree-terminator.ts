@@ -21,16 +21,7 @@ export function taskkillExecutable(): string {
 // a third copy (npx-launcher T2 follow-up).
 export async function terminateProcessGroup(pid: number, incomplete: () => never): Promise<void> {
   if (process.platform === "win32") {
-    try {
-      await execFileAsync(taskkillExecutable(), ["/pid", String(pid), "/T", "/F"], {
-        windowsHide: true,
-        ...INSPECTION_CHILD_BOUND
-      });
-    } catch (error) {
-      // why: the process may already have exited, and taskkill then fails. A
-      // taskkill that outlived its bound ended nothing, so that is incomplete.
-      if (childTimedOut(error)) incomplete();
-    }
+    await taskkillTree(pid, incomplete);
     return;
   }
   try {
@@ -39,6 +30,23 @@ export async function terminateProcessGroup(pid: number, incomplete: () => never
     if (!(await groupGone(pid, error))) throw error;
     return;
   }
+  await awaitGroupGone(pid, incomplete);
+}
+
+async function taskkillTree(pid: number, incomplete: () => never): Promise<void> {
+  try {
+    await execFileAsync(taskkillExecutable(), ["/pid", String(pid), "/T", "/F"], {
+      windowsHide: true,
+      ...INSPECTION_CHILD_BOUND
+    });
+  } catch (error) {
+    // why: the process may already have exited, and taskkill then fails. A
+    // taskkill that outlived its bound ended nothing, so that is incomplete.
+    if (childTimedOut(error)) incomplete();
+  }
+}
+
+async function awaitGroupGone(pid: number, incomplete: () => never): Promise<void> {
   for (let attempt = 0; attempt < 20; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 25));
     try {

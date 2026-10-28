@@ -366,6 +366,23 @@ const validateHealth = (
   });
 };
 
+const lockOwner = (text: string | undefined): { readonly pid: number; readonly nonce: string } | undefined => {
+  try {
+    const parsed = JSON.parse(text ?? "null") as { readonly pid?: number; readonly nonce?: string } | null;
+    if (
+      parsed !== null &&
+      Number.isSafeInteger(parsed.pid) &&
+      (parsed.pid ?? 0) > 0 &&
+      typeof parsed.nonce === "string" &&
+      /^[a-f0-9-]{36}$/u.test(parsed.nonce)
+    )
+      return { pid: parsed.pid as number, nonce: parsed.nonce };
+    return undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 export class TransactionalActivationManager {
   readonly #installRoot: string;
   readonly #stagingRoot: string;
@@ -540,47 +557,33 @@ export class TransactionalActivationManager {
       } catch (error) {
         await handle?.close();
         if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-        const observedText = await readFile(path, "utf8").catch(() => undefined);
-        let observed: { readonly pid: number; readonly nonce: string } | undefined;
-        try {
-          const parsed = JSON.parse(observedText ?? "null") as Partial<typeof owner> | null;
-          if (
-            parsed !== null &&
-            Number.isSafeInteger(parsed.pid) &&
-            (parsed.pid ?? 0) > 0 &&
-            typeof parsed.nonce === "string" &&
-            /^[a-f0-9-]{36}$/u.test(parsed.nonce)
-          )
-            observed = { pid: parsed.pid as number, nonce: parsed.nonce };
-        } catch {
-          observed = undefined;
-        }
-        if (observed === undefined || this.#processAlive(observed.pid))
-          throw new ActivationError(
-            "VES_ACTIVATION_BUSY",
-            "another activation owns the install root",
-            await this.active()
-          );
-        const stale = `${path}.stale.${randomUUID()}`;
-        try {
-          await rename(path, stale);
-        } catch (renameError) {
-          if ((renameError as NodeJS.ErrnoException).code === "ENOENT") continue;
-          throw renameError;
-        }
-        const claimedText = await readFile(stale, "utf8").catch(() => undefined);
-        if (claimedText !== observedText) {
-          await rename(stale, path).catch(() => undefined);
-          throw new ActivationError(
-            "VES_ACTIVATION_BUSY",
-            "activation lock changed during recovery",
-            await this.active()
-          );
-        }
-        await rm(stale, { force: true });
+        await this.#reclaimStaleLock(path);
       }
     }
     throw new ActivationError("VES_ACTIVATION_BUSY", "activation lock could not be acquired", await this.active());
+  }
+
+  // why: a lock whose recorded owner is no longer alive is renamed aside, then
+  // removed only if it still holds the bytes that were judged stale. A lock
+  // that vanished before the rename is simply retried.
+  async #reclaimStaleLock(path: string): Promise<void> {
+    const observedText = await readFile(path, "utf8").catch(() => undefined);
+    const observed = lockOwner(observedText);
+    if (observed === undefined || this.#processAlive(observed.pid))
+      throw new ActivationError("VES_ACTIVATION_BUSY", "another activation owns the install root", await this.active());
+    const stale = `${path}.stale.${randomUUID()}`;
+    try {
+      await rename(path, stale);
+    } catch (renameError) {
+      if ((renameError as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw renameError;
+    }
+    const claimedText = await readFile(stale, "utf8").catch(() => undefined);
+    if (claimedText !== observedText) {
+      await rename(stale, path).catch(() => undefined);
+      throw new ActivationError("VES_ACTIVATION_BUSY", "activation lock changed during recovery", await this.active());
+    }
+    await rm(stale, { force: true });
   }
 
   #processAlive(pid: number): boolean {
