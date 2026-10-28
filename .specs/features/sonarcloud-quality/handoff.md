@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: sonarcloud-quality
 issue: null
 status: in_progress
-branch: docs/sonar-t8-longtail-round
-baseRevision: 65c476f9ee6041588aad336f9c6f5a86d741289d
+branch: docs/sonar-t8-s3776-round
+baseRevision: 8a6e7c62b5b54d1d771b356e9bbb6a53899e18d1
 lastCompletedTask: T8
 nextTask: T8
 lastGate: pnpm gate:quick plus pnpm test:architecture
-updatedAt: 2026-10-28T18:00:00Z
+updatedAt: 2026-10-29T00:00:00Z
 ---
 
 # Scope
@@ -19,6 +19,47 @@ sources. Phases B (bugs, vulnerabilities) and C (code smells) follow in their
 own changes, one rule family each, as listed in `tasks.md`.
 
 # Completed Evidence
+
+T8 third round of 2026-10-28, merged by content (rebase + admin bypass). The
+`main` analysis of `8a6e7c62` reads gate OK, 0 bugs, 0 vulnerabilities, 409
+code smells (511 before the round) and 89.7 % coverage; S2187, S2699 and
+S3776 read 0:
+
+- S2187 and S2699 (#672, `f0318972`, 11 + 8): all were false readings. The
+  11 driver spike files handed `test` to a shared suite and so called none
+  themselves; `tests/helpers/suite-cases.mjs` (`suiteCases`) collects a
+  suite's cases and each file registers them with its own `test` (the same
+  42 tests under the same names, compared by TAP before and after). The 8
+  cases that checked a call does not throw or reject now say so with
+  `doesNotThrow` or `doesNotReject`. `tests/unit/suite-cases.test.mjs` (2).
+- S3776 (cognitive complexity, 75 functions), five PRs by area with disjoint
+  files: scripts, spikes and apps (#674, `7b4d1085`, 16); runtime, drivers
+  and workspace (#675, `1cbe42d0`, 20); memory, evidence and platform
+  (#676, `1583bc41` `2a3dec38`, 15); application (#677, `ffef1b30`, 11);
+  data-probe (#678, `8a6e7c62`, 13). Every function is at or under 15;
+  none was left. Means: helpers per phase or field group, ordered rule
+  tables whose first failing rule is the one the inline chain reported (the
+  SQL parsers, the workflow machine), and private state classes (the
+  scheduler's `ScheduleRun`). Each PR's new and existing tests also pass on
+  its merge-base sources; #674 added a differential fuzz (185,000 cases, old
+  against new). Roughly 400 unit tests were added, mostly for branches only
+  integration or fault tests reached before, so new-code coverage read 96.6
+  to 100 %. Every `complexity-baseline.json` entry the PRs touched went down
+  or out; no new key appeared.
+- The extractions reintroduced three cleared rules, fixed on their PRs before
+  merge: S7737 and S7776 in #676 (`2a3dec38`), S7059 (a promise made in a
+  constructor) in #677. Their S9382 readings are existing sequential awaits
+  that moved into helpers.
+- The five PRs all edit `complexity-baseline.json`, so each was brought up to
+  date by a merge from `main` (no force-push) and re-checked before landing;
+  every merge resolved without a conflict. Landing paused at the Beta
+  session's request while its probe-host slice 1 (#681) re-landed over the
+  same files. #675's first quality gate failed in
+  `provider-child-run`'s "dies before the first write" (known race); the
+  re-run passed.
+- Found in passing, unchanged: the Codex spike reports a requested model
+  missing from the catalog as `VES_CODEX_STREAM_INCOMPLETE`, because its
+  final-result checks overwrite the protocol error.
 
 T8 second round of 2026-10-28, merged by content (rebase + admin bypass).
 The `main` analysis of `65c476f9` reads gate OK, 0 bugs, 0 vulnerabilities,
@@ -459,24 +500,23 @@ issues; 179 bugs, 32 vulnerabilities, 924 code smells; quality gate ERROR.
 
 # Next Exact Action
 
-What remains is the families that need a per-site or owner decision, not a
-mechanical rewrite (counts from the `main` analysis of `65c476f9`):
+Every mechanical family is done. What remains needs an owner decision
+(counts from the `main` analysis of `8a6e7c62`):
 
-- S2187 (11) and S2699 (8): test files without tests or assertions. Read each
-  one; give real tests assertions, or move helpers that are not tests out of
-  the test inclusions.
-- S3776 (62 TypeScript, 13 JavaScript): cognitive complexity. Align with the
-  repository's own `complexity:check` baseline and refactor top offenders one
-  family of files per change.
-- S9382 (135 + 60, sequential await in a loop) and S7503 (211, async
-  without await): mostly ordered by design or interface-conforming. The owner
-  decides between per-issue acceptance and disabling the rule in a custom
-  quality profile (plan, Phase C).
+- S9382 (124 TypeScript + 60 JavaScript, sequential await in a loop) and
+  S7503 (212, async without await): mostly ordered by design or
+  interface-conforming. The owner chooses between per-issue acceptance and
+  disabling both rules in a custom quality profile (plan, Phase C).
 - The owner marks the 8 S3735 and 3 long-tail issues in `validation.md` as
   Accepted.
+- S4323 (`apps/vestra-cli/src/cli.ts`) and S6582
+  (`apps/vestra-cli/src/extension/skill-lock-file.ts`) arrived with probe-host
+  slice 1 (`bd53aa98`); the Beta session was told and owns the follow-up in
+  those files.
 
-Start with S2187/S2699: list them with
-`api/issues/search?componentKeys=accd_verchestra&rules=javascript:S2187,javascript:S2699&resolved=false&ps=50`.
+Once the owner decides, apply it: either list each S9382 and S7503 issue
+in `validation.md` and accept it in SonarCloud, or record the quality-profile
+change and confirm both counts read 0 on the next `main` analysis.
 
 # Blockers
 
