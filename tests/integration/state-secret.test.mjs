@@ -24,7 +24,7 @@ test("Workspace state materialization creates every private operational director
     state.cacheRoot,
     state.sessionsRoot
   ]) {
-    await access(path);
+    await assert.doesNotReject(access(path), path);
   }
 });
 

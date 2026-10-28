@@ -10,6 +10,7 @@ import { test } from "node:test";
 import { ClaudeCodeDriver } from "../../../packages/drivers/src/index.ts";
 import { claudeFixture } from "../../../tests/helpers/claude-driver-fixture.mjs";
 import { childRunSuite, STOP_REASON } from "../../../tests/helpers/driver-child-run-fixture.mjs";
+import { suiteCases } from "../../../tests/helpers/suite-cases.mjs";
 
 const STARTED = ["session.started", "model.resolved"];
 
@@ -37,7 +38,7 @@ const slowTerminator = (calls) => async (pid) => {
   process.kill(pid);
 };
 
-childRunSuite(test, "claude-code", [
+const cases = suiteCases(childRunSuite, "claude-code", [
   {
     name: "ends with a failure before its result",
     build: build("crash"),
@@ -82,3 +83,4 @@ childRunSuite(test, "claude-code", [
     terminations: 1
   }
 ]);
+for (const entry of cases) test(...entry);

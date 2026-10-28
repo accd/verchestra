@@ -12,13 +12,14 @@ import { ProviderProcesses } from "../../../apps/vestra-cli/src/task/task-proces
 import { CodexDriver } from "../../../packages/drivers/src/index.ts";
 import { codexFixture } from "../../../tests/helpers/codex-driver-fixture.mjs";
 import { providerEndSuite } from "../../../tests/helpers/process-tree-fixture.mjs";
+import { suiteCases } from "../../../tests/helpers/suite-cases.mjs";
 
 // invariant: the terminator is the one `vestra task` hands this driver, and a
 // tree it could not confirm stopped would be named in `reported`.
 const reported = [];
 const providers = new ProviderProcesses({ stderr: (text) => reported.push(text) });
 
-providerEndSuite(test, {
+const cases = suiteCases(providerEndSuite, {
   label: "codex",
   terminator: providers.session("Codex").terminateTree,
   reported,
@@ -39,3 +40,4 @@ providerEndSuite(test, {
     { name: "completes its turn without exiting", mode: "linger", errors: [], outcome: "completed" }
   ]
 });
+for (const entry of cases) test(...entry);

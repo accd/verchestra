@@ -63,7 +63,9 @@ test("an unknown profile fails closed naming the closed registry", () => {
 // --- TST-01: non-overlap over RootFacts ---
 
 test("a disjoint root on another device passes", () => {
-  assertDisjointRoot(rootFacts({ deviceId: "dev-2", inodeId: "inode-9" }), [guardedWorkspace]);
+  assert.doesNotThrow(() =>
+    assertDisjointRoot(rootFacts({ deviceId: "dev-2", inodeId: "inode-9" }), [guardedWorkspace])
+  );
 });
 
 test("device and inode identity is an overlap even when paths look different", () => {
@@ -105,9 +107,11 @@ test("a link-chain hop through a guarded root is an overlap even with a disjoint
 });
 
 test("a sibling path sharing only a prefix string is not an overlap", () => {
-  assertDisjointRoot(
-    rootFacts({ canonicalPath: "/work/verchestra-tmp", realPath: "/work/verchestra-tmp", inodeId: "i2" }),
-    [guardedWorkspace]
+  assert.doesNotThrow(() =>
+    assertDisjointRoot(
+      rootFacts({ canonicalPath: "/work/verchestra-tmp", realPath: "/work/verchestra-tmp", inodeId: "i2" }),
+      [guardedWorkspace]
+    )
   );
 });
 
@@ -138,7 +142,9 @@ test("production material is rejected with a distinct error naming the material"
 });
 
 test("an all-test-only composition passes", () => {
-  assertTestOnlyMaterials([{ materialId: "workspace:disposable", kind: "workspace", testOnly: true }]);
+  assert.doesNotThrow(() =>
+    assertTestOnlyMaterials([{ materialId: "workspace:disposable", kind: "workspace", testOnly: true }])
+  );
 });
 
 // --- TST-04: sentinel set comparison ---
@@ -221,7 +227,7 @@ function validPayload(overrides = {}) {
 }
 
 test("a complete allowlisted payload passes", () => {
-  assertReportPayload(validPayload());
+  assert.doesNotThrow(() => assertReportPayload(validPayload()));
 });
 
 test("a field outside the sealed allowlist fails closed", () => {

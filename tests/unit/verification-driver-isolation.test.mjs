@@ -59,7 +59,7 @@ test("resolution is deterministic across repeated calls with the same input", ()
 // --- SVI-03: read-only grant is zero tools, not a name classifier ---
 
 test("a zero-tool grant passes", () => {
-  assertReadOnlyGrant([]);
+  assert.doesNotThrow(() => assertReadOnlyGrant([]));
 });
 
 test("any nonempty grant fails closed naming the count", () => {
@@ -92,7 +92,7 @@ test("a real driver session started with an empty tool grant produces no tool.re
   const events = [];
   const session = await startVerifierSession(driver, events);
   await driver.close(session);
-  assertNoToolRequests(events);
+  assert.doesNotThrow(() => assertNoToolRequests(events));
 });
 
 // --- SVI-04: a tool-invocation attempt under a zero-tool grant is rejected ---
