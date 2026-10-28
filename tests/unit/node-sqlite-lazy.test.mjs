@@ -54,3 +54,24 @@ test("the shim drops a warning only when it starts with SQLite's text", async ()
   assert.match(stderr, /ExperimentalWarning: Note: SQLite is an experimental feature here/u);
   assert.match(stderr, /DeprecationWarning: SQLite is an experimental feature again/u);
 });
+
+test("in this process, the shim loads SQLite with no warning and restores emitWarning", async () => {
+  const emitWarning = process.emitWarning;
+  const warnings = [];
+  const listen = (warning) => warnings.push(warning.message);
+  process.on("warning", listen);
+  try {
+    const sqlite = await import(SHIM);
+    const database = new sqlite.DatabaseSync(":memory:");
+    assert.equal(database.prepare("select 1 + 1 as two").get().two, 2);
+    database.close();
+    await new Promise((resolve) => setImmediate(resolve));
+  } finally {
+    process.off("warning", listen);
+  }
+  assert.equal(process.emitWarning, emitWarning);
+  assert.deepEqual(
+    warnings.filter((message) => SQLITE_WARNING.test(message)),
+    []
+  );
+});
