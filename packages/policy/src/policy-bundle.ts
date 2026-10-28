@@ -119,11 +119,20 @@ export function buildPolicyBundle(
   });
 }
 
+const BUNDLE_FIELDS: ReadonlySet<string> = new Set([
+  "schemaVersion",
+  "version",
+  "policies",
+  "createdAt",
+  "bundleDigest",
+  "signature",
+  "publicKeyRef"
+]);
+
 export function verifyPolicyBundle(value: unknown, crypto: PolicyBundleCrypto): PolicyBundle {
   if (value === null || typeof value !== "object") fail("bundle must be an object");
   const bundle = value as Record<string, unknown>;
-  const allowed = ["schemaVersion", "version", "policies", "createdAt", "bundleDigest", "signature", "publicKeyRef"];
-  if (Object.keys(bundle).some((key) => !allowed.includes(key))) fail("bundle has unknown fields");
+  if (Object.keys(bundle).some((key) => !BUNDLE_FIELDS.has(key))) fail("bundle has unknown fields");
   if (bundle["schemaVersion"] !== 1) fail("bundle schema version is unsupported");
   if (typeof bundle["version"] !== "string" || !VERSION.test(bundle["version"])) fail("bundle version is invalid");
   if (typeof bundle["bundleDigest"] !== "string" || !DIGEST.test(bundle["bundleDigest"]))
