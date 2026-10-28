@@ -157,49 +157,61 @@ export class ProbeFrameDecoder {
     this.#buffer = Buffer.concat([this.#buffer, Buffer.from(chunk)]);
     const messages: ProbeProtocolEnvelope[] = [];
     while (true) {
-      if (this.#pendingLength === undefined) {
-        const boundary = this.#buffer.indexOf("\r\n\r\n");
-        if (boundary < 0) {
-          if (this.#buffer.length > this.#maximumHeaderBytes) {
-            terminate("VES_PROBE_FRAME_HEADER_LIMIT", "Probe frame header exceeds its limit");
-          }
-          break;
-        }
-        if (boundary > this.#maximumHeaderBytes) {
-          terminate("VES_PROBE_FRAME_HEADER_LIMIT", "Probe frame header exceeds its limit");
-        }
-        const lines = this.#buffer.subarray(0, boundary).toString("ascii").split("\r\n");
-        const lengths = lines.filter((line) => line.toLowerCase().startsWith("content-length:"));
-        if (lengths.length === 0) terminate("VES_PROBE_FRAME_LENGTH_REQUIRED", "Probe frame requires Content-Length");
-        if (lines.length !== 1 || lengths.length !== 1) {
-          terminate("VES_PROBE_FRAME_HEADER_INVALID", "Probe frame headers are invalid");
-        }
-        const line = lengths[0] as string;
-        const raw = line.slice(line.indexOf(":") + 1).trim();
-        if (!/^(0|[1-9]\d*)$/u.test(raw)) {
-          terminate("VES_PROBE_FRAME_LENGTH_INVALID", "Probe frame length is invalid");
-        }
-        const length = Number(raw);
-        if (!Number.isSafeInteger(length)) terminate("VES_PROBE_FRAME_LENGTH_INVALID", "Probe frame length is unsafe");
-        if (length > this.#maximumMessageBytes) {
-          terminate("VES_PROBE_FRAME_MESSAGE_LIMIT", "Probe frame body exceeds its limit");
-        }
-        this.#pendingLength = length;
-        this.#buffer = this.#buffer.subarray(boundary + 4);
-      }
-      if (this.#buffer.length < this.#pendingLength) break;
-      const body = this.#buffer.subarray(0, this.#pendingLength);
-      this.#buffer = this.#buffer.subarray(this.#pendingLength);
+      const pendingLength = this.#pendingLength ?? this.#readHeader();
+      if (pendingLength === undefined || this.#buffer.length < pendingLength) break;
+      const body = this.#buffer.subarray(0, pendingLength);
+      this.#buffer = this.#buffer.subarray(pendingLength);
       this.#pendingLength = undefined;
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(body.toString("utf8"));
-      } catch {
-        terminate("VES_PROBE_FRAME_JSON_INVALID", "Probe frame body is invalid JSON");
-      }
-      messages.push(validateEnvelope(parsed, this.#workspaceId));
+      messages.push(validateEnvelope(parseProbeFrameBody(body), this.#workspaceId));
     }
     return Object.freeze(messages);
+  }
+
+  // Consumes one complete header and returns its declared body length, or
+  // returns undefined while the header is still incomplete.
+  #readHeader(): number | undefined {
+    const boundary = this.#buffer.indexOf("\r\n\r\n");
+    if (boundary < 0) {
+      if (this.#buffer.length > this.#maximumHeaderBytes) {
+        terminate("VES_PROBE_FRAME_HEADER_LIMIT", "Probe frame header exceeds its limit");
+      }
+      return undefined;
+    }
+    if (boundary > this.#maximumHeaderBytes) {
+      terminate("VES_PROBE_FRAME_HEADER_LIMIT", "Probe frame header exceeds its limit");
+    }
+    const length = probeFrameLength(this.#buffer.subarray(0, boundary), this.#maximumMessageBytes);
+    this.#pendingLength = length;
+    this.#buffer = this.#buffer.subarray(boundary + 4);
+    return length;
+  }
+}
+
+function probeFrameLength(header: Buffer, maximumMessageBytes: number): number {
+  const lines = header.toString("ascii").split("\r\n");
+  const lengths = lines.filter((line) => line.toLowerCase().startsWith("content-length:"));
+  if (lengths.length === 0) terminate("VES_PROBE_FRAME_LENGTH_REQUIRED", "Probe frame requires Content-Length");
+  if (lines.length !== 1 || lengths.length !== 1) {
+    terminate("VES_PROBE_FRAME_HEADER_INVALID", "Probe frame headers are invalid");
+  }
+  const line = lengths[0] as string;
+  const raw = line.slice(line.indexOf(":") + 1).trim();
+  if (!/^(0|[1-9]\d*)$/u.test(raw)) {
+    terminate("VES_PROBE_FRAME_LENGTH_INVALID", "Probe frame length is invalid");
+  }
+  const length = Number(raw);
+  if (!Number.isSafeInteger(length)) terminate("VES_PROBE_FRAME_LENGTH_INVALID", "Probe frame length is unsafe");
+  if (length > maximumMessageBytes) {
+    terminate("VES_PROBE_FRAME_MESSAGE_LIMIT", "Probe frame body exceeds its limit");
+  }
+  return length;
+}
+
+function parseProbeFrameBody(body: Buffer): unknown {
+  try {
+    return JSON.parse(body.toString("utf8"));
+  } catch {
+    terminate("VES_PROBE_FRAME_JSON_INVALID", "Probe frame body is invalid JSON");
   }
 }
 

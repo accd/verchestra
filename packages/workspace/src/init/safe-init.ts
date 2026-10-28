@@ -258,6 +258,159 @@ async function removeEmptyParents(root: string, targets: readonly string[]): Pro
   }
 }
 
+function desiredInitFiles(files: Readonly<Record<string, string>>): Map<string, string> {
+  const desired = new Map<string, string>();
+  for (const [path, content] of Object.entries(files)) {
+    try {
+      LogicalPath.parse(path);
+    } catch (error) {
+      throw new WorkspaceScanError("VES_INIT_INPUT_INVALID", "Init target is not portable", { cause: error });
+    }
+    if (!path.startsWith(".verchestra/") || typeof content !== "string")
+      throw new WorkspaceScanError("VES_INIT_INPUT_INVALID", "Init target is outside control metadata");
+    desired.set(path, content);
+  }
+  return desired;
+}
+
+async function assertNoTargetIgnored(root: string, paths: readonly string[]): Promise<void> {
+  for (const path of paths) {
+    if (await gitIgnores(root, path))
+      throw new WorkspaceScanError("VES_INIT_TARGET_IGNORED", "Canonical init target is ignored by Git");
+  }
+}
+
+async function planInitChanges(root: string, desired: ReadonlyMap<string, string>): Promise<InitChange[]> {
+  const changes: InitChange[] = [];
+  for (const [path, content] of normalizeDeclaredSet([...desired], ([entryPath]) => entryPath)) {
+    const existing = await optionalText(join(root, ...path.split("/")));
+    if (existing === content) continue;
+    if (existing !== undefined && path !== ".gitignore" && path !== MANIFEST_PATH)
+      throw new WorkspaceScanError("VES_INIT_TARGET_CONFLICT", "Canonical init target contains different content");
+    changes.push(
+      Object.freeze({
+        logicalPath: path,
+        action: existing === undefined ? "create" : "update",
+        expectedDigest: existing === undefined ? null : digest(existing),
+        contentDigest: digest(content)
+      })
+    );
+  }
+  return changes;
+}
+
+interface AppliedChange {
+  target: string;
+  backup?: string;
+}
+
+function backupPathOf(staging: string, index: number, change: InitChange): string | undefined {
+  return change.expectedDigest === null ? undefined : join(staging, `backup-${index}`);
+}
+
+async function assertPreviewCurrent(root: string, changes: readonly InitChange[]): Promise<void> {
+  for (const change of changes) {
+    const current = await optionalText(join(root, ...change.logicalPath.split("/")));
+    if ((current === undefined ? null : digest(current)) !== change.expectedDigest)
+      throw new WorkspaceScanError("VES_INIT_PREVIEW_STALE", "Init target changed after preview");
+  }
+}
+
+async function stageChanges(
+  staging: string,
+  contents: ReadonlyMap<string, string>,
+  changes: readonly InitChange[],
+  targets: readonly string[]
+): Promise<void> {
+  for (const [index, change] of changes.entries()) {
+    const staged = join(staging, `write-${index}`);
+    const backup = backupPathOf(staging, index, change);
+    await writeFile(staged, contents.get(change.logicalPath) as string, {
+      encoding: "utf8",
+      mode: 0o600,
+      flush: true
+    });
+    if (backup !== undefined) {
+      const current = await optionalText(targets[index] as string);
+      if (current === undefined || digest(current) !== change.expectedDigest)
+        throw new WorkspaceScanError("VES_INIT_PREVIEW_STALE", "Init target changed while staging");
+      await writeFile(backup, current, { encoding: "utf8", mode: 0o600, flush: true });
+    }
+  }
+}
+
+async function writeRecoveryJournal(staging: string, preview: InitPreview): Promise<void> {
+  const journal: RecoveryJournal = Object.freeze({
+    schemaVersion: 2,
+    planId: preview.planId,
+    changes: preview.changes
+  });
+  const journalTemporary = join(staging, "transaction.tmp");
+  await writeFile(journalTemporary, `${JSON.stringify(journal)}\n`, { encoding: "utf8", mode: 0o600, flush: true });
+  await rename(journalTemporary, join(staging, "transaction.json"));
+}
+
+async function rollBackApplied(applied: readonly AppliedChange[]): Promise<void> {
+  for (const item of applied.toReversed()) {
+    await rm(item.target, { force: true });
+    if (item.backup !== undefined) await rename(item.backup, item.target);
+  }
+}
+
+type RecoveryAction = "none" | "remove" | "restore";
+interface RecoveryState {
+  readonly index: number;
+  readonly change: InitChange;
+  readonly target: string;
+  readonly backup?: string;
+  readonly action: RecoveryAction;
+}
+
+function unappliedRecoveryAction(staged: string, currentDigest: string | null, change: InitChange): RecoveryAction {
+  if (digest(staged) !== change.contentDigest || currentDigest !== change.expectedDigest) {
+    throw recoveryConflict("Unapplied init target or staged content changed after interruption");
+  }
+  return "none";
+}
+
+function publishedRecoveryAction(change: InitChange, backupIsValid: boolean): RecoveryAction {
+  if (change.expectedDigest !== null && !backupIsValid) {
+    throw recoveryConflict("Interrupted init backup is missing or corrupt");
+  }
+  return change.expectedDigest === null ? "remove" : "restore";
+}
+
+function recoveryAction(
+  change: InitChange,
+  staged: string | undefined,
+  currentDigest: string | null,
+  backupIsValid: boolean
+): RecoveryAction {
+  if (staged !== undefined) return unappliedRecoveryAction(staged, currentDigest, change);
+  if (currentDigest === change.contentDigest) return publishedRecoveryAction(change, backupIsValid);
+  if (currentDigest === change.expectedDigest) return "none";
+  if (currentDigest === null && change.expectedDigest !== null && backupIsValid) return "restore";
+  throw recoveryConflict("Applied init target changed after interruption");
+}
+
+async function recoveryState(root: string, staging: string, index: number, change: InitChange): Promise<RecoveryState> {
+  const target = join(root, ...change.logicalPath.split("/"));
+  const staged = await optionalText(join(staging, `write-${index}`));
+  const current = await optionalText(target);
+  const currentDigest = current === undefined ? null : digest(current);
+  const backupPath = backupPathOf(staging, index, change);
+  const backup = backupPath === undefined ? undefined : await optionalText(backupPath);
+  const backupIsValid = backupPath !== undefined && backup !== undefined && digest(backup) === change.expectedDigest;
+  const action = recoveryAction(change, staged, currentDigest, backupIsValid);
+  return {
+    index,
+    change,
+    target,
+    ...(backupPath === undefined ? {} : { backup: backupPath }),
+    action
+  };
+}
+
 export class SafeInitService {
   readonly #identity = Object.freeze({});
   readonly #hooks: InitTransactionHooks;
@@ -272,41 +425,14 @@ export class SafeInitService {
     const controlOwner = inventory.repositories.find((repository) => repository.relation === "control");
     if (controlOwner === undefined)
       throw new WorkspaceScanError("VES_WORKSPACE_OWNER_AMBIGUOUS", "Control Git owner is unavailable");
-    const desired = new Map<string, string>();
-    for (const [path, content] of Object.entries(input.files)) {
-      try {
-        LogicalPath.parse(path);
-      } catch (error) {
-        throw new WorkspaceScanError("VES_INIT_INPUT_INVALID", "Init target is not portable", { cause: error });
-      }
-      if (!path.startsWith(".verchestra/") || typeof content !== "string")
-        throw new WorkspaceScanError("VES_INIT_INPUT_INVALID", "Init target is outside control metadata");
-      desired.set(path, content);
-    }
+    const desired = desiredInitFiles(input.files);
     const generatorVersion = generatorVersionOf(desired.get(MANIFEST_PATH));
     desired.delete(MANIFEST_PATH);
     const currentIgnore = await optionalText(join(root, ".gitignore"));
     desired.set(".gitignore", editManagedGitignore(currentIgnore).content);
-    for (const path of [...desired.keys(), MANIFEST_PATH]) {
-      if (await gitIgnores(root, path))
-        throw new WorkspaceScanError("VES_INIT_TARGET_IGNORED", "Canonical init target is ignored by Git");
-    }
+    await assertNoTargetIgnored(root, [...desired.keys(), MANIFEST_PATH]);
     desired.set(MANIFEST_PATH, ownershipManifest(desired, generatorVersion, controlOwner.repositoryId));
-    const changes: InitChange[] = [];
-    for (const [path, content] of normalizeDeclaredSet([...desired], ([entryPath]) => entryPath)) {
-      const existing = await optionalText(join(root, ...path.split("/")));
-      if (existing === content) continue;
-      if (existing !== undefined && path !== ".gitignore" && path !== MANIFEST_PATH)
-        throw new WorkspaceScanError("VES_INIT_TARGET_CONFLICT", "Canonical init target contains different content");
-      changes.push(
-        Object.freeze({
-          logicalPath: path,
-          action: existing === undefined ? "create" : "update",
-          expectedDigest: existing === undefined ? null : digest(existing),
-          contentDigest: digest(content)
-        })
-      );
-    }
+    const changes = await planInitChanges(root, desired);
     const frozen = Object.freeze(changes);
     const preview = Object.freeze({
       schemaVersion: 1 as const,
@@ -322,60 +448,20 @@ export class SafeInitService {
       throw new WorkspaceScanError("VES_INIT_PREVIEW_INVALID", "Init preview is not authentic");
     if ((await pendingStaging(context.root)).length > 0)
       throw new WorkspaceScanError("VES_INIT_RECOVERY_REQUIRED", "Interrupted init transaction requires recovery");
-    for (const change of preview.changes) {
-      const current = await optionalText(join(context.root, ...change.logicalPath.split("/")));
-      if ((current === undefined ? null : digest(current)) !== change.expectedDigest)
-        throw new WorkspaceScanError("VES_INIT_PREVIEW_STALE", "Init target changed after preview");
-    }
+    await assertPreviewCurrent(context.root, preview.changes);
     if (preview.changes.length === 0) return Object.freeze({ planId: preview.planId, changed: 0 });
     const staging = join(context.root, WORKSPACE_ROOT_DIRNAME, `.staging-${randomUUID()}`);
-    const applied: { target: string; backup?: string }[] = [];
+    const applied: AppliedChange[] = [];
     const targets = preview.changes.map((change) => join(context.root, ...change.logicalPath.split("/")));
     try {
       await mkdir(staging, { recursive: true, mode: 0o700 });
-      for (const [index, change] of preview.changes.entries()) {
-        const staged = join(staging, `write-${index}`);
-        const backup = change.expectedDigest === null ? undefined : join(staging, `backup-${index}`);
-        await writeFile(staged, context.contents.get(change.logicalPath) as string, {
-          encoding: "utf8",
-          mode: 0o600,
-          flush: true
-        });
-        if (backup !== undefined) {
-          const current = await optionalText(targets[index] as string);
-          if (current === undefined || digest(current) !== change.expectedDigest)
-            throw new WorkspaceScanError("VES_INIT_PREVIEW_STALE", "Init target changed while staging");
-          await writeFile(backup, current, { encoding: "utf8", mode: 0o600, flush: true });
-        }
-      }
-      const journal: RecoveryJournal = Object.freeze({
-        schemaVersion: 2,
-        planId: preview.planId,
-        changes: preview.changes
-      });
-      const journalTemporary = join(staging, "transaction.tmp");
-      await writeFile(journalTemporary, `${JSON.stringify(journal)}\n`, { encoding: "utf8", mode: 0o600, flush: true });
-      await rename(journalTemporary, join(staging, "transaction.json"));
+      await stageChanges(staging, context.contents, preview.changes, targets);
+      await writeRecoveryJournal(staging, preview);
       await this.#hooks.afterStage?.();
-      for (const [index, change] of preview.changes.entries()) {
-        const target = targets[index] as string;
-        const staged = join(staging, `write-${index}`);
-        const backup = change.expectedDigest === null ? undefined : join(staging, `backup-${index}`);
-        await mkdir(dirname(target), { recursive: true });
-        await this.#hooks.beforeApplyChange?.(Object.freeze({ index, change }));
-        const current = await optionalText(target);
-        if ((current === undefined ? null : digest(current)) !== change.expectedDigest)
-          throw new WorkspaceScanError("VES_INIT_PREVIEW_STALE", "Init target changed at the publication boundary");
-        await rename(staged, target);
-        applied.push({ target, ...(backup === undefined ? {} : { backup }) });
-        await this.#hooks.afterApplyChange?.(Object.freeze({ index, change }));
-      }
+      await this.#publishChanges(staging, preview.changes, targets, applied);
       return Object.freeze({ planId: preview.planId, changed: preview.changes.length });
     } catch (error) {
-      for (const item of applied.toReversed()) {
-        await rm(item.target, { force: true });
-        if (item.backup !== undefined) await rename(item.backup, item.target);
-      }
+      await rollBackApplied(applied);
       await removeEmptyParents(context.root, targets);
       throw new WorkspaceScanError("VES_INIT_APPLY_FAILED", "Init transaction failed and was rolled back", {
         cause: error
@@ -386,74 +472,61 @@ export class SafeInitService {
     }
   }
 
+  async #publishChanges(
+    staging: string,
+    changes: readonly InitChange[],
+    targets: readonly string[],
+    applied: AppliedChange[]
+  ): Promise<void> {
+    for (const [index, change] of changes.entries()) {
+      const target = targets[index] as string;
+      const staged = join(staging, `write-${index}`);
+      const backup = backupPathOf(staging, index, change);
+      await mkdir(dirname(target), { recursive: true });
+      await this.#hooks.beforeApplyChange?.(Object.freeze({ index, change }));
+      const current = await optionalText(target);
+      if ((current === undefined ? null : digest(current)) !== change.expectedDigest)
+        throw new WorkspaceScanError("VES_INIT_PREVIEW_STALE", "Init target changed at the publication boundary");
+      await rename(staged, target);
+      applied.push({ target, ...(backup === undefined ? {} : { backup }) });
+      await this.#hooks.afterApplyChange?.(Object.freeze({ index, change }));
+    }
+  }
+
   async recover(input: { readonly controlRoot: string }): Promise<InitRecoveryReceipt> {
     const root = await realpath(input.controlRoot);
     await scanWorkspace({ controlRoot: root });
     const directories = await pendingStaging(root);
     let restoredChanges = 0;
-    for (const staging of directories) {
-      const journalContent = await optionalText(join(staging, "transaction.json"));
-      if (journalContent === undefined) {
-        await rm(staging, { recursive: true, force: true });
-        continue;
-      }
-      const journal = parseRecoveryJournal(journalContent);
-      const states: {
-        readonly index: number;
-        readonly change: InitChange;
-        readonly target: string;
-        readonly backup?: string;
-        readonly action: "none" | "remove" | "restore";
-      }[] = [];
-      for (const [index, change] of journal.changes.entries()) {
-        const target = join(root, ...change.logicalPath.split("/"));
-        const staged = await optionalText(join(staging, `write-${index}`));
-        const current = await optionalText(target);
-        const currentDigest = current === undefined ? null : digest(current);
-        const backupPath = change.expectedDigest === null ? undefined : join(staging, `backup-${index}`);
-        const backup = backupPath === undefined ? undefined : await optionalText(backupPath);
-        const backupIsValid =
-          backupPath !== undefined && backup !== undefined && digest(backup) === change.expectedDigest;
-        let action: "none" | "remove" | "restore";
-        if (staged !== undefined) {
-          if (digest(staged) !== change.contentDigest || currentDigest !== change.expectedDigest) {
-            throw recoveryConflict("Unapplied init target or staged content changed after interruption");
-          }
-          action = "none";
-        } else if (currentDigest === change.contentDigest) {
-          if (change.expectedDigest !== null && !backupIsValid) {
-            throw recoveryConflict("Interrupted init backup is missing or corrupt");
-          }
-          action = change.expectedDigest === null ? "remove" : "restore";
-        } else if (currentDigest === change.expectedDigest) {
-          action = "none";
-        } else if (currentDigest === null && change.expectedDigest !== null && backupIsValid) {
-          action = "restore";
-        } else {
-          throw recoveryConflict("Applied init target changed after interruption");
-        }
-        states.push({
-          index,
-          change,
-          target,
-          ...(backupPath === undefined ? {} : { backup: backupPath }),
-          action
-        });
-      }
-      const undoOrder = states.toReversed();
-      for (const state of undoOrder) {
-        if (state.action === "none") continue;
-        await rm(state.target, { force: true });
-        await this.#hooks.afterRecoveryRemove?.(Object.freeze({ index: state.index, change: state.change }));
-        if (state.action === "restore") await rename(state.backup as string, state.target);
-        restoredChanges += 1;
-      }
-      await rm(staging, { recursive: true, force: true });
-      await removeEmptyParents(
-        root,
-        undoOrder.map((state) => state.target)
-      );
-    }
+    for (const staging of directories) restoredChanges += await this.#recoverStaging(root, staging);
     return Object.freeze({ recoveredTransactions: directories.length, restoredChanges });
+  }
+
+  async #recoverStaging(root: string, staging: string): Promise<number> {
+    const journalContent = await optionalText(join(staging, "transaction.json"));
+    if (journalContent === undefined) {
+      await rm(staging, { recursive: true, force: true });
+      return 0;
+    }
+    const journal = parseRecoveryJournal(journalContent);
+    const states: RecoveryState[] = [];
+    for (const [index, change] of journal.changes.entries()) {
+      states.push(await recoveryState(root, staging, index, change));
+    }
+    const undoOrder = states.toReversed();
+    let restoredChanges = 0;
+    for (const state of undoOrder) {
+      if (state.action === "none") continue;
+      await rm(state.target, { force: true });
+      await this.#hooks.afterRecoveryRemove?.(Object.freeze({ index: state.index, change: state.change }));
+      if (state.action === "restore") await rename(state.backup as string, state.target);
+      restoredChanges += 1;
+    }
+    await rm(staging, { recursive: true, force: true });
+    await removeEmptyParents(
+      root,
+      undoOrder.map((state) => state.target)
+    );
+    return restoredChanges;
   }
 }

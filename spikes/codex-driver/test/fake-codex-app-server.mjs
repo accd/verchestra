@@ -122,6 +122,9 @@ lines.on("line", (line) => {
       // spells as JSON, whatever its counts are.
       emit({ method: "turn/completed", params: { threadId: "private-thread-id", turn: { id: "private-turn-id", status: "completed" }, usage: JSON.parse(process.env.FAKE_CODEX_USAGE) } });
       process.exit(0);
+    } else if (mode === "end-without-turn") {
+      // why: a provider that exits cleanly without ever completing its turn.
+      process.exit(0);
     } else if (mode === "crash") {
       // why: a provider that ends with a failure before its turn completes.
       process.exit(3);

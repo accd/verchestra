@@ -300,52 +300,9 @@ export class GovernedSkillRegistry {
       throw new SkillRegistryError("VES_SKILL_SCHEMA_INCOMPATIBLE", "Skill lock schema is incompatible");
     const ids = new Set<string>();
     for (const skill of lock.skills) {
-      if (
-        !SAFE.test(skill.id) ||
-        ids.has(skill.id) ||
-        version(skill.version) === undefined ||
-        version(skill.minimumHarnessVersion) === undefined
-      )
-        throw new SkillRegistryError("VES_SKILL_LOCK_INVALID", "Skill lock entry is invalid");
-      ids.add(skill.id);
-      if (!COMMIT.test(skill.source.commit))
-        throw new SkillRegistryError("VES_SKILL_SOURCE_MUTABLE", "Skill source is not immutable");
-      if (
-        !DIGEST.test(skill.source.treeDigest) ||
-        !Array.isArray(skill.contents) ||
-        !Array.isArray(skill.lifecycleOwners) ||
-        !Array.isArray(skill.hooks) ||
-        !Array.isArray(skill.after)
-      )
-        throw new SkillRegistryError("VES_SKILL_LOCK_INVALID", "Skill lock entry is invalid");
-      if (!this.#options.allowedLicenses.includes(skill.license))
-        throw new SkillRegistryError("VES_SKILL_LICENSE_DENIED", "Skill license is not approved");
-      if (!atLeast(this.#options.harnessVersion, skill.minimumHarnessVersion))
-        throw new SkillRegistryError("VES_SKILL_HARNESS_INCOMPATIBLE", "Skill requires a newer harness");
-      if (
-        skill.schemaCompatibility.minimum > this.#options.schemaVersion ||
-        skill.schemaCompatibility.maximum < this.#options.schemaVersion
-      )
-        throw new SkillRegistryError("VES_SKILL_SCHEMA_INCOMPATIBLE", "Skill schema is incompatible");
-      if (skill.id === "tlc-spec-driven" && !atLeast(skill.version, this.#options.tlcMinimumVersion))
-        throw new SkillRegistryError("VES_SKILL_TLC_VERSION", "TLC version is below the required minimum");
-      for (const content of skill.contents) {
-        if (!DIGEST.test(content.digest) || typeof content.path !== "string" || typeof content.mediaType !== "string")
-          throw new SkillRegistryError("VES_SKILL_LOCK_INVALID", "Skill content manifest is invalid");
-        const executable = actualExecutable(content) || content.declaredClass === "executable";
-        if (actualExecutable(content) && content.declaredClass !== "executable")
-          throw new SkillRegistryError("VES_SKILL_HIDDEN_EXECUTABLE", "Skill hides executable content");
-        if (
-          executable &&
-          (skill.extensionRef === undefined ||
-            !["tool", "plugin"].includes(skill.extensionRef.kind) ||
-            skill.extensionRef.approvalRef.length === 0)
-        )
-          throw new SkillRegistryError(
-            "VES_SKILL_EXECUTION_UNAUTHORIZED",
-            "Executable Skill content requires an approved Tool or Plugin"
-          );
-      }
+      assertLockEntryShape(skill, ids);
+      this.#assertSkillCompatible(skill);
+      for (const content of skill.contents) assertLockedContent(skill, content);
     }
     if (!ids.has("tlc-spec-driven"))
       throw new SkillRegistryError("VES_SKILL_TLC_REQUIRED", "TLC lock entry is required");
@@ -358,4 +315,64 @@ export class GovernedSkillRegistry {
         throw new SkillRegistryError("VES_SKILL_SIGNATURE_INVALID", "Skill source signature is invalid");
     return Object.freeze([...lock.skills]);
   }
+
+  #assertSkillCompatible(skill: LockedSkill): void {
+    if (!this.#options.allowedLicenses.includes(skill.license))
+      throw new SkillRegistryError("VES_SKILL_LICENSE_DENIED", "Skill license is not approved");
+    if (!atLeast(this.#options.harnessVersion, skill.minimumHarnessVersion))
+      throw new SkillRegistryError("VES_SKILL_HARNESS_INCOMPATIBLE", "Skill requires a newer harness");
+    if (
+      skill.schemaCompatibility.minimum > this.#options.schemaVersion ||
+      skill.schemaCompatibility.maximum < this.#options.schemaVersion
+    )
+      throw new SkillRegistryError("VES_SKILL_SCHEMA_INCOMPATIBLE", "Skill schema is incompatible");
+    if (skill.id === "tlc-spec-driven" && !atLeast(skill.version, this.#options.tlcMinimumVersion))
+      throw new SkillRegistryError("VES_SKILL_TLC_VERSION", "TLC version is below the required minimum");
+  }
+}
+
+function assertLockEntryShape(skill: LockedSkill, ids: Set<string>): void {
+  if (
+    !SAFE.test(skill.id) ||
+    ids.has(skill.id) ||
+    version(skill.version) === undefined ||
+    version(skill.minimumHarnessVersion) === undefined
+  )
+    throw new SkillRegistryError("VES_SKILL_LOCK_INVALID", "Skill lock entry is invalid");
+  ids.add(skill.id);
+  assertLockEntrySource(skill);
+}
+
+function assertLockEntrySource(skill: LockedSkill): void {
+  if (!COMMIT.test(skill.source.commit))
+    throw new SkillRegistryError("VES_SKILL_SOURCE_MUTABLE", "Skill source is not immutable");
+  if (
+    !DIGEST.test(skill.source.treeDigest) ||
+    !Array.isArray(skill.contents) ||
+    !Array.isArray(skill.lifecycleOwners) ||
+    !Array.isArray(skill.hooks) ||
+    !Array.isArray(skill.after)
+  )
+    throw new SkillRegistryError("VES_SKILL_LOCK_INVALID", "Skill lock entry is invalid");
+}
+
+function hasApprovedExtension(skill: LockedSkill): boolean {
+  return (
+    skill.extensionRef !== undefined &&
+    ["tool", "plugin"].includes(skill.extensionRef.kind) &&
+    skill.extensionRef.approvalRef.length > 0
+  );
+}
+
+function assertLockedContent(skill: LockedSkill, content: SkillContent): void {
+  if (!DIGEST.test(content.digest) || typeof content.path !== "string" || typeof content.mediaType !== "string")
+    throw new SkillRegistryError("VES_SKILL_LOCK_INVALID", "Skill content manifest is invalid");
+  const executable = actualExecutable(content) || content.declaredClass === "executable";
+  if (actualExecutable(content) && content.declaredClass !== "executable")
+    throw new SkillRegistryError("VES_SKILL_HIDDEN_EXECUTABLE", "Skill hides executable content");
+  if (executable && !hasApprovedExtension(skill))
+    throw new SkillRegistryError(
+      "VES_SKILL_EXECUTION_UNAUTHORIZED",
+      "Executable Skill content requires an approved Tool or Plugin"
+    );
 }

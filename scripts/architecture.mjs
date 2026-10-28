@@ -65,26 +65,30 @@ export function validateDependencyEdge(from, to) {
   return { allowed: false, code: ADAPTERS.has(from) ? "VES_ARCH_ADAPTER_COUPLING" : DENIAL_CODES.get(from) };
 }
 
+// vestra-launcher joins the inward core here: a third-party import in the public
+// launcher would become a runtime dependency of a published tarball, which the
+// artifact contract forbids.
+const THIRD_PARTY_FREE = new Set(["contracts", "domain", "application", "vestra-launcher"]);
+
+function importFinding(packageName, dependency) {
+  if (dependency.startsWith("@verchestra/")) {
+    const edge = validateDependencyEdge(packageName, dependency.slice("@verchestra/".length));
+    return edge.allowed ? null : { code: edge.code, detail: dependency };
+  }
+  if (dependency.startsWith("node:"))
+    return packageName === "domain" ? { code: "VES_ARCH_DOMAIN_NODE_IMPORT", detail: dependency } : null;
+  if (packageName === "contracts" && dependency.startsWith("ajv")) return null;
+  if (!dependency.startsWith(".") && THIRD_PARTY_FREE.has(packageName))
+    return { code: "VES_ARCH_THIRD_PARTY_IMPORT", detail: dependency };
+  return null;
+}
+
 export function inspectSource(packageName, source) {
   const findings = [];
   const imports = [...source.matchAll(/(?:from\s+|import\s*)["']([^"']+)["']/g)].map((match) => match[1]);
   for (const dependency of imports) {
-    if (dependency.startsWith("@verchestra/")) {
-      const edge = validateDependencyEdge(packageName, dependency.slice("@verchestra/".length));
-      if (!edge.allowed) findings.push({ code: edge.code, detail: dependency });
-    } else if (dependency.startsWith("node:")) {
-      if (packageName === "domain") findings.push({ code: "VES_ARCH_DOMAIN_NODE_IMPORT", detail: dependency });
-    } else if (packageName === "contracts" && dependency.startsWith("ajv")) {
-      continue;
-    } else if (
-      !dependency.startsWith(".") &&
-      // vestra-launcher joins the inward core here: a third-party import in the
-      // public launcher would become a runtime dependency of a published
-      // tarball, which the artifact contract forbids.
-      new Set(["contracts", "domain", "application", "vestra-launcher"]).has(packageName)
-    ) {
-      findings.push({ code: "VES_ARCH_THIRD_PARTY_IMPORT", detail: dependency });
-    }
+    const finding = importFinding(packageName, dependency);
+    if (finding !== null) findings.push(finding);
   }
   if (packageName === "domain" && /\bprocess\.env\b/.test(source)) {
     findings.push({ code: "VES_ARCH_DOMAIN_ENV_ACCESS", detail: "process.env" });
