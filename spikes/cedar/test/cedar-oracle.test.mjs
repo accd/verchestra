@@ -14,8 +14,8 @@ function inputFor(entry) {
   Object.assign(request.context, entry.context ?? {});
   Object.assign(request, entry.request ?? {});
   let engine = cedar;
-  let expectedEngineVersion = "4.12.0";
-  let expectedLanguageVersion = "4.5";
+  let expectedEngineVersion = "4.14.0";
+  let expectedLanguageVersion = "4.6";
 
   if (entry.scenario === "layer-forbid") {
     layers[entry.layer] = { blockRisk: lowerForbid };
@@ -30,6 +30,14 @@ function inputFor(entry) {
     layers.builtIn.bad = `permit(principal, action == Vestra::Action::"missing", resource);`;
   } else if (entry.scenario === "validation-attribute") {
     layers.builtIn.bad = `permit(principal, action, resource) when { context.notDeclared };`;
+  } else if (entry.scenario === "validation-action-application") {
+    // why: since Cedar 4.13 a scope no action applies to is a validation
+    // warning, not an error; the oracle must still refuse it.
+    layers.builtIn.bad = `permit(principal == Vestra::Resource::"x", action == Vestra::Action::"invoke", resource);`;
+  } else if (entry.scenario === "schema-external") {
+    // why: since Cedar 4.14 a schema may declare an `external` type; it parses,
+    // and only validation refuses it as incomplete.
+    activeSchema.Vestra.entityTypes.Thing = { external: true };
   } else if (entry.scenario === "request-principal") {
     request.principal = { type: "Vestra::Resource", id: "alice" };
   } else if (entry.scenario === "request-resource") {

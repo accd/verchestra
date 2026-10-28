@@ -8,11 +8,11 @@ import { baseLayers, baseRequest, schema } from "./fixtures.mjs";
 test("official ESM and Node loaders report the exact same engine versions", () => {
   assert.deepEqual(
     [esmCedar.getCedarVersion(), esmCedar.getCedarLangVersion(), esmCedar.getCedarSDKVersion()],
-    ["4.12.0", "4.5", "4.12.0"]
+    ["4.14.0", "4.6", "4.14.0"]
   );
   assert.deepEqual(
     [nodeCedar.getCedarVersion(), nodeCedar.getCedarLangVersion(), nodeCedar.getCedarSDKVersion()],
-    ["4.12.0", "4.5", "4.12.0"]
+    ["4.14.0", "4.6", "4.14.0"]
   );
 });
 
