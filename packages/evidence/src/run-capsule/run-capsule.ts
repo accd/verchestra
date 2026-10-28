@@ -457,7 +457,7 @@ function normalizeBudgetEvidence(value: unknown): RunCapsuleBudgetEvidence {
   });
 }
 
-const ERROR_STATUSES: readonly RunTerminalStatus[] = ["FAILED", "ABORTED", "INTERRUPTED"];
+const ERROR_STATUSES: ReadonlySet<RunTerminalStatus> = new Set(["FAILED", "ABORTED", "INTERRUPTED"]);
 
 interface TerminalEvidenceRefs {
   readonly verificationRef: RunCapsuleRef | undefined;
@@ -499,7 +499,7 @@ function assertCompletionAndErrorEvidence(
     fail("VES_RUN_CAPSULE_EVIDENCE_INCOMPLETE", "Completed runs require verification and Human Review");
   if (status === "COMPLETED" && terminalTransition.fromState !== "HUMAN_REVIEW")
     fail("VES_RUN_CAPSULE_INVALID", "Completed runs must close from HUMAN_REVIEW");
-  if (ERROR_STATUSES.includes(status) && terminalRefs.terminalErrorRef === undefined)
+  if (ERROR_STATUSES.has(status) && terminalRefs.terminalErrorRef === undefined)
     fail("VES_RUN_CAPSULE_EVIDENCE_INCOMPLETE", `${status} requires terminal error evidence`);
 }
 
@@ -525,7 +525,7 @@ function assertReviewAndErrorEvidenceAllowed(status: RunTerminalStatus, terminal
     (terminalRefs.verificationRef !== undefined || terminalRefs.humanReviewRef !== undefined)
   )
     fail("VES_RUN_CAPSULE_INVALID", "Only completed runs may carry final verification and Human Review");
-  if (!ERROR_STATUSES.includes(status) && terminalRefs.terminalErrorRef !== undefined)
+  if (!ERROR_STATUSES.has(status) && terminalRefs.terminalErrorRef !== undefined)
     fail("VES_RUN_CAPSULE_INVALID", "Terminal error evidence is not valid for this status");
 }
 
