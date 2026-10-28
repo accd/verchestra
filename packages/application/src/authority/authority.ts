@@ -3,7 +3,7 @@ import { IsoInstant, StableId, canonicalizeJsonV2, type Clock, type UuidSource }
 import type { ContentDigestPort } from "../sync/workspace-reconcile.ts";
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
-const VALUE = /^[A-Za-z0-9][A-Za-z0-9._:@/+\-]{0,255}$/u;
+const VALUE = /^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,255}$/u;
 const FORBIDDEN_AUTHORITY = /(?:\*|\binherit(?:ed)?\b)/iu;
 const APPROVAL_ACTIONS = ["execution", "handoff-publication", "support-export", "recovery"] as const;
 

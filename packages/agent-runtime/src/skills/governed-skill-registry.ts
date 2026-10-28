@@ -4,7 +4,7 @@ import { canonicalizeJsonV2, codeUnitCompare, dropUndefinedMembers } from "@verc
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const COMMIT = /^[a-f0-9]{40,64}$/u;
-const SAFE = /^[a-z0-9][a-z0-9._:@/+\-]{0,255}$/u;
+const SAFE = /^[a-z0-9][a-z0-9._:@/+-]{0,255}$/u;
 const PHASES = ["specify", "design", "tasks", "execute", "verify"] as const;
 type LifecyclePhase = (typeof PHASES)[number];
 

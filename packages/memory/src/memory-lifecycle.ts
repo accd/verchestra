@@ -185,7 +185,7 @@ const LIFECYCLE_COLUMNS = Object.freeze({
 });
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
-const SAFE = /^[A-Za-z0-9][A-Za-z0-9._:@/+\-]{0,511}$/u;
+const SAFE = /^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,511}$/u;
 const CLASSIFICATIONS: readonly Classification[] = ["public", "internal", "confidential", "restricted"];
 const PROTECTIONS: readonly ObjectProtection[] = ["none", "canonical", "required-evidence"];
 const SOURCE_KINDS = ["repository", "tracker", "knowledge", "memory", "database"] as const;

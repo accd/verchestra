@@ -11,7 +11,7 @@ import type { ContextDigestPort } from "../context/source-snapshots.ts";
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const ID = /^[a-z][a-z0-9.-]{0,126}[a-z0-9]$/u;
-const MODEL = /^[A-Za-z0-9][A-Za-z0-9._:/+\-]{0,255}$/u;
+const MODEL = /^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,255}$/u;
 const TRANSPORTS = ["local-cli", "local-api", "remote-api"] as const;
 const RISK_TIERS = ["low", "medium", "high"] as const;
 

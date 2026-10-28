@@ -9,7 +9,7 @@ import {
 import type { ContentDigestPort } from "../sync/workspace-reconcile.ts";
 
 const TRUST_CLASSES = ["authority", "verified-evidence", "untrusted-data", "generated-content"] as const;
-const SAFE_VALUE = /^[A-Za-z0-9][A-Za-z0-9._:@/+\-]{0,511}$/u;
+const SAFE_VALUE = /^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,511}$/u;
 
 export type TrustClass = (typeof TRUST_CLASSES)[number];
 

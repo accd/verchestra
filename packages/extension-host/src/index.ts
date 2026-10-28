@@ -151,7 +151,7 @@ function probeFailure(error: unknown): ProbeProtocolError {
     "code" in error &&
     typeof error.code === "string" &&
     /^VES_(?:POSTGRES|MYSQL_FAMILY|SQLSERVER|SAP_ASE|ORACLE|SQLITE|MONGODB)_[A-Z0-9_]+$/u.test(error.code) &&
-    /^[A-Za-z0-9 ,.\-]+$/u.test(error.message)
+    /^[A-Za-z0-9 ,.-]+$/u.test(error.message)
   ) {
     return new ProbeProtocolError(error.code, error.message);
   }

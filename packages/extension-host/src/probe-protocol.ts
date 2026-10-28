@@ -8,7 +8,7 @@ import { canonicalizeJsonV2, codeUnitCompare } from "@verchestra/domain";
 // trust rule import it from here, never from the package index that re-exports
 // them, so neither is evaluated through a cycle with the barrel.
 export const DIGEST = /^sha256:[a-f0-9]{64}$/u;
-const SAFE = /^[A-Za-z0-9][A-Za-z0-9._:@/+\-]{0,511}$/u;
+const SAFE = /^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,511}$/u;
 
 export type UnknownRecord = Readonly<Record<string, unknown>>;
 
