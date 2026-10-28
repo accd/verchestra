@@ -26,9 +26,6 @@
     "packages/agent-runtime/src/context/backend-serializers.ts :: Function 'validateTree'": [
       25
     ],
-    "packages/agent-runtime/src/context/context-compiler.ts :: Async method 'compile'": [
-      33
-    ],
     "packages/agent-runtime/src/context/context-compiler.ts :: Private method #validateSnapshot": [
       25
     ],
@@ -50,23 +47,14 @@
     "packages/agent-runtime/src/discovery/discovery-router.ts :: Method 'normalize'": [
       16
     ],
-    "packages/agent-runtime/src/models/model-router.ts :: Async method 'route'": [
-      17
-    ],
-    "packages/agent-runtime/src/models/model-router.ts :: Function 'validate'": [
-      37
-    ],
     "packages/agent-runtime/src/models/model-router.ts :: Private method #hardExclusions": [
       17
-    ],
-    "packages/agent-runtime/src/models/passport-registry.ts :: Function 'normalize'": [
-      27
     ],
     "packages/agent-runtime/src/skills/governed-skill-registry.ts :: Async method 'resolve'": [
       17
     ],
     "packages/agent-runtime/src/skills/governed-skill-registry.ts :: Private async method #validateLock": [
-      40
+      14
     ],
     "packages/application/src/authority/authority.ts :: Async method 'grant'": [
       13
@@ -146,9 +134,6 @@
     "packages/application/src/verification/verification.ts :: Async method 'verify'": [
       19
     ],
-    "packages/connectors/src/confluence/architecture-source.ts :: Private async method #attachments": [
-      20
-    ],
     "packages/connectors/src/confluence/architecture-source.ts :: Private method #normalizeRequest": [
       13
     ],
@@ -160,9 +145,6 @@
     ],
     "packages/connectors/src/jira/jira.ts :: Async method 'acquire'": [
       16
-    ],
-    "packages/connectors/src/jira/jira.ts :: Async method 'list'": [
-      15
     ],
     "packages/data-probe/src/database-knowledge.ts :: Arrow function": [
       12
@@ -270,20 +252,8 @@
     "packages/distribution/src/tuf-update-client.ts :: Private async method #stageComponent": [
       19
     ],
-    "packages/domain/src/canonical/canonical-guard.ts :: Function 'assertValue'": [
-      23
-    ],
     "packages/domain/src/workflow/workflow-machine.ts :: Function 'createHandoffSuccessor'": [
       13
-    ],
-    "packages/domain/src/workflow/workflow-machine.ts :: Function 'transition'": [
-      19
-    ],
-    "packages/domain/src/workflow/workflow-machine.ts :: Function 'validateWorkflowDefinition'": [
-      12
-    ],
-    "packages/domain/src/workflow/workflow-machine.ts :: Static method 'decide'": [
-      28
     ],
     "packages/drivers/src/claude-code-driver.ts :: Async method 'start'": [
       14
@@ -297,17 +267,11 @@
     "packages/drivers/src/index.ts :: Function 'validateEnvelope'": [
       33
     ],
-    "packages/drivers/src/index.ts :: Method 'push'": [
-      14
-    ],
-    "packages/drivers/src/opencode-driver.ts :: Async arrow function": [
-      27
-    ],
     "packages/drivers/src/opencode-driver.ts :: Async function 'productionServerFactory'": [
       11
     ],
     "packages/drivers/src/opencode-driver.ts :: Async method 'start'": [
-      22
+      13
     ],
     "packages/drivers/src/opencode-driver.ts :: Function 'flattenCatalog'": [
       16
@@ -364,13 +328,10 @@
       18
     ],
     "packages/extension-host/src/index.ts :: Async method 'execute'": [
-      23
+      12
     ],
     "packages/extension-host/src/probe-protocol.ts :: Function 'validateEnvelope'": [
       26
-    ],
-    "packages/extension-host/src/probe-protocol.ts :: Method 'push'": [
-      14
     ],
     "packages/extension-host/src/testing.ts :: Async generator method 'execute'": [
       11
@@ -474,15 +435,6 @@
     "packages/workspace/src/init/safe-init.ts :: Arrow function": [
       13
     ],
-    "packages/workspace/src/init/safe-init.ts :: Async method 'apply'": [
-      25
-    ],
-    "packages/workspace/src/init/safe-init.ts :: Async method 'preview'": [
-      16
-    ],
-    "packages/workspace/src/init/safe-init.ts :: Async method 'recover'": [
-      25
-    ],
     "packages/workspace/src/placement/artifact-placement.ts :: Function 'effectivePlacement'": [
       15
     ],
@@ -490,7 +442,7 @@
       12
     ],
     "packages/workspace/src/scanner/workspace-scanner.ts :: Async function 'walk'": [
-      22
+      11
     ],
     "scripts/agent-eval.mjs :: Function 'assertResults'": [
       11

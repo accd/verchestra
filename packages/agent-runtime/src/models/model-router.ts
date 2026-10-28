@@ -99,47 +99,63 @@ function validate(input: { readonly machineId: string; readonly roles: readonly 
   if (!Array.isArray(input.roles) || input.roles.length === 0) invalid("Role requirements are invalid");
   const prior = new Set<string>();
   for (const role of input.roles) {
-    if (!CAPABILITY.test(role.roleId) || prior.has(role.roleId)) invalid("Role identity is invalid or duplicated");
-    safeList(role.requiredCapabilities, "Required capabilities");
-    if (!RISK.includes(role.riskTier)) invalid("Risk tier is invalid");
-    if (!Number.isSafeInteger(role.minimumInputTokens) || role.minimumInputTokens <= 0)
-      invalid("Input capacity is invalid");
-    if (!Number.isSafeInteger(role.minimumOutputTokens) || role.minimumOutputTokens <= 0)
-      invalid("Output capacity is invalid");
-    if (
-      !Array.isArray(role.allowedTransports) ||
-      role.allowedTransports.length === 0 ||
-      role.allowedTransports.some((entry: (typeof TRANSPORT)[number]) => !TRANSPORT.includes(entry))
-    )
-      invalid("Allowed transports are invalid");
-    if (typeof role.dataHandling.requireTrainingDisabled !== "boolean") invalid("Training requirement is invalid");
-    if (
-      !Array.isArray(role.dataHandling.allowedRetention) ||
-      role.dataHandling.allowedRetention.length === 0 ||
-      role.dataHandling.allowedRetention.some((entry: (typeof RETENTION)[number]) => !RETENTION.includes(entry))
-    )
-      invalid("Retention requirements are invalid");
-    safeList(role.dataHandling.allowedRegions, "Allowed regions", /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u);
-    if (!new Set(["none", "preferred", "required"]).has(role.independence.mode))
-      invalid("Independence mode is invalid");
-    if (role.independence.mode === "none" && role.independence.fromRole !== undefined)
-      invalid("Independence reference is unexpected");
-    if (role.independence.mode !== "none" && !prior.has(role.independence.fromRole ?? ""))
-      invalid("Independence reference must name an earlier role");
-    if (!Array.isArray(role.preferredProviders) || !Array.isArray(role.preferredModels))
-      invalid("Model preferences are invalid");
-    for (const value of [...role.preferredProviders, ...role.preferredModels]) {
-      if (typeof value !== "string" || value.length === 0 || value.length > 256) invalid("Model preference is invalid");
-    }
-    if (role.allowDegraded !== undefined && typeof role.allowDegraded !== "boolean")
-      invalid("Degraded status policy is invalid");
-    if (
-      role.minimumConfidence !== undefined &&
-      (!Number.isFinite(role.minimumConfidence) || role.minimumConfidence < 0 || role.minimumConfidence > 1)
-    )
-      invalid("Minimum confidence is invalid");
+    validateRole(role, prior);
     prior.add(role.roleId);
   }
+}
+
+function isMemberList<T extends string>(value: readonly T[], members: readonly T[]): boolean {
+  return Array.isArray(value) && value.length > 0 && value.every((entry: T) => members.includes(entry));
+}
+
+function validateRole(role: ModelRoleRequirement, prior: ReadonlySet<string>): void {
+  if (!CAPABILITY.test(role.roleId) || prior.has(role.roleId)) invalid("Role identity is invalid or duplicated");
+  safeList(role.requiredCapabilities, "Required capabilities");
+  if (!RISK.includes(role.riskTier)) invalid("Risk tier is invalid");
+  if (!Number.isSafeInteger(role.minimumInputTokens) || role.minimumInputTokens <= 0)
+    invalid("Input capacity is invalid");
+  if (!Number.isSafeInteger(role.minimumOutputTokens) || role.minimumOutputTokens <= 0)
+    invalid("Output capacity is invalid");
+  if (!isMemberList(role.allowedTransports, TRANSPORT)) invalid("Allowed transports are invalid");
+  validateRoleDataHandling(role.dataHandling);
+  validateRoleIndependence(role.independence, prior);
+  validateRolePreferences(role);
+  validateRoleThresholds(role);
+}
+
+function validateRoleDataHandling(dataHandling: ModelRoleRequirement["dataHandling"]): void {
+  if (typeof dataHandling.requireTrainingDisabled !== "boolean") invalid("Training requirement is invalid");
+  if (!isMemberList(dataHandling.allowedRetention, RETENTION)) invalid("Retention requirements are invalid");
+  safeList(dataHandling.allowedRegions, "Allowed regions", /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u);
+}
+
+function validateRoleIndependence(
+  independence: ModelRoleRequirement["independence"],
+  prior: ReadonlySet<string>
+): void {
+  if (!new Set(["none", "preferred", "required"]).has(independence.mode)) invalid("Independence mode is invalid");
+  if (independence.mode === "none" && independence.fromRole !== undefined)
+    invalid("Independence reference is unexpected");
+  if (independence.mode !== "none" && !prior.has(independence.fromRole ?? ""))
+    invalid("Independence reference must name an earlier role");
+}
+
+function validateRolePreferences(role: ModelRoleRequirement): void {
+  if (!Array.isArray(role.preferredProviders) || !Array.isArray(role.preferredModels))
+    invalid("Model preferences are invalid");
+  for (const value of [...role.preferredProviders, ...role.preferredModels]) {
+    if (typeof value !== "string" || value.length === 0 || value.length > 256) invalid("Model preference is invalid");
+  }
+}
+
+function validateRoleThresholds(role: ModelRoleRequirement): void {
+  if (role.allowDegraded !== undefined && typeof role.allowDegraded !== "boolean")
+    invalid("Degraded status policy is invalid");
+  if (
+    role.minimumConfidence !== undefined &&
+    (!Number.isFinite(role.minimumConfidence) || role.minimumConfidence < 0 || role.minimumConfidence > 1)
+  )
+    invalid("Minimum confidence is invalid");
 }
 
 function preference(value: string, preferred: readonly string[]): number {
@@ -171,6 +187,51 @@ function compareRank(left: readonly (number | string)[], right: readonly (number
   return 0;
 }
 
+function assertMachineIndex(
+  index: MachinePassportIndex | undefined,
+  machineId: string
+): asserts index is MachinePassportIndex {
+  if (index === undefined)
+    throw new ModelRouterError("VES_MODEL_PROFILE_UNAVAILABLE", "Local Machine Profile is unavailable");
+  if (
+    index.machineId !== machineId ||
+    new Set(index.passports.map((entry) => entry.passportId)).size !== index.passports.length ||
+    index.passports.some((entry) => !Number.isSafeInteger(entry.revision) || entry.revision <= 0)
+  )
+    throw new ModelRouterError("VES_MODEL_PROFILE_INVALID", "Local Machine Profile is invalid");
+}
+
+interface RankedPassport {
+  readonly passport: PassportRecord;
+  readonly rank: readonly (number | string)[];
+}
+
+function candidateRank(
+  role: ModelRoleRequirement,
+  passport: PassportRecord,
+  reference: PassportRecord | undefined
+): readonly (number | string)[] {
+  const independent = passport.independenceClass !== reference?.independenceClass;
+  return deepFreeze([
+    role.independence.mode === "preferred" && !independent ? 1 : 0,
+    passport.status === "degraded" ? 1 : 0,
+    preference(passport.endpointIdentity.providerId, role.preferredProviders),
+    preference(passport.resolvedModelId, role.preferredModels),
+    -passport.confidence,
+    -passport.contextCapacity.maximumInputTokens,
+    passport.passportId
+  ]);
+}
+
+function independenceOutcome(
+  role: ModelRoleRequirement,
+  winner: PassportRecord,
+  reference: PassportRecord | undefined
+): ModelRouteSelection["independence"] {
+  if (role.independence.mode === "none") return "not-required";
+  return winner.independenceClass !== reference?.independenceClass ? "satisfied" : "degraded";
+}
+
 export class CapabilityModelRouter {
   readonly #passports: ModelPassportResolverPort;
 
@@ -181,14 +242,23 @@ export class CapabilityModelRouter {
   async route(input: { readonly machineId: string; readonly roles: readonly ModelRoleRequirement[] }) {
     validate(input);
     const index = await this.#passports.machineIndex(input.machineId);
-    if (index === undefined)
-      throw new ModelRouterError("VES_MODEL_PROFILE_UNAVAILABLE", "Local Machine Profile is unavailable");
-    if (
-      index.machineId !== input.machineId ||
-      new Set(index.passports.map((entry) => entry.passportId)).size !== index.passports.length ||
-      index.passports.some((entry) => !Number.isSafeInteger(entry.revision) || entry.revision <= 0)
-    )
-      throw new ModelRouterError("VES_MODEL_PROFILE_INVALID", "Local Machine Profile is invalid");
+    assertMachineIndex(index, input.machineId);
+    const { candidates, profileExclusions } = await this.#resolveCandidates(index);
+    const selections: ModelRouteSelection[] = [];
+    const selected = new Map<string, PassportRecord>();
+    for (const role of input.roles) {
+      const reference = role.independence.fromRole === undefined ? undefined : selected.get(role.independence.fromRole);
+      const { selection, passport } = this.#selectRole(role, candidates, profileExclusions, reference);
+      selections.push(selection);
+      selected.set(role.roleId, passport);
+    }
+    return deepFreeze({ schemaVersion: 1 as const, machineId: input.machineId, selections });
+  }
+
+  async #resolveCandidates(index: MachinePassportIndex): Promise<{
+    readonly candidates: readonly PassportRecord[];
+    readonly profileExclusions: readonly ModelExclusion[];
+  }> {
     // The Machine Profile lists Passports as a declared set; this order becomes
     // the candidate order, and candidate order is the tie-break the eligible
     // sort inherits for equal ranks (issue #58).
@@ -216,57 +286,44 @@ export class CapabilityModelRouter {
           reasons: deepFreeze([entry.passport === undefined ? "not-current" : "profile-revision-mismatch"])
         })
       );
-    const selections: ModelRouteSelection[] = [];
-    const selected = new Map<string, PassportRecord>();
+    return { candidates, profileExclusions };
+  }
 
-    for (const role of input.roles) {
-      const reference = role.independence.fromRole === undefined ? undefined : selected.get(role.independence.fromRole);
-      const exclusions: ModelExclusion[] = [...profileExclusions];
-      const eligible: { readonly passport: PassportRecord; readonly rank: readonly (number | string)[] }[] = [];
-      for (const passport of candidates) {
-        const reasons = this.#hardExclusions(role, passport, reference);
-        if (reasons.length > 0) {
-          exclusions.push(deepFreeze({ passportId: passport.passportId, reasons }));
-          continue;
-        }
-        const independent = passport.independenceClass !== reference?.independenceClass;
-        const rank = deepFreeze([
-          role.independence.mode === "preferred" && !independent ? 1 : 0,
-          passport.status === "degraded" ? 1 : 0,
-          preference(passport.endpointIdentity.providerId, role.preferredProviders),
-          preference(passport.resolvedModelId, role.preferredModels),
-          -passport.confidence,
-          -passport.contextCapacity.maximumInputTokens,
-          passport.passportId
-        ]);
-        eligible.push({ passport, rank });
+  #selectRole(
+    role: ModelRoleRequirement,
+    candidates: readonly PassportRecord[],
+    profileExclusions: readonly ModelExclusion[],
+    reference: PassportRecord | undefined
+  ): { readonly selection: ModelRouteSelection; readonly passport: PassportRecord } {
+    const exclusions: ModelExclusion[] = [...profileExclusions];
+    const eligible: RankedPassport[] = [];
+    for (const passport of candidates) {
+      const reasons = this.#hardExclusions(role, passport, reference);
+      if (reasons.length > 0) {
+        exclusions.push(deepFreeze({ passportId: passport.passportId, reasons }));
+        continue;
       }
-      eligible.sort((a, b) => compareRank(a.rank, b.rank));
-      const winner = eligible[0];
-      if (winner === undefined)
-        throw new ModelRouterError("VES_MODEL_NO_ELIGIBLE", "No Model Passport satisfies hard requirements", {
-          roleId: role.roleId,
-          // The reported exclusion list is the machine-readable explanation of
-          // a refusal; two machines must present it in the same order (#58).
-          exclusions: deepFreeze(normalizeDeclaredSet(exclusions, (entry) => entry.passportId))
-        });
-      const independent = winner.passport.independenceClass !== reference?.independenceClass;
-      const whenRequired = independent ? "satisfied" : "degraded";
-      const independence = role.independence.mode === "none" ? "not-required" : whenRequired;
-      selections.push(
-        deepFreeze({
-          roleId: role.roleId,
-          passportId: winner.passport.passportId,
-          revision: winner.passport.revision,
-          endpointModelIdentityDigest: winner.passport.endpointModelIdentityDigest,
-          independence,
-          ranking: winner.rank,
-          exclusions: deepFreeze(normalizeDeclaredSet(exclusions, (entry) => entry.passportId))
-        })
-      );
-      selected.set(role.roleId, winner.passport);
+      eligible.push({ passport, rank: candidateRank(role, passport, reference) });
     }
-    return deepFreeze({ schemaVersion: 1 as const, machineId: input.machineId, selections });
+    eligible.sort((a, b) => compareRank(a.rank, b.rank));
+    const winner = eligible[0];
+    if (winner === undefined)
+      throw new ModelRouterError("VES_MODEL_NO_ELIGIBLE", "No Model Passport satisfies hard requirements", {
+        roleId: role.roleId,
+        // The reported exclusion list is the machine-readable explanation of
+        // a refusal; two machines must present it in the same order (#58).
+        exclusions: deepFreeze(normalizeDeclaredSet(exclusions, (entry) => entry.passportId))
+      });
+    const selection = deepFreeze({
+      roleId: role.roleId,
+      passportId: winner.passport.passportId,
+      revision: winner.passport.revision,
+      endpointModelIdentityDigest: winner.passport.endpointModelIdentityDigest,
+      independence: independenceOutcome(role, winner.passport, reference),
+      ranking: winner.rank,
+      exclusions: deepFreeze(normalizeDeclaredSet(exclusions, (entry) => entry.passportId))
+    });
+    return { selection, passport: winner.passport };
   }
 
   #hardExclusions(

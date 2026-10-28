@@ -185,100 +185,23 @@ export class DeterministicContextCompiler {
     this.#validateSnapshot(input, recipeDigest);
 
     const required = new Set(input.recipe.requiredSources.map((entry) => entry.selectorId));
-    const selectors = new Map(
-      [...input.recipe.requiredSources, ...input.recipe.optionalSources].map((entry) => [entry.selectorId, entry])
-    );
     const unavailable = input.snapshot.sources.find(
       (source) => required.has(source.selectorId) && source.status !== "available"
     );
     if (unavailable !== undefined)
       fail("VES_CONTEXT_REQUIRED_SOURCE_UNAVAILABLE", "A required Context Source is unavailable");
 
-    const candidates: CompiledContextFragment[] = [];
     const omissions: ContextOmission[] = [];
-    for (const source of input.snapshot.sources) {
-      const selector = selectors.get(source.selectorId);
-      if (selector === undefined) fail("VES_CONTEXT_SNAPSHOT_INVALID", "Snapshot selector is unknown");
-      const priority = priorityFor(selector, required.has(source.selectorId));
-      for (const fragment of source.fragments) {
-        const estimatedTokens = this.#tokens(fragment.content);
-        const candidate = deepFreeze({ ...fragment, priority, estimatedTokens });
-        if (source.status === "stale") {
-          omissions.push(this.#omission(candidate, "stale", source));
-        } else if (source.status === "available") candidates.push(candidate);
-      }
-    }
-
-    const deduplicated: CompiledContextFragment[] = [];
-    const byContent = new Map<string, CompiledContextFragment[]>();
-    for (const candidate of candidates) {
-      const group = byContent.get(candidate.contentDigest) ?? [];
-      group.push(candidate);
-      byContent.set(candidate.contentDigest, group);
-    }
-    for (const group of byContent.values()) {
-      group.sort(rank);
-      const winner = group[0];
-      if (winner === undefined) continue;
-      deduplicated.push(winner);
-      for (const duplicate of group.slice(1))
-        omissions.push(this.#omission(duplicate, "duplicate", this.#source(input.snapshot, duplicate)));
-    }
-    deduplicated.sort(rank);
-
-    const budgets = new Map(input.recipe.priorityBudgets.map((entry) => [entry.priority, entry.maximumTokens]));
-    const mandatory = deduplicated.filter((entry) => entry.priority === "mandatory");
-    const mandatoryTokens = mandatory.reduce((sum, entry) => sum + entry.estimatedTokens, 0);
-    if (mandatoryTokens > input.capacityTokens || mandatoryTokens > (budgets.get("mandatory") ?? Infinity))
-      fail("VES_CONTEXT_CAPACITY_INELIGIBLE", "Mandatory context exceeds verified capacity");
-
-    const included = [...mandatory];
-    let total = mandatoryTokens;
-    const used = new Map<Priority, number>([["mandatory", mandatoryTokens]]);
-    for (const candidate of deduplicated.filter((entry) => entry.priority !== "mandatory")) {
-      const priorityUsed = used.get(candidate.priority) ?? 0;
-      const priorityBudget = budgets.get(candidate.priority) ?? 0;
-      const source = this.#source(input.snapshot, candidate);
-      if (priorityUsed + candidate.estimatedTokens > priorityBudget) {
-        omissions.push(this.#omission(candidate, "priority-budget", source));
-      } else if (total + candidate.estimatedTokens > input.capacityTokens) {
-        omissions.push(this.#omission(candidate, "model-capacity", source));
-      } else {
-        included.push(candidate);
-        total += candidate.estimatedTokens;
-        used.set(candidate.priority, priorityUsed + candidate.estimatedTokens);
-      }
-    }
+    const candidates = this.#collectCandidates(input.recipe, input.snapshot, required, omissions);
+    const deduplicated = this.#deduplicate(candidates, input.snapshot, omissions);
+    const { included, total, mandatoryTokens } = this.#fitBudgets(deduplicated, input, omissions);
     included.sort(rank);
     omissions.sort(
       (a, b) => PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority] || codeUnitCompare(a.fragmentId, b.fragmentId)
     );
     if (included.length === 0) fail("VES_CONTEXT_REQUIRED_SOURCE_UNAVAILABLE", "No authorized context remains");
 
-    let egress: Readonly<Record<string, unknown>> & { readonly allowed: boolean; readonly code: string };
-    try {
-      egress = await this.#egress.authorize({
-        workspaceId: input.workspaceId,
-        runId: input.runId,
-        mode: input.networkMode,
-        fragments: included as readonly TrustEnvelope[],
-        purpose: input.recipe.egressPurpose,
-        destinationId: input.destinationId,
-        retention: input.retention,
-        approvalRef: input.approvalRef,
-        capabilityRef: input.capabilityRef
-      });
-    } catch {
-      fail("VES_CONTEXT_EGRESS_DENIED", "Context egress authorization failed");
-    }
-    if (!egress.allowed) fail("VES_CONTEXT_EGRESS_DENIED", "Context egress was denied");
-    if (
-      typeof egress["egressDigest"] !== "string" ||
-      typeof egress["policyEvidenceDigest"] !== "string" ||
-      !DIGEST.test(egress["egressDigest"]) ||
-      !DIGEST.test(egress["policyEvidenceDigest"])
-    )
-      fail("VES_CONTEXT_EGRESS_DENIED", "Context egress evidence is incomplete");
+    const egress = await this.#authorizeEgress(input, included);
 
     const semanticObligations = [...input.recipe.semanticObligations].sort(codeUnitCompare);
     const semanticObligationsDigest = this.#digest.sha256(canonicalizeJsonV2(semanticObligations));
@@ -313,14 +236,14 @@ export class DeterministicContextCompiler {
           )
         )
       ].sort(codeUnitCompare),
-      policyDecisionRefs: [egress["policyEvidenceDigest"]],
+      policyDecisionRefs: [egress.policyEvidenceDigest],
       estimatedTokens: total,
       mandatoryTokens,
       tokenizer: this.#tokenizer,
       semanticObligations,
       semanticObligationsDigest,
       serializedMeaningDigest,
-      egressDigest: egress["egressDigest"],
+      egressDigest: egress.egressDigest,
       compiledAt: input.snapshot.evaluatedAt
     });
     const manifestId = this.#digest.sha256(canonicalizeJsonV2(unsigned));
@@ -381,6 +304,128 @@ export class DeterministicContextCompiler {
         ids.add(fragment.fragmentId);
       }
     }
+  }
+
+  #collectCandidates(
+    recipe: ContextRecipe,
+    snapshot: ContextSnapshot,
+    required: ReadonlySet<string>,
+    omissions: ContextOmission[]
+  ): CompiledContextFragment[] {
+    const selectors = new Map(
+      [...recipe.requiredSources, ...recipe.optionalSources].map((entry) => [entry.selectorId, entry])
+    );
+    const candidates: CompiledContextFragment[] = [];
+    for (const source of snapshot.sources) {
+      const selector = selectors.get(source.selectorId);
+      if (selector === undefined) fail("VES_CONTEXT_SNAPSHOT_INVALID", "Snapshot selector is unknown");
+      const priority = priorityFor(selector, required.has(source.selectorId));
+      for (const fragment of source.fragments) {
+        const estimatedTokens = this.#tokens(fragment.content);
+        const candidate = deepFreeze({ ...fragment, priority, estimatedTokens });
+        if (source.status === "stale") {
+          omissions.push(this.#omission(candidate, "stale", source));
+        } else if (source.status === "available") candidates.push(candidate);
+      }
+    }
+    return candidates;
+  }
+
+  #deduplicate(
+    candidates: readonly CompiledContextFragment[],
+    snapshot: ContextSnapshot,
+    omissions: ContextOmission[]
+  ): CompiledContextFragment[] {
+    const deduplicated: CompiledContextFragment[] = [];
+    const byContent = new Map<string, CompiledContextFragment[]>();
+    for (const candidate of candidates) {
+      const group = byContent.get(candidate.contentDigest) ?? [];
+      group.push(candidate);
+      byContent.set(candidate.contentDigest, group);
+    }
+    for (const group of byContent.values()) {
+      group.sort(rank);
+      const winner = group[0];
+      if (winner === undefined) continue;
+      deduplicated.push(winner);
+      for (const duplicate of group.slice(1))
+        omissions.push(this.#omission(duplicate, "duplicate", this.#source(snapshot, duplicate)));
+    }
+    deduplicated.sort(rank);
+    return deduplicated;
+  }
+
+  #fitBudgets(
+    deduplicated: readonly CompiledContextFragment[],
+    input: { readonly recipe: ContextRecipe; readonly snapshot: ContextSnapshot; readonly capacityTokens: number },
+    omissions: ContextOmission[]
+  ): { readonly included: CompiledContextFragment[]; readonly total: number; readonly mandatoryTokens: number } {
+    const budgets = new Map(input.recipe.priorityBudgets.map((entry) => [entry.priority, entry.maximumTokens]));
+    const mandatory = deduplicated.filter((entry) => entry.priority === "mandatory");
+    const mandatoryTokens = mandatory.reduce((sum, entry) => sum + entry.estimatedTokens, 0);
+    if (mandatoryTokens > input.capacityTokens || mandatoryTokens > (budgets.get("mandatory") ?? Infinity))
+      fail("VES_CONTEXT_CAPACITY_INELIGIBLE", "Mandatory context exceeds verified capacity");
+
+    const included = [...mandatory];
+    let total = mandatoryTokens;
+    const used = new Map<Priority, number>([["mandatory", mandatoryTokens]]);
+    for (const candidate of deduplicated.filter((entry) => entry.priority !== "mandatory")) {
+      const priorityUsed = used.get(candidate.priority) ?? 0;
+      const priorityBudget = budgets.get(candidate.priority) ?? 0;
+      const source = this.#source(input.snapshot, candidate);
+      if (priorityUsed + candidate.estimatedTokens > priorityBudget) {
+        omissions.push(this.#omission(candidate, "priority-budget", source));
+      } else if (total + candidate.estimatedTokens > input.capacityTokens) {
+        omissions.push(this.#omission(candidate, "model-capacity", source));
+      } else {
+        included.push(candidate);
+        total += candidate.estimatedTokens;
+        used.set(candidate.priority, priorityUsed + candidate.estimatedTokens);
+      }
+    }
+    return { included, total, mandatoryTokens };
+  }
+
+  async #authorizeEgress(
+    input: {
+      readonly workspaceId: string;
+      readonly runId: string;
+      readonly recipe: ContextRecipe;
+      readonly networkMode: "online" | "offline" | "no-egress";
+      readonly destinationId: string;
+      readonly retention: string;
+      readonly approvalRef: string;
+      readonly capabilityRef: string;
+    },
+    included: readonly CompiledContextFragment[]
+  ): Promise<{ readonly egressDigest: string; readonly policyEvidenceDigest: string }> {
+    let egress: Readonly<Record<string, unknown>> & { readonly allowed: boolean; readonly code: string };
+    try {
+      egress = await this.#egress.authorize({
+        workspaceId: input.workspaceId,
+        runId: input.runId,
+        mode: input.networkMode,
+        fragments: included as readonly TrustEnvelope[],
+        purpose: input.recipe.egressPurpose,
+        destinationId: input.destinationId,
+        retention: input.retention,
+        approvalRef: input.approvalRef,
+        capabilityRef: input.capabilityRef
+      });
+    } catch {
+      fail("VES_CONTEXT_EGRESS_DENIED", "Context egress authorization failed");
+    }
+    if (!egress.allowed) fail("VES_CONTEXT_EGRESS_DENIED", "Context egress was denied");
+    const egressDigest = egress["egressDigest"];
+    const policyEvidenceDigest = egress["policyEvidenceDigest"];
+    if (
+      typeof egressDigest !== "string" ||
+      typeof policyEvidenceDigest !== "string" ||
+      !DIGEST.test(egressDigest) ||
+      !DIGEST.test(policyEvidenceDigest)
+    )
+      fail("VES_CONTEXT_EGRESS_DENIED", "Context egress evidence is incomplete");
+    return { egressDigest, policyEvidenceDigest };
   }
 
   #tokens(content: string): number {

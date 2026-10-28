@@ -261,6 +261,32 @@ const REQUIRED_EDGE_KEYS = new Set([
 
 const edgeKey = (value: TransitionDefinition): string => `${value.from}|${value.command}|${value.to}`;
 
+// Each rule names the violation a transition records when its predicate holds;
+// rules are checked, and violations reported, in this order.
+const TRANSITION_RULES: readonly {
+  readonly kind: string;
+  readonly violates: (transition: TransitionDefinition) => boolean;
+}[] = [
+  {
+    kind: "terminal-outgoing",
+    violates: (transition) => (TERMINAL_WORKFLOW_STATES as readonly RunState[]).includes(transition.from)
+  },
+  {
+    kind: "approval-bypass",
+    violates: (transition) => transition.from === "EXECUTION_READY" && transition.to === "IMPLEMENTING"
+  },
+  {
+    kind: "human-review-bypass",
+    violates: (transition) =>
+      transition.to === "COMPLETED" && edgeKey(transition) !== "HUMAN_REVIEW|APPROVE_HUMAN_REVIEW|COMPLETED"
+  },
+  {
+    kind: "repair-scope-bypass",
+    violates: (transition) =>
+      transition.command === "EXPAND_REPAIR_SCOPE" && transition.to !== "AWAITING_EXECUTION_APPROVAL"
+  }
+];
+
 export function validateWorkflowDefinition(definition: readonly TransitionDefinition[]): readonly string[] {
   const violations: string[] = [];
   const pairKeys = new Set<string>();
@@ -269,17 +295,8 @@ export function validateWorkflowDefinition(definition: readonly TransitionDefini
     const pair = `${transition.from}|${transition.command}`;
     if (pairKeys.has(pair)) violations.push(`duplicate:${pair}`);
     pairKeys.add(pair);
-    if ((TERMINAL_WORKFLOW_STATES as readonly RunState[]).includes(transition.from)) {
-      violations.push(`terminal-outgoing:${edgeKey(transition)}`);
-    }
-    if (transition.from === "EXECUTION_READY" && transition.to === "IMPLEMENTING") {
-      violations.push(`approval-bypass:${edgeKey(transition)}`);
-    }
-    if (transition.to === "COMPLETED" && edgeKey(transition) !== "HUMAN_REVIEW|APPROVE_HUMAN_REVIEW|COMPLETED") {
-      violations.push(`human-review-bypass:${edgeKey(transition)}`);
-    }
-    if (transition.command === "EXPAND_REPAIR_SCOPE" && transition.to !== "AWAITING_EXECUTION_APPROVAL") {
-      violations.push(`repair-scope-bypass:${edgeKey(transition)}`);
+    for (const rule of TRANSITION_RULES) {
+      if (rule.violates(transition)) violations.push(`${rule.kind}:${edgeKey(transition)}`);
     }
   }
   for (const required of REQUIRED_EDGE_KEYS) {
@@ -296,6 +313,44 @@ function reject(code: WorkflowRejectionCode): WorkflowDecision {
   return { accepted: false, code };
 }
 
+function approvalAfter(current: RunSnapshot, command: WorkflowCommand, eventType: string): RunSnapshot["approval"] {
+  if (
+    command.type === "INVALIDATE_EXECUTION_APPROVAL" ||
+    command.type === "EXPAND_REPAIR_SCOPE" ||
+    command.type === "PREPARE_HANDOFF" ||
+    eventType === "EXECUTION_APPROVAL_INVALIDATED"
+  ) {
+    return undefined;
+  }
+  if (command.type === "GRANT_EXECUTION_APPROVAL") {
+    return Object.freeze({ bindingDigest: command.approvalBindingDigest as string });
+  }
+  return current.approval;
+}
+
+function repairCyclesAfter(current: RunSnapshot, command: WorkflowCommand, nextState: RunState): number {
+  if (command.type === "REQUEST_REPAIR" && nextState === "REPAIRING") return current.repairCycles + 1;
+  if (command.type === "RESOLVE_REPAIR") return 0;
+  return current.repairCycles;
+}
+
+// Returns undefined when a handoff names a successor the Run cannot have.
+function successorAfter(
+  current: RunSnapshot,
+  command: WorkflowCommand
+): { readonly successorRunId: string | undefined } | undefined {
+  if (command.type !== "PREPARE_HANDOFF" || command.successorRunId === undefined) {
+    return { successorRunId: current.successorRunId };
+  }
+  try {
+    StableId.parse(command.successorRunId, "run");
+  } catch {
+    return undefined;
+  }
+  if (command.successorRunId === current.runId) return undefined;
+  return { successorRunId: command.successorRunId };
+}
+
 function transition(
   current: RunSnapshot,
   command: WorkflowCommand,
@@ -303,33 +358,13 @@ function transition(
   eventType = `${command.type}_ACCEPTED`
 ): WorkflowDecision {
   const terminal = (TERMINAL_WORKFLOW_STATES as readonly RunState[]).includes(nextState);
-  let approval = current.approval;
-  let repairCycles = current.repairCycles;
-  let implementationActorId = current.implementationActorId;
-  let successorRunId = current.successorRunId;
-  if (command.type === "GRANT_EXECUTION_APPROVAL") {
-    approval = Object.freeze({ bindingDigest: command.approvalBindingDigest as string });
-  }
-  if (
-    command.type === "INVALIDATE_EXECUTION_APPROVAL" ||
-    command.type === "EXPAND_REPAIR_SCOPE" ||
-    command.type === "PREPARE_HANDOFF" ||
-    eventType === "EXECUTION_APPROVAL_INVALIDATED"
-  ) {
-    approval = undefined;
-  }
-  if (command.type === "REQUEST_REPAIR" && nextState === "REPAIRING") repairCycles += 1;
-  if (command.type === "RESOLVE_REPAIR") repairCycles = 0;
-  if (command.type === "START_IMPLEMENTATION") implementationActorId = command.actorId;
-  if (command.type === "PREPARE_HANDOFF" && command.successorRunId !== undefined) {
-    try {
-      StableId.parse(command.successorRunId, "run");
-    } catch {
-      return reject("VES_WORKFLOW_COMMAND_REJECTED");
-    }
-    if (command.successorRunId === current.runId) return reject("VES_WORKFLOW_COMMAND_REJECTED");
-    successorRunId = command.successorRunId;
-  }
+  const approval = approvalAfter(current, command, eventType);
+  const repairCycles = repairCyclesAfter(current, command, nextState);
+  const implementationActorId =
+    command.type === "START_IMPLEMENTATION" ? command.actorId : current.implementationActorId;
+  const successor = successorAfter(current, command);
+  if (successor === undefined) return reject("VES_WORKFLOW_COMMAND_REJECTED");
+  const { successorRunId } = successor;
 
   const version = current.version + 1;
   const snapshot: RunSnapshot = Object.freeze({
@@ -370,6 +405,69 @@ function transition(
   });
 }
 
+interface DecisionInput {
+  readonly current: RunSnapshot;
+  readonly command: WorkflowCommand;
+  readonly definition: TransitionDefinition;
+}
+
+// A guard returns the decision that pre-empts the defined transition, or
+// undefined to let the next guard decide. Guards run in this order.
+const DECISION_GUARDS: readonly ((input: DecisionInput) => WorkflowDecision | undefined)[] = [
+  ({ current, command }) =>
+    command.type === "COMPLETE_RECOVERY" && current.runKind !== "recovery"
+      ? reject("VES_WORKFLOW_RUN_KIND_MISMATCH")
+      : undefined,
+  ({ command, definition }) =>
+    definition.actorRole !== undefined && definition.actorRole !== command.actorRole
+      ? reject("VES_WORKFLOW_ACTOR_DENIED")
+      : undefined,
+  ({ command, definition }) =>
+    definition.requiredEvidence?.some((required) => !command.evidence.includes(required)) === true
+      ? reject("VES_WORKFLOW_EVIDENCE_REQUIRED")
+      : undefined,
+  ({ command }) => (command.type === "GRANT_EXECUTION_APPROVAL" ? grantApprovalGuard(command) : undefined),
+  ({ current, command }) =>
+    command.type === "START_IMPLEMENTATION" ? startImplementationGuard(current, command) : undefined,
+  ({ current, command }) =>
+    (command.type === "REQUEST_REPAIR" || command.type === "PASS_VERIFICATION") &&
+    current.implementationActorId !== undefined &&
+    current.implementationActorId === command.actorId
+      ? reject("VES_WORKFLOW_AUTHOR_VERIFIER_CONFLICT")
+      : undefined,
+  ({ current, command }) =>
+    command.type === "COMPLETE_HANDOFF" && current.state === "HANDOFF_PREPARING" && command.publicationRequired === true
+      ? reject("VES_WORKFLOW_HANDOFF_APPROVAL_REQUIRED")
+      : undefined,
+  ({ current, command }) =>
+    command.type === "REQUEST_REPAIR" && current.repairCycles >= 3
+      ? transition(current, command, "HUMAN_RESOLUTION_REQUIRED", "REPAIR_LIMIT_REACHED")
+      : undefined
+];
+
+function grantApprovalGuard(command: WorkflowCommand): WorkflowDecision | undefined {
+  if (
+    command.approvalBindingDigest === undefined ||
+    command.currentBindingDigest === undefined ||
+    command.approvalBindingDigest !== command.currentBindingDigest ||
+    !isCanonicalDigest(command.approvalBindingDigest)
+  ) {
+    return reject("VES_WORKFLOW_APPROVAL_STALE");
+  }
+  return undefined;
+}
+
+function startImplementationGuard(current: RunSnapshot, command: WorkflowCommand): WorkflowDecision | undefined {
+  if (current.approval === undefined) return reject("VES_WORKFLOW_APPROVAL_REQUIRED");
+  if (
+    current.approval.bindingDigest !== command.currentBindingDigest ||
+    !isCanonicalDigest(current.approval.bindingDigest)
+  ) {
+    return transition(current, command, "AWAITING_EXECUTION_APPROVAL", "EXECUTION_APPROVAL_INVALIDATED");
+  }
+  return undefined;
+}
+
 export class WorkflowMachine {
   static decide(current: RunSnapshot, command: WorkflowCommand): WorkflowDecision {
     if (command.expectedVersion !== current.version) return reject("VES_WORKFLOW_VERSION_CONFLICT");
@@ -381,50 +479,9 @@ export class WorkflowMachine {
       (candidate) => candidate.from === current.state && candidate.command === command.type
     );
     if (definition === undefined) return reject("VES_WORKFLOW_COMMAND_REJECTED");
-    if (command.type === "COMPLETE_RECOVERY" && current.runKind !== "recovery") {
-      return reject("VES_WORKFLOW_RUN_KIND_MISMATCH");
-    }
-    if (definition.actorRole !== undefined && definition.actorRole !== command.actorRole) {
-      return reject("VES_WORKFLOW_ACTOR_DENIED");
-    }
-    if (definition.requiredEvidence?.some((required) => !command.evidence.includes(required)) === true) {
-      return reject("VES_WORKFLOW_EVIDENCE_REQUIRED");
-    }
-    if (command.type === "GRANT_EXECUTION_APPROVAL") {
-      if (
-        command.approvalBindingDigest === undefined ||
-        command.currentBindingDigest === undefined ||
-        command.approvalBindingDigest !== command.currentBindingDigest ||
-        !isCanonicalDigest(command.approvalBindingDigest)
-      ) {
-        return reject("VES_WORKFLOW_APPROVAL_STALE");
-      }
-    }
-    if (command.type === "START_IMPLEMENTATION") {
-      if (current.approval === undefined) return reject("VES_WORKFLOW_APPROVAL_REQUIRED");
-      if (
-        current.approval.bindingDigest !== command.currentBindingDigest ||
-        !isCanonicalDigest(current.approval.bindingDigest)
-      ) {
-        return transition(current, command, "AWAITING_EXECUTION_APPROVAL", "EXECUTION_APPROVAL_INVALIDATED");
-      }
-    }
-    if (
-      (command.type === "REQUEST_REPAIR" || command.type === "PASS_VERIFICATION") &&
-      current.implementationActorId !== undefined &&
-      current.implementationActorId === command.actorId
-    ) {
-      return reject("VES_WORKFLOW_AUTHOR_VERIFIER_CONFLICT");
-    }
-    if (
-      command.type === "COMPLETE_HANDOFF" &&
-      current.state === "HANDOFF_PREPARING" &&
-      command.publicationRequired === true
-    ) {
-      return reject("VES_WORKFLOW_HANDOFF_APPROVAL_REQUIRED");
-    }
-    if (command.type === "REQUEST_REPAIR" && current.repairCycles >= 3) {
-      return transition(current, command, "HUMAN_RESOLUTION_REQUIRED", "REPAIR_LIMIT_REACHED");
+    for (const guard of DECISION_GUARDS) {
+      const decision = guard({ current, command, definition });
+      if (decision !== undefined) return decision;
     }
     return transition(current, command, definition.to);
   }

@@ -123,55 +123,79 @@ function positive(value: unknown, label: string): asserts value is number {
   if (!Number.isSafeInteger(value) || (value as number) <= 0) fail("VES_PASSPORT_INPUT_INVALID", `${label} is invalid`);
 }
 
+function validateEndpointAndModel(input: PassportCandidate): void {
+  StableId.parse(input.passportId, "passport");
+  StableId.parse(input.endpointIdentity.endpointId, "endpoint");
+  safe(input.endpointIdentity.providerId, "providerId");
+  safe(input.endpointIdentity.driverId, "driverId");
+  if (!TRANSPORTS.includes(input.endpointIdentity.transport))
+    fail("VES_PASSPORT_INPUT_INVALID", "transport is invalid");
+  digest(input.endpointIdentity.locationDigest, "locationDigest");
+  safe(input.requestedModelId, "requestedModelId", MODEL);
+  safe(input.resolvedModelId, "resolvedModelId", MODEL);
+  if (input.providerRevision !== undefined) safe(input.providerRevision, "providerRevision", MODEL);
+}
+
+function validateDataHandling(dataHandling: PassportCandidate["dataHandling"]): void {
+  if (dataHandling.training !== "disabled" && dataHandling.training !== "provider-policy")
+    fail("VES_PASSPORT_INPUT_INVALID", "training policy is invalid");
+  if (!["none", "transient", "provider-policy"].includes(dataHandling.retention))
+    fail("VES_PASSPORT_INPUT_INVALID", "retention policy is invalid");
+  safe(dataHandling.region, "region", MODEL);
+}
+
+function validateCapabilities(input: PassportCandidate): void {
+  if (!Array.isArray(input.observedCapabilities) || input.observedCapabilities.length === 0)
+    fail("VES_PASSPORT_INPUT_INVALID", "capabilities are invalid");
+  const names = new Set<string>();
+  for (const capability of input.observedCapabilities) {
+    safe(capability.capability, "capability");
+    if (names.has(capability.capability) || typeof capability.supported !== "boolean")
+      fail("VES_PASSPORT_INPUT_INVALID", "capability is duplicated or invalid");
+    names.add(capability.capability);
+    digest(capability.evidenceRef, "capability evidence");
+  }
+}
+
+function validateCapacityAndEvidence(input: PassportCandidate): void {
+  positive(input.contextCapacity.maximumInputTokens, "maximumInputTokens");
+  positive(input.contextCapacity.maximumOutputTokens, "maximumOutputTokens");
+  digest(input.contextCapacity.evidenceRef, "capacity evidence");
+  if (!Array.isArray(input.driverContractEvidence) || input.driverContractEvidence.length === 0)
+    fail("VES_PASSPORT_INPUT_INVALID", "driver evidence is invalid");
+  for (const evidence of input.driverContractEvidence) digest(evidence, "driver evidence");
+  digest(input.evaluationCampaignRef, "evaluation campaign");
+}
+
+function validateRiskAndConfidence(input: PassportCandidate): void {
+  if (
+    !Array.isArray(input.eligibleRiskTiers) ||
+    input.eligibleRiskTiers.length === 0 ||
+    input.eligibleRiskTiers.some((entry) => !RISK_TIERS.includes(entry))
+  )
+    fail("VES_PASSPORT_INPUT_INVALID", "risk tiers are invalid");
+  safe(input.independenceClass, "independenceClass");
+  if (!Number.isFinite(input.confidence) || input.confidence < 0 || input.confidence > 1)
+    fail("VES_PASSPORT_INPUT_INVALID", "confidence is invalid");
+}
+
+function validateStatusAndExpiry(input: PassportCandidate, now: string, allowExpired: boolean): void {
+  if (input.status !== "qualified" && input.status !== "degraded")
+    fail("VES_PASSPORT_INPUT_INVALID", "status is invalid");
+  const issued = IsoInstant.parse(input.issuedAt);
+  const expires = IsoInstant.parse(input.expiresAt);
+  if (issued.compare(expires) >= 0 || (!allowExpired && expires.compare(IsoInstant.parse(now)) <= 0))
+    fail("VES_PASSPORT_INPUT_INVALID", "expiry is invalid");
+}
+
 function normalize(input: PassportCandidate, now: string, allowExpired: boolean): PassportCandidate {
   try {
-    StableId.parse(input.passportId, "passport");
-    StableId.parse(input.endpointIdentity.endpointId, "endpoint");
-    safe(input.endpointIdentity.providerId, "providerId");
-    safe(input.endpointIdentity.driverId, "driverId");
-    if (!TRANSPORTS.includes(input.endpointIdentity.transport))
-      fail("VES_PASSPORT_INPUT_INVALID", "transport is invalid");
-    digest(input.endpointIdentity.locationDigest, "locationDigest");
-    safe(input.requestedModelId, "requestedModelId", MODEL);
-    safe(input.resolvedModelId, "resolvedModelId", MODEL);
-    if (input.providerRevision !== undefined) safe(input.providerRevision, "providerRevision", MODEL);
-    if (input.dataHandling.training !== "disabled" && input.dataHandling.training !== "provider-policy")
-      fail("VES_PASSPORT_INPUT_INVALID", "training policy is invalid");
-    if (!["none", "transient", "provider-policy"].includes(input.dataHandling.retention))
-      fail("VES_PASSPORT_INPUT_INVALID", "retention policy is invalid");
-    safe(input.dataHandling.region, "region", MODEL);
-    if (!Array.isArray(input.observedCapabilities) || input.observedCapabilities.length === 0)
-      fail("VES_PASSPORT_INPUT_INVALID", "capabilities are invalid");
-    const names = new Set<string>();
-    for (const capability of input.observedCapabilities) {
-      safe(capability.capability, "capability");
-      if (names.has(capability.capability) || typeof capability.supported !== "boolean")
-        fail("VES_PASSPORT_INPUT_INVALID", "capability is duplicated or invalid");
-      names.add(capability.capability);
-      digest(capability.evidenceRef, "capability evidence");
-    }
-    positive(input.contextCapacity.maximumInputTokens, "maximumInputTokens");
-    positive(input.contextCapacity.maximumOutputTokens, "maximumOutputTokens");
-    digest(input.contextCapacity.evidenceRef, "capacity evidence");
-    if (!Array.isArray(input.driverContractEvidence) || input.driverContractEvidence.length === 0)
-      fail("VES_PASSPORT_INPUT_INVALID", "driver evidence is invalid");
-    for (const evidence of input.driverContractEvidence) digest(evidence, "driver evidence");
-    digest(input.evaluationCampaignRef, "evaluation campaign");
-    if (
-      !Array.isArray(input.eligibleRiskTiers) ||
-      input.eligibleRiskTiers.length === 0 ||
-      input.eligibleRiskTiers.some((entry) => !RISK_TIERS.includes(entry))
-    )
-      fail("VES_PASSPORT_INPUT_INVALID", "risk tiers are invalid");
-    safe(input.independenceClass, "independenceClass");
-    if (!Number.isFinite(input.confidence) || input.confidence < 0 || input.confidence > 1)
-      fail("VES_PASSPORT_INPUT_INVALID", "confidence is invalid");
-    if (input.status !== "qualified" && input.status !== "degraded")
-      fail("VES_PASSPORT_INPUT_INVALID", "status is invalid");
-    const issued = IsoInstant.parse(input.issuedAt);
-    const expires = IsoInstant.parse(input.expiresAt);
-    if (issued.compare(expires) >= 0 || (!allowExpired && expires.compare(IsoInstant.parse(now)) <= 0))
-      fail("VES_PASSPORT_INPUT_INVALID", "expiry is invalid");
+    validateEndpointAndModel(input);
+    validateDataHandling(input.dataHandling);
+    validateCapabilities(input);
+    validateCapacityAndEvidence(input);
+    validateRiskAndConfidence(input);
+    validateStatusAndExpiry(input, now, allowExpired);
   } catch (error) {
     if (error instanceof ModelPassportError) throw error;
     fail("VES_PASSPORT_INPUT_INVALID", "Passport candidate is invalid");
