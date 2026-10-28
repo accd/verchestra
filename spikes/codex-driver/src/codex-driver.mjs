@@ -229,45 +229,11 @@ export class CodexDriver {
         return;
       }
 
-      if (message.id !== undefined && (Object.hasOwn(message, "result") || Object.hasOwn(message, "error"))) {
-        const waiter = pending.get(message.id);
-        if (waiter) {
-          pending.delete(message.id);
-          if (message.error) waiter.reject(new Error(redact(message.error.message ?? "Codex request failed")));
-          else waiter.resolve(message.result);
-        }
+      if (isResponse(message)) {
+        settleResponse(message, pending, redact);
         return;
       }
-
-      if (message.method === "thread/started") {
-        result.events.push({ type: "session.started" });
-        if (result.resolvedModel) result.events.push({ type: "model.resolved", ...result.resolvedModel });
-      } else if (message.method === "item/agentMessage/delta") {
-        const text = redact(message.params?.delta ?? "");
-        result.outputText += text;
-        result.events.push({ type: "content.delta", text });
-      } else if (message.method === "item/tool/call" && message.id !== undefined) {
-        const params = message.params ?? {};
-        result.events.push({ type: "tool.requested", id: params.callId, name: params.tool, input: params.arguments });
-        write({ id: message.id, result: { success: false, contentItems: [{ type: "inputText", text: "Execution is controlled by Verchestra; await a controller-authorized tool result." }] } });
-      } else if ((message.method === "item/commandExecution/requestApproval" || message.method === "item/fileChange/requestApproval") && message.id !== undefined) {
-        result.events.push({ type: "warning", code: "VES_CODEX_BUILTIN_TOOL_DENIED", message: "Codex built-in effect was denied by the read-only Driver" });
-        write({ id: message.id, result: { decision: "decline" } });
-      } else if (message.method === "error") {
-        result.error = { code: "VES_CODEX_EXECUTION_FAILED", message: redact(message.params?.error?.message ?? message.params?.message ?? "Codex failed") };
-      } else if (message.method === "turn/completed") {
-        const usage = message.params?.usage ?? message.params?.turn?.usage ?? {};
-        result.usage = { inputTokens: Number(usage.inputTokens ?? 0), outputTokens: Number(usage.outputTokens ?? 0) };
-        const status = message.params?.turn?.status;
-        if (status === "failed") {
-          result.stopReason = "error";
-          result.error ??= { code: "VES_CODEX_EXECUTION_FAILED", message: redact(message.params?.turn?.error?.message ?? "Codex turn failed") };
-        } else {
-          result.stopReason = "stop";
-        }
-        result.events.push({ type: "session.closed" });
-        finishRun();
-      }
+      CODEX_MESSAGES.get(message.method)?.(message, { result, redact, write, finishRun });
     });
 
     const closed = new Promise((resolve) => child.once("close", (code, exitSignal) => {
@@ -289,9 +255,7 @@ export class CodexDriver {
     try {
       await request("initialize", { clientInfo: { name: "verchestra", title: "Verchestra", version: "1.0.0" }, capabilities: { experimentalApi: true } });
       notify("initialized");
-      const catalog = await request("model/list", {});
-      const selected = model ? catalog.data?.find((entry) => entry.model === model || entry.id === model) : catalog.data?.find((entry) => entry.isDefault);
-      if (!selected) throw new Error(model ? `requested model is not in Codex catalog: ${model}` : "Codex catalog has no default model");
+      const selected = selectCatalogModel(await request("model/list", {}), model);
       result.resolvedModel = { provider: "openai", model: selected.model };
       const thread = await request("thread/start", this.buildThreadParams({ model: selected.model, tools }));
       threadId = thread.thread?.id;
@@ -309,11 +273,77 @@ export class CodexDriver {
     const exit = await closed;
     signal?.removeEventListener("abort", abort);
     result.safeStderr = redact(stderr.trim());
-
-    if (aborted) return { ...result, stopReason: "aborted", error: { code: "VES_CODEX_ABORTED", message: "aborted by controller" } };
-    if (streamError) return { ...result, stopReason: "error", error: streamError };
-    if (exit.code !== 0 && !result.error) return { ...result, stopReason: "error", error: { code: "VES_CODEX_PROCESS_FAILED", message: `Codex app-server exited with ${exit.code ?? exit.signal}` } };
-    if (!result.events.some((event) => event.type === "session.closed")) return { ...result, stopReason: "error", error: { code: "VES_CODEX_STREAM_INCOMPLETE", message: "Codex stream ended without turn/completed" } };
-    return result;
+    return finalResult(result, { aborted, streamError, exit });
   }
 }
+
+function finalResult(result, { aborted, streamError, exit }) {
+  if (aborted) return { ...result, stopReason: "aborted", error: { code: "VES_CODEX_ABORTED", message: "aborted by controller" } };
+  if (streamError) return { ...result, stopReason: "error", error: streamError };
+  if (exit.code !== 0 && !result.error) return { ...result, stopReason: "error", error: { code: "VES_CODEX_PROCESS_FAILED", message: `Codex app-server exited with ${exit.code ?? exit.signal}` } };
+  if (!result.events.some((event) => event.type === "session.closed")) return { ...result, stopReason: "error", error: { code: "VES_CODEX_STREAM_INCOMPLETE", message: "Codex stream ended without turn/completed" } };
+  return result;
+}
+
+function selectCatalogModel(catalog, model) {
+  const selected = model ? catalog.data?.find((entry) => entry.model === model || entry.id === model) : catalog.data?.find((entry) => entry.isDefault);
+  if (!selected) throw new Error(model ? `requested model is not in Codex catalog: ${model}` : "Codex catalog has no default model");
+  return selected;
+}
+
+function isResponse(message) {
+  return message.id !== undefined && (Object.hasOwn(message, "result") || Object.hasOwn(message, "error"));
+}
+
+function settleResponse(message, pending, redact) {
+  const waiter = pending.get(message.id);
+  if (!waiter) return;
+  pending.delete(message.id);
+  if (message.error) waiter.reject(new Error(redact(message.error.message ?? "Codex request failed")));
+  else waiter.resolve(message.result);
+}
+
+function declineBuiltInEffect(message, { result, write }) {
+  if (message.id === undefined) return;
+  result.events.push({ type: "warning", code: "VES_CODEX_BUILTIN_TOOL_DENIED", message: "Codex built-in effect was denied by the read-only Driver" });
+  write({ id: message.id, result: { decision: "decline" } });
+}
+
+function completeTurn(message, { result, redact, finishRun }) {
+  const usage = message.params?.usage ?? message.params?.turn?.usage ?? {};
+  result.usage = { inputTokens: Number(usage.inputTokens ?? 0), outputTokens: Number(usage.outputTokens ?? 0) };
+  const status = message.params?.turn?.status;
+  if (status === "failed") {
+    result.stopReason = "error";
+    result.error ??= { code: "VES_CODEX_EXECUTION_FAILED", message: redact(message.params?.turn?.error?.message ?? "Codex turn failed") };
+  } else {
+    result.stopReason = "stop";
+  }
+  result.events.push({ type: "session.closed" });
+  finishRun();
+}
+
+// One handler per app-server method; a method missing here is ignored.
+const CODEX_MESSAGES = new Map([
+  ["thread/started", (message, { result }) => {
+    result.events.push({ type: "session.started" });
+    if (result.resolvedModel) result.events.push({ type: "model.resolved", ...result.resolvedModel });
+  }],
+  ["item/agentMessage/delta", (message, { result, redact }) => {
+    const text = redact(message.params?.delta ?? "");
+    result.outputText += text;
+    result.events.push({ type: "content.delta", text });
+  }],
+  ["item/tool/call", (message, { result, write }) => {
+    if (message.id === undefined) return;
+    const params = message.params ?? {};
+    result.events.push({ type: "tool.requested", id: params.callId, name: params.tool, input: params.arguments });
+    write({ id: message.id, result: { success: false, contentItems: [{ type: "inputText", text: "Execution is controlled by Verchestra; await a controller-authorized tool result." }] } });
+  }],
+  ["item/commandExecution/requestApproval", declineBuiltInEffect],
+  ["item/fileChange/requestApproval", declineBuiltInEffect],
+  ["error", (message, { result, redact }) => {
+    result.error = { code: "VES_CODEX_EXECUTION_FAILED", message: redact(message.params?.error?.message ?? message.params?.message ?? "Codex failed") };
+  }],
+  ["turn/completed", completeTurn]
+]);

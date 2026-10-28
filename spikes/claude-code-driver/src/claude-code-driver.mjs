@@ -194,30 +194,7 @@ export class ClaudeCodeDriver {
         void this.terminateTree(child.pid);
         return;
       }
-      if (event.type === "system" && event.subtype === "init") {
-        result.resolvedModel = { provider: "anthropic", model: event.model };
-        result.events.push({ type: "session.started" });
-      } else if (event.type === "stream_event" && event.event?.delta?.type === "text_delta") {
-        const text = redact(String(event.event.delta.text ?? ""));
-        result.outputText += text;
-        result.events.push({ type: "content.delta", text });
-      } else if (event.type === "assistant" && Array.isArray(event.message?.content)) {
-        for (const content of event.message.content) {
-          if (content.type === "tool_use") {
-            result.events.push({ type: "tool.requested", id: content.id, name: content.name, input: content.input });
-          }
-        }
-      } else if (event.type === "result") {
-        result.usage = {
-          inputTokens: Number(event.usage?.input_tokens ?? 0),
-          outputTokens: Number(event.usage?.output_tokens ?? 0),
-          costUsd: Number(event.total_cost_usd ?? 0)
-        };
-        result.stopReason = event.is_error ? "error" : "stop";
-        if (!result.outputText && !event.is_error) result.outputText = redact(String(event.result ?? ""));
-        if (event.is_error) result.error = { code: "VES_CLAUDE_EXECUTION_FAILED", message: redact(String(event.result ?? "Claude Code failed")) };
-        result.events.push({ type: "session.closed" });
-      }
+      applyStreamEvent(event, result, redact);
     });
 
     child.stdin.end(`${userMessage(prompt)}\n`);
@@ -235,4 +212,39 @@ export class ClaudeCodeDriver {
     }
     return result;
   }
+}
+
+function applyStreamEvent(event, result, redact) {
+  if (event.type === "system" && event.subtype === "init") {
+    result.resolvedModel = { provider: "anthropic", model: event.model };
+    result.events.push({ type: "session.started" });
+  } else if (event.type === "stream_event" && event.event?.delta?.type === "text_delta") {
+    const text = redact(String(event.event.delta.text ?? ""));
+    result.outputText += text;
+    result.events.push({ type: "content.delta", text });
+  } else if (event.type === "assistant" && Array.isArray(event.message?.content)) {
+    recordToolRequests(event.message.content, result);
+  } else if (event.type === "result") {
+    recordResult(event, result, redact);
+  }
+}
+
+function recordToolRequests(contents, result) {
+  for (const content of contents) {
+    if (content.type === "tool_use") {
+      result.events.push({ type: "tool.requested", id: content.id, name: content.name, input: content.input });
+    }
+  }
+}
+
+function recordResult(event, result, redact) {
+  result.usage = {
+    inputTokens: Number(event.usage?.input_tokens ?? 0),
+    outputTokens: Number(event.usage?.output_tokens ?? 0),
+    costUsd: Number(event.total_cost_usd ?? 0)
+  };
+  result.stopReason = event.is_error ? "error" : "stop";
+  if (!result.outputText && !event.is_error) result.outputText = redact(String(event.result ?? ""));
+  if (event.is_error) result.error = { code: "VES_CLAUDE_EXECUTION_FAILED", message: redact(String(event.result ?? "Claude Code failed")) };
+  result.events.push({ type: "session.closed" });
 }
