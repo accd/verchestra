@@ -30,7 +30,13 @@ const PREDICATE_TYPES_V1 = Object.freeze({
   "promotion-report": `${PREDICATE_BASE}/promotion-report/v1`,
   "self-test-report": `${PREDICATE_BASE}/self-test-report/v1`,
   "approval-grant": `${PREDICATE_BASE}/approval-grant/v1`,
-  "qualification-evidence-index": `${PREDICATE_BASE}/qualification-evidence-index/v1`
+  "qualification-evidence-index": `${PREDICATE_BASE}/qualification-evidence-index/v1`,
+  // why: a Workspace's signed skill lock and the extension approvals and
+  // revocations of its probe workers (.specs/features/probe-host-composition/plan.md,
+  // doors 2 and 3), sealed by the Workspace evidence key.
+  "skill-lock": `${PREDICATE_BASE}/skill-lock/v1`,
+  "extension-approval": `${PREDICATE_BASE}/extension-approval/v1`,
+  "extension-approval-revocation": `${PREDICATE_BASE}/extension-approval-revocation/v1`
 } as const);
 
 // Schema V2 artifacts order every declared set by UTF-16 code unit and
