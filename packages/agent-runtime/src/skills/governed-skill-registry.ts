@@ -7,6 +7,13 @@ const COMMIT = /^[a-f0-9]{40,64}$/u;
 const SAFE = /^[a-z0-9][a-z0-9._:@/+-]{0,255}$/u;
 const PHASES = ["specify", "design", "tasks", "execute", "verify"] as const;
 type LifecyclePhase = (typeof PHASES)[number];
+// invariant: the workflow profile needs TLC, so `resolve` requires its lock
+// entry and lock validation alone does not: a Workspace lock that holds only a
+// probe worker stays valid for its updates and its admission (door 6 of
+// .specs/features/probe-host-composition/plan.md). The rule keeps its place in
+// the walk, ahead of the digest, so `resolve` refuses exactly as it did.
+const PROFILE_REQUIRED_SKILLS: ReadonlySet<string> = new Set(["tlc-spec-driven"]);
+const NO_REQUIRED_SKILLS: ReadonlySet<string> = new Set();
 
 export class SkillRegistryError extends Error {
   readonly code: string;
@@ -164,7 +171,7 @@ export class GovernedSkillRegistry {
   }
 
   async resolve(profile: SkillProfile, lock: SkillLock) {
-    const all = await this.#validateLock(lock);
+    const all = await this.#validateLock(lock, PROFILE_REQUIRED_SKILLS);
     const byId = new Map(all.map((skill) => [skill.id, skill]));
     const enabled: LockedSkill[] = [];
     for (const id of profile.enabledSkillIds) {
@@ -225,7 +232,9 @@ export class GovernedSkillRegistry {
     lock: SkillLock,
     request: { readonly skillId: string; readonly extensionId: string; readonly entryPath: string }
   ) {
-    const skill = (await this.#validateLock(lock)).find((candidate) => candidate.id === request.skillId);
+    const skill = (await this.#validateLock(lock, NO_REQUIRED_SKILLS)).find(
+      (candidate) => candidate.id === request.skillId
+    );
     if (skill === undefined) throw new SkillRegistryError("VES_SKILL_UNKNOWN", "Extension references an unknown Skill");
     const reference = skill.extensionRef;
     if (reference?.id !== request.extensionId || reference.approvalRef.length === 0)
@@ -251,8 +260,8 @@ export class GovernedSkillRegistry {
   }
 
   async planUpdate(request: UpdateRequest): Promise<SkillUpdatePlan> {
-    await this.#validateLock(request.current);
-    await this.#validateLock(request.candidate);
+    await this.#validateLock(request.current, NO_REQUIRED_SKILLS);
+    await this.#validateLock(request.candidate, NO_REQUIRED_SKILLS);
     if (request.candidate.generation !== request.current.generation + 1)
       throw new SkillRegistryError("VES_SKILL_UPDATE_GENERATION", "Skill update generation is not contiguous");
     if (!request.qualification.passed || !DIGEST.test(request.qualification.evidenceDigest))
@@ -273,7 +282,7 @@ export class GovernedSkillRegistry {
   async activate(plan: SkillUpdatePlan, candidate: SkillLock) {
     if (candidate.lockDigest !== plan.candidateLockDigest || candidate.generation !== plan.candidateGeneration)
       throw new SkillRegistryError("VES_SKILL_PLAN_STALE", "Skill update candidate changed after review");
-    await this.#validateLock(candidate);
+    await this.#validateLock(candidate, NO_REQUIRED_SKILLS);
     const transaction = this.#options.transaction;
     if (transaction === undefined)
       throw new SkillRegistryError("VES_SKILL_TRANSACTION_REQUIRED", "Skill activation transaction is unavailable");
@@ -287,7 +296,7 @@ export class GovernedSkillRegistry {
     }
   }
 
-  async #validateLock(lock: SkillLock): Promise<readonly LockedSkill[]> {
+  async #validateLock(lock: SkillLock, required: ReadonlySet<string>): Promise<readonly LockedSkill[]> {
     if (
       lock === null ||
       typeof lock !== "object" ||
@@ -347,8 +356,8 @@ export class GovernedSkillRegistry {
           );
       }
     }
-    if (!ids.has("tlc-spec-driven"))
-      throw new SkillRegistryError("VES_SKILL_TLC_REQUIRED", "TLC lock entry is required");
+    const missingRequired = [...required].some((id) => !ids.has(id));
+    if (missingRequired) throw new SkillRegistryError("VES_SKILL_TLC_REQUIRED", "TLC lock entry is required");
     if (skillLockDigest(lock) !== lock.lockDigest)
       throw new SkillRegistryError("VES_SKILL_LOCK_TAMPERED", "Skill lock digest is invalid");
     if (!(await this.#options.verifier.verifyLock(lock)))
