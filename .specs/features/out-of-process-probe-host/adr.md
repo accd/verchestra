@@ -1,7 +1,7 @@
 # AD-037 — Workspace probe workers run out of process under `process-contained` supervision (#235)
 
-- **Status:** proposed (the owner ratifies by reviewing the pull request that
-  carries this feature). Recorded in `.specs/STATE.md`.
+- **Status:** active. The owner ratified it, as amended on 2026-10-27, on
+  2026-10-28. Recorded in `.specs/STATE.md`.
 - **Context:** AD-017 moved real-engine database qualification to the edge: a
   team implements the published connection port in its own repository and runs
   the conformance kit. That still means the team's code runs inside the product
@@ -91,10 +91,10 @@
   namespace or a subreaper, and macOS has neither. Against hostile approved
   code this is part of the OS-sandbox residual below, since an admitted worker
   can persist through a crontab or a launch agent anyway.
-- Nothing composes the host until the owner ratifies AD-037 as amended:
+- Nothing composes the host until T3 does, under a reviewed plan:
   `tests/architecture/extension-host-composition.test.mjs` fails on any import
   of `@verchestra/extension-host` reachable from the CLI or the launcher, and
-  T3 lifts it.
+  T3 lifts it. The owner ratified AD-037 as amended on 2026-10-28.
 - OS-level containment is not: an admitted worker runs with the host user's
   filesystem and network authority. That is acceptable only because admission
   requires a human-approved digest in a signed lock and a bound controller

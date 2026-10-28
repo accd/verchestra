@@ -6,9 +6,9 @@ status: verification
 branch: feat/235-out-of-process-probe-host
 baseRevision: cb563611da8b1ff80aa204536138f9440a0bff91
 lastCompletedTask: T2
-nextTask: "T3 (composition root wiring, and where grants and approvals are issued and stored) follows the owner's ratification of AD-037 as #569 amended it. The post-merge review of #424 (#553, slice 1) found three limits; #569 fixed them (.specs/features/probe-host-containment)."
+nextTask: "T3 (composition root wiring, and where grants and approvals are issued and stored): the owner ratified AD-037 as #569 amended it on 2026-10-28; T3's plan is .specs/features/probe-host-composition/plan.md, which awaits the owner's review before any check or code."
 lastGate: pnpm gate:security PASS (2026-09-29)
-updatedAt: 2026-10-27T19:30:00Z
+updatedAt: 2026-10-28T18:00:00Z
 ---
 
 # Handoff: out-of-process probe host
@@ -28,15 +28,15 @@ The gate adapter's process-group terminator was extracted unchanged into
 
 ## Open decisions for the owner
 
-1. Ratify AD-037, in particular that an admitted worker keeps the host user's
-   filesystem and network authority under `process-contained` (see
-   `threat-model.md`, residual risks).
+1. ~~Ratify AD-037~~ — ratified by the owner on 2026-10-28, as amended on
+   2026-10-27, accepting that an admitted worker keeps the host user's
+   filesystem and network authority under `process-contained`.
 2. Where controller grants for workspace workers are issued and recorded (T3).
 
 ## Next action
 
-Review `adr.md` and `threat-model.md`. After ratification, T3 composes the
-host in `apps/vestra-cli`; nothing in this branch is reachable from the CLI yet.
+Review T3's plan, `.specs/features/probe-host-composition/plan.md`. T3
+composes the host in `apps/vestra-cli`; nothing is reachable from the CLI yet.
 
 ## Verification
 
