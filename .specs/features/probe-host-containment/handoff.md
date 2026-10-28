@@ -6,7 +6,7 @@ status: complete
 branch: main
 baseRevision: 13fa79356e6e35c583f8a135771ce15e50ace687
 lastCompletedTask: T5
-nextTask: "None in this feature. AD-037 as amended awaits the owner's ratification; the host's T3 (composition) follows it and lifts the guard in tests/architecture/extension-host-composition.test.mjs."
+nextTask: "None in this feature. The owner ratified AD-037 as amended on 2026-10-28; the host's T3 (composition) lifts the guard in tests/architecture/extension-host-composition.test.mjs."
 lastGate: "PR #632 merged by rebase through the maintainer bypass at 2026-10-28T09:38:46Z (main e60dd65, b771cec, ff557cf; the diff main gained equal to the PR's over five main commits that share no file with it), with Quality gate, Site quality and CodeQL passing on the head dae190c; fleet runs 40569914514 (gate=full, five legs green) and 40566619084 (gate=security, four legs green, macOS x64 stopped by the regex-linearity flake #637 fixed); no independent review, so the Linux runs and 13 mutation sensors in validation.md are the record"
 updatedAt: 2026-10-28T12:30:00Z
 ---
@@ -25,5 +25,5 @@ The owner chose the four decisions in `spec.md` on 2026-10-27. AD-037 stays
 
 # Next exact action
 
-None in this feature. AD-037 as amended awaits the owner's ratification, and
-the host's T3 (composition) follows it.
+None in this feature. The owner ratified AD-037 as amended on 2026-10-28; the
+host's T3 (composition) follows.

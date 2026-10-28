@@ -29,7 +29,8 @@
 
 ## T3 — Composition root wiring (not started)
 
-**Status:** Planned, blocked on AD-037 ratification. Compose
+**Status:** Planned. AD-037 was ratified on 2026-10-28; the plan is
+`.specs/features/probe-host-composition/plan.md`, awaiting review. Compose
 `SpawnedProbeWorker` + `FramedProbeWorker` + the registry and grant issuance in
 `apps/vestra-cli`, and decide how a controller grant is issued and recorded
 (the authority store is the likely home).

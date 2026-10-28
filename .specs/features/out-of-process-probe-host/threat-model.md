@@ -77,8 +77,8 @@ to the test that proves it (see `validation.md` for file and line).
 - **Approval adapters (#569).** Admission trusts its approval port to answer
   only with an approval it verified, that is not revoked and has not expired.
   The adapter, and where approvals and grants are issued, are T3's.
-- **No composition until ratified.** Nothing composes the host before the
-  owner ratifies AD-037 as amended by #569;
+- **No composition before T3.** The owner ratified AD-037 as amended by #569
+  on 2026-10-28. Nothing composes the host until T3 does, under a reviewed plan;
   `tests/architecture/extension-host-composition.test.mjs` fails on any import
   of it reachable from the CLI or the launcher.
 - **Resource limits.** CPU and memory are not bounded beyond wall-clock time.

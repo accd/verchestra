@@ -510,8 +510,8 @@ note. -->
 
 ### AD-037 — Workspace probe workers run out of process under `process-contained` supervision (#235)
 
-- **Status:** proposed (the owner ratifies by reviewing the pull request that
-  carries `.specs/features/out-of-process-probe-host/`).
+- **Status:** active. The owner ratified it, as amended on 2026-10-27, on
+  2026-10-28.
 - **Decision:** `verchestra-probe/1` goes on the execution path:
   `FramedProbeWorker` (extension-host) drives a worker spawned by
   `SpawnedProbeWorker` (platform-node) through the bounded codec, a strict
@@ -546,6 +546,12 @@ note. -->
   that left the worker's tree, with its output given up, before the host
   stopped the tree. The status stays `proposed`. The composition guard stays until the
   owner ratifies this amendment, and T3 lifts it.
+- **Ratified (2026-10-28):** the owner ratified AD-037 as amended on 2026-10-27,
+  accepting that an admitted worker keeps the host user's filesystem and
+  network authority under `process-contained`, and the stated descendant
+  residual. T3 composes the host under its reviewed plan
+  (`.specs/features/probe-host-composition/plan.md`); the composition guard
+  stays until T3's change lifts it.
 
 ### AD-038 — The single binary is a Node 24.14.0 SEA injected by a repository-owned injector (#236)
 
