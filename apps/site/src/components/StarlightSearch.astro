@@ -1,0 +1,29 @@
+---
+import DefaultSearch from "@astrojs/starlight/components/Search.astro";
+---
+
+<DefaultSearch {...Astro.props} />
+
+{/*
+ * why: axe 4.14 reports Starlight's search button as label-content-name-mismatch
+ * (WCAG 2.5.3, serious): its shortcut hint is visible text that the accessible
+ * name, "Search", leaves out. Starlight treats the hint as supplementary
+ * (withastro/starlight#4260, closed as not planned), so the name is extended
+ * here. This runs right after Starlight's own inline script, which shows the
+ * hint and sets the platform key, so the name carries the keys as shown. The
+ * spaces put before the hint and between its keys are not rendered in their
+ * flex rows; they make the visible text read as the same words as the name.
+ */}
+<script is:inline>
+  (() => {
+    const button = document.querySelector("button[data-open-modal]");
+    const hint = button?.querySelector(":scope > kbd");
+    const keys = hint ? [...hint.querySelectorAll(":scope > kbd")] : [];
+    if (keys.length === 0 || button.dataset.shortcutNamed !== undefined) return;
+    hint.before(" ");
+    for (const key of keys.slice(1)) key.before(" ");
+    const shortcut = keys.map((key) => key.textContent.trim()).join(" ");
+    button.setAttribute("aria-label", `${button.getAttribute("aria-label")} ${shortcut}`);
+    button.dataset.shortcutNamed = "";
+  })();
+</script>

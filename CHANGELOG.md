@@ -55,6 +55,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   whose schema declares an `external` type, or with a policy scope that no
   action applies to, is still refused with `VES_POLICY_VALIDATION_FAILED`
   (#563).
+- The documentation site's search button names the shortcut it shows, for
+  example "Search Ctrl K", so its accessible name contains its visible text
+  (WCAG 2.5.3).
 
 ### Security
 

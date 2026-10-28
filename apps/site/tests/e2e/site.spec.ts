@@ -72,6 +72,18 @@ test("keyboard users can skip to content and open documentation search", async (
   await expect(dialog.getByRole("link", { name: "SAP ASE and Sybase" }).first()).toBeVisible();
 });
 
+// why: axe 4.14's label-content-name-mismatch (WCAG 2.5.3). The accessible name
+// must contain the shortcut the button shows, whichever platform key it shows.
+test("the documentation search button's name contains the shortcut it shows", async ({ page }) => {
+  await page.goto("docs/");
+  const searchButton = page.locator("button[data-open-modal]");
+  const hint = searchButton.locator(":scope > kbd");
+  await expect(hint).toBeVisible();
+  const keys = (await hint.locator("kbd").allTextContents()).map((key) => key.trim());
+  expect(keys.length).toBeGreaterThan(1);
+  await expect(searchButton).toHaveAccessibleName(`Search ${keys.join(" ")}`);
+});
+
 test("deep routes, roadmap links, community calls to action, and recovery resolve under the base path", async ({
   page
 }) => {
