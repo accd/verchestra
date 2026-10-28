@@ -43,3 +43,14 @@ test("the shim leaves every other warning alone", async () => {
   assert.match(stderr, /ExperimentalWarning: another feature is experimental/u);
   assert.doesNotMatch(stderr, SQLITE_WARNING);
 });
+
+test("the shim drops a warning only when it starts with SQLite's text", async () => {
+  const { stderr } = await evaluate(
+    `await import(${JSON.stringify(SHIM)});
+     process.emitWarning("Note: SQLite is an experimental feature here", "ExperimentalWarning");
+     process.emitWarning("SQLite is an experimental feature again", "DeprecationWarning");
+     await new Promise((resolve) => setImmediate(resolve));`
+  );
+  assert.match(stderr, /ExperimentalWarning: Note: SQLite is an experimental feature here/u);
+  assert.match(stderr, /DeprecationWarning: SQLite is an experimental feature again/u);
+});

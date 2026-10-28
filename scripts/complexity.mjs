@@ -24,12 +24,12 @@ const PRODUCTION_SCOPES = new Set(["packages-src", "vestra-cli", "vestra-launche
 
 export function scopeOf(path) {
   if (/^packages\/[^/]+\/src\//.test(path)) return "packages-src";
-  if (/^apps\/vestra-cli\/src\//.test(path)) return "vestra-cli";
-  if (/^apps\/vestra-launcher\/src\//.test(path)) return "vestra-launcher";
-  if (/^apps\/site\/src\//.test(path)) return "site-src";
-  if (/^scripts\//.test(path)) return "scripts";
-  if (/^apps\/site\/tests\//.test(path)) return "site-tests";
-  if (/^tests\//.test(path) || /^packages\/[^/]+\/tests?\//.test(path)) return "tests";
+  if (path.startsWith("apps/vestra-cli/src/")) return "vestra-cli";
+  if (path.startsWith("apps/vestra-launcher/src/")) return "vestra-launcher";
+  if (path.startsWith("apps/site/src/")) return "site-src";
+  if (path.startsWith("scripts/")) return "scripts";
+  if (path.startsWith("apps/site/tests/")) return "site-tests";
+  if (path.startsWith("tests/") || /^packages\/[^/]+\/tests?\//.test(path)) return "tests";
   return "other";
 }
 
