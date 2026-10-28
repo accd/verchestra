@@ -51,6 +51,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Security
 
+- The transitive `qs` moves from 6.16.0 to 6.16.1 in the lockfile, fixing a
+  denial of service in `qs.stringify` with comma-joined arrays (Dependabot
+  alert 71). It reaches the product through the MCP SDK's `express` and
+  `body-parser`, which only parse; no manifest changes.
 - The out-of-process probe host, not yet composed into any command, closes the
   three limits its post-merge review found (#569). It stops a worker's whole
   tree, `setsid` descendants included, before killing it, and fails a probe
