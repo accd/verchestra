@@ -164,48 +164,56 @@ export class DriverFrameDecoder {
     this.#buffer = Buffer.concat([this.#buffer, Buffer.from(chunk)]);
     const messages: DriverProtocolEnvelope[] = [];
     while (true) {
-      if (this.#pendingLength === undefined) {
-        const boundary = this.#buffer.indexOf("\r\n\r\n");
-        if (boundary < 0) {
-          if (this.#buffer.length > this.#maximumHeaderBytes)
-            terminate("VES_DRIVER_FRAME_HEADER_LIMIT", "Driver frame header exceeds its limit");
-          break;
-        }
-        if (boundary > this.#maximumHeaderBytes)
-          terminate("VES_DRIVER_FRAME_HEADER_LIMIT", "Driver frame header exceeds its limit");
-        const lines = this.#buffer.subarray(0, boundary).toString("ascii").split("\r\n");
-        const lengthLines = lines.filter((line) => line.toLowerCase().startsWith("content-length:"));
-        if (lengthLines.length === 0)
-          terminate("VES_DRIVER_FRAME_LENGTH_REQUIRED", "Driver frame requires Content-Length");
-        if (lines.length !== 1 || lengthLines.length !== 1)
-          terminate("VES_DRIVER_FRAME_HEADER_INVALID", "Driver frame headers are invalid");
-        const line = lengthLines[0] as string;
-        const raw = line.slice(line.indexOf(":") + 1).trim();
-        if (!/^(0|[1-9]\d*)$/u.test(raw))
-          terminate("VES_DRIVER_FRAME_LENGTH_INVALID", "Driver frame length is invalid");
-        const length = Number(raw);
-        if (!Number.isSafeInteger(length))
-          terminate("VES_DRIVER_FRAME_LENGTH_INVALID", "Driver frame length is not safe");
-        if (length > this.#maximumMessageBytes)
-          terminate("VES_DRIVER_FRAME_MESSAGE_LIMIT", "Driver frame body exceeds its limit");
-        this.#pendingLength = length;
-        this.#buffer = this.#buffer.subarray(boundary + 4);
-      }
-      if (this.#buffer.length < this.#pendingLength) break;
-      const body = this.#buffer.subarray(0, this.#pendingLength);
-      this.#buffer = this.#buffer.subarray(this.#pendingLength);
+      const pendingLength = this.#pendingLength ?? this.#readHeader();
+      if (pendingLength === undefined || this.#buffer.length < pendingLength) break;
+      const body = this.#buffer.subarray(0, pendingLength);
+      this.#buffer = this.#buffer.subarray(pendingLength);
       this.#pendingLength = undefined;
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(body.toString("utf8"));
-      } catch {
-        terminate("VES_DRIVER_FRAME_JSON_INVALID", "Driver frame body is invalid JSON");
-      }
-      const envelope = validateEnvelope(parsed, this.#workspaceId);
+      const envelope = validateEnvelope(parseDriverFrameBody(body), this.#workspaceId);
       this.lastPayloadDigest = envelope.payloadDigest;
       messages.push(envelope);
     }
     return Object.freeze(messages);
+  }
+
+  // Consumes one complete header and returns its declared body length, or
+  // returns undefined while the header is still incomplete.
+  #readHeader(): number | undefined {
+    const boundary = this.#buffer.indexOf("\r\n\r\n");
+    if (boundary < 0) {
+      if (this.#buffer.length > this.#maximumHeaderBytes)
+        terminate("VES_DRIVER_FRAME_HEADER_LIMIT", "Driver frame header exceeds its limit");
+      return undefined;
+    }
+    if (boundary > this.#maximumHeaderBytes)
+      terminate("VES_DRIVER_FRAME_HEADER_LIMIT", "Driver frame header exceeds its limit");
+    const length = driverFrameLength(this.#buffer.subarray(0, boundary), this.#maximumMessageBytes);
+    this.#pendingLength = length;
+    this.#buffer = this.#buffer.subarray(boundary + 4);
+    return length;
+  }
+}
+
+function driverFrameLength(header: Buffer, maximumMessageBytes: number): number {
+  const lines = header.toString("ascii").split("\r\n");
+  const lengthLines = lines.filter((line) => line.toLowerCase().startsWith("content-length:"));
+  if (lengthLines.length === 0) terminate("VES_DRIVER_FRAME_LENGTH_REQUIRED", "Driver frame requires Content-Length");
+  if (lines.length !== 1 || lengthLines.length !== 1)
+    terminate("VES_DRIVER_FRAME_HEADER_INVALID", "Driver frame headers are invalid");
+  const line = lengthLines[0] as string;
+  const raw = line.slice(line.indexOf(":") + 1).trim();
+  if (!/^(0|[1-9]\d*)$/u.test(raw)) terminate("VES_DRIVER_FRAME_LENGTH_INVALID", "Driver frame length is invalid");
+  const length = Number(raw);
+  if (!Number.isSafeInteger(length)) terminate("VES_DRIVER_FRAME_LENGTH_INVALID", "Driver frame length is not safe");
+  if (length > maximumMessageBytes) terminate("VES_DRIVER_FRAME_MESSAGE_LIMIT", "Driver frame body exceeds its limit");
+  return length;
+}
+
+function parseDriverFrameBody(body: Buffer): unknown {
+  try {
+    return JSON.parse(body.toString("utf8"));
+  } catch {
+    terminate("VES_DRIVER_FRAME_JSON_INVALID", "Driver frame body is invalid JSON");
   }
 }
 

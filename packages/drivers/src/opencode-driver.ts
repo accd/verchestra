@@ -11,7 +11,7 @@ import {
 } from "@verchestra/domain";
 
 import { sensitiveValueRedactor } from "./driver-redaction.ts";
-import { DriverSessionLedger } from "./driver-session-ledger.ts";
+import { DriverSessionLedger, type DriverSession } from "./driver-session-ledger.ts";
 import { probeDriverVersion, providerVersion } from "./driver-version-probe.ts";
 import {
   DriverProtocolError,
@@ -240,6 +240,108 @@ async function productionServerFactory(options: Readonly<Record<string, unknown>
   throw openCodeError("VES_OPENCODE_SDK_UNAVAILABLE", "OpenCode SDK is unavailable");
 }
 
+interface OpenCodeStreamContext {
+  readonly providerSessionId: string;
+  readonly execution: OpenCodeExecution;
+  readonly state: DriverSession<OpenCodeSessionResources>;
+  readonly redact: (value: unknown) => string;
+  readonly client: OpenCodeInstance["client"];
+}
+
+function selectCatalogModel(catalog: readonly CatalogModel[], execution: OpenCodeExecution): CatalogModel {
+  const candidate = catalog.find((entry) => entry.id === execution.model && entry.connected);
+  if (candidate === undefined) throw openCodeError("VES_OPENCODE_MODEL_UNAVAILABLE", "OpenCode model is unavailable");
+  if (candidate.provider !== execution.passport.provider || candidate.model !== execution.passport.resolvedModel)
+    throw openCodeError("VES_OPENCODE_MODEL_UNAVAILABLE", "OpenCode model is unavailable");
+  return candidate;
+}
+
+function streamEvent(raw: unknown): { readonly type: string; readonly properties: Record<string, unknown> } {
+  if (raw === null || typeof raw !== "object")
+    throw openCodeError("VES_OPENCODE_STREAM_INVALID", "OpenCode event is invalid");
+  const event = raw as Record<string, unknown>;
+  if (typeof event["type"] !== "string")
+    throw openCodeError("VES_OPENCODE_STREAM_INVALID", "OpenCode event is invalid");
+  return { type: event["type"], properties: (event["properties"] ?? {}) as Record<string, unknown> };
+}
+
+async function mediatePermission(properties: Record<string, unknown>, context: OpenCodeStreamContext): Promise<void> {
+  const { execution, state, redact, client } = context;
+  if (typeof properties["id"] !== "string" || typeof properties["permission"] !== "string")
+    throw openCodeError("VES_OPENCODE_STREAM_INVALID", "OpenCode permission event is invalid");
+  if (!execution.tools.some((tool) => tool.name === properties["permission"]))
+    throw openCodeError("VES_OPENCODE_TOOL_UNMEDIATED", "OpenCode requested an undeclared tool");
+  const metadata = properties["metadata"] as Record<string, unknown> | undefined;
+  const toolRequest = {
+    toolCallId: properties["id"],
+    name: properties["permission"],
+    input: sanitize(metadata?.["input"] ?? metadata, redact),
+    patterns: Array.isArray(properties["patterns"])
+      ? properties["patterns"].filter((entry): entry is string => typeof entry === "string")
+      : []
+  };
+  const { toolCallId, name, input, patterns } = toolRequest;
+  state.emit({ type: "tool.requested", toolCallId, name, input, patterns });
+  const allowed = await execution.authorizeTool(toolRequest);
+  await client.permission.reply({ requestID: toolRequest.toolCallId, reply: allowed ? "once" : "reject" });
+}
+
+function emitPartUpdate(properties: Record<string, unknown>, context: OpenCodeStreamContext): void {
+  const part = (properties["part"] ?? {}) as Record<string, unknown>;
+  if (part["type"] === "text" && part["time"] !== undefined) {
+    context.state.emit({ type: "content.delta", text: context.redact(part["text"] ?? "") });
+  } else if (part["type"] === "step-finish") {
+    const usage = stepUsage(part);
+    if (usage === undefined) throw openCodeError("VES_OPENCODE_STREAM_INVALID", "OpenCode usage is invalid");
+    context.state.emit(usage);
+  }
+}
+
+// Returns true once the provider session reports idle, which ends the stream.
+function applySessionEvent(type: string, properties: Record<string, unknown>, context: OpenCodeStreamContext): boolean {
+  if (type === "message.part.updated") {
+    emitPartUpdate(properties, context);
+  } else if (type === "session.error") {
+    context.state.outcome = "failed";
+    context.state.emit({
+      type: "error",
+      code: "VES_OPENCODE_EXECUTION_FAILED",
+      message: "OpenCode failed",
+      retryable: true
+    });
+  } else if (type === "session.status") {
+    const status = properties["status"] as Record<string, unknown> | undefined;
+    return status?.["type"] === "idle";
+  }
+  return false;
+}
+
+async function consumeOpenCodeStream(stream: AsyncIterable<unknown>, context: OpenCodeStreamContext): Promise<void> {
+  for await (const raw of stream) {
+    const { type, properties } = streamEvent(raw);
+    if (properties["sessionID"] !== undefined && properties["sessionID"] !== context.providerSessionId) continue;
+    if (type === "permission.asked") await mediatePermission(properties, context);
+    else if (applySessionEvent(type, properties, context)) return;
+  }
+  throw openCodeError("VES_OPENCODE_STREAM_INCOMPLETE", "OpenCode stream ended before idle");
+}
+
+function recordProtocolFailure(state: DriverSession<OpenCodeSessionResources>, error: unknown): void {
+  state.outcome = "failed";
+  const code = error instanceof DriverProtocolError ? error.code : "VES_OPENCODE_PROTOCOL_FAILED";
+  state.emit({ type: "error", code, message: "OpenCode protocol failed", retryable: false });
+}
+
+function recordAborted(state: DriverSession<OpenCodeSessionResources>): void {
+  state.outcome = "cancelled";
+  state.emit({
+    type: "error",
+    code: "VES_OPENCODE_ABORTED",
+    message: "OpenCode was aborted",
+    retryable: true
+  });
+}
+
 export class OpenCodeDriver implements Driver {
   readonly #dependencies: OpenCodeDriverDependencies;
   readonly #command: readonly string[];
@@ -303,19 +405,7 @@ export class OpenCodeDriver implements Driver {
     sink: (event: DriverEvent) => void,
     signal: AbortSignal
   ): Promise<DriverSessionRef> {
-    if (signal.aborted) throw openCodeError("VES_DRIVER_CANCELLED", "OpenCode start was cancelled");
-    validateDriverStartRequest(request);
-    const probe = await this.probe();
-    if (!probe.available) throw openCodeError(probe.error.code, probe.error.message);
-    if (signal.aborted) throw openCodeError("VES_DRIVER_CANCELLED", "OpenCode start was cancelled during probe");
-    let execution: OpenCodeExecution;
-    try {
-      execution = await this.#dependencies.resolveExecution(request);
-    } catch {
-      throw openCodeError("VES_OPENCODE_RESOLUTION_FAILED", "OpenCode execution resolution failed");
-    }
-    if (signal.aborted) throw openCodeError("VES_DRIVER_CANCELLED", "OpenCode start was cancelled during resolution");
-    this.#validateExecution(request, execution);
+    const execution = await this.#prepareExecution(request, signal);
     const instance = await this.#factory(this.serverOptions(execution.environment));
     const { client, server } = instance;
     const sessionRef = `opencode-session:${randomUUID()}`;
@@ -340,12 +430,7 @@ export class OpenCodeDriver implements Driver {
     signal.addEventListener("abort", abort, { once: true });
     if (signal.aborted) abort();
     try {
-      const catalog = flattenCatalog((await client.provider.list()).data);
-      const candidate = catalog.find((entry) => entry.id === execution.model && entry.connected);
-      if (candidate === undefined)
-        throw openCodeError("VES_OPENCODE_MODEL_UNAVAILABLE", "OpenCode model is unavailable");
-      if (candidate.provider !== execution.passport.provider || candidate.model !== execution.passport.resolvedModel)
-        throw openCodeError("VES_OPENCODE_MODEL_UNAVAILABLE", "OpenCode model is unavailable");
+      const candidate = selectCatalogModel(flattenCatalog((await client.provider.list()).data), execution);
       state.emit({ type: "session.started", sessionId: sessionRef });
       state.emit({
         type: "model.resolved",
@@ -362,57 +447,13 @@ export class OpenCodeDriver implements Driver {
         throw openCodeError("VES_OPENCODE_PROTOCOL_FAILED", "OpenCode session identity is invalid");
       if (aborted) throw openCodeError("VES_OPENCODE_ABORTED", "OpenCode was aborted");
       const subscribed = await client.event.subscribe();
-      const consume = (async () => {
-        for await (const raw of subscribed.stream) {
-          if (raw === null || typeof raw !== "object")
-            throw openCodeError("VES_OPENCODE_STREAM_INVALID", "OpenCode event is invalid");
-          const event = raw as Record<string, unknown>;
-          if (typeof event["type"] !== "string")
-            throw openCodeError("VES_OPENCODE_STREAM_INVALID", "OpenCode event is invalid");
-          const properties = (event["properties"] ?? {}) as Record<string, unknown>;
-          if (properties["sessionID"] !== undefined && properties["sessionID"] !== providerSessionId) continue;
-          if (event["type"] === "permission.asked") {
-            if (typeof properties["id"] !== "string" || typeof properties["permission"] !== "string")
-              throw openCodeError("VES_OPENCODE_STREAM_INVALID", "OpenCode permission event is invalid");
-            if (!execution.tools.some((tool) => tool.name === properties["permission"]))
-              throw openCodeError("VES_OPENCODE_TOOL_UNMEDIATED", "OpenCode requested an undeclared tool");
-            const metadata = properties["metadata"] as Record<string, unknown> | undefined;
-            const toolRequest = {
-              toolCallId: properties["id"],
-              name: properties["permission"],
-              input: sanitize(metadata?.["input"] ?? metadata, redact),
-              patterns: Array.isArray(properties["patterns"])
-                ? properties["patterns"].filter((entry): entry is string => typeof entry === "string")
-                : []
-            };
-            const { toolCallId, name, input, patterns } = toolRequest;
-            state.emit({ type: "tool.requested", toolCallId, name, input, patterns });
-            const allowed = await execution.authorizeTool(toolRequest);
-            await client.permission.reply({ requestID: toolRequest.toolCallId, reply: allowed ? "once" : "reject" });
-          } else if (event["type"] === "message.part.updated") {
-            const part = (properties["part"] ?? {}) as Record<string, unknown>;
-            if (part["type"] === "text" && part["time"] !== undefined) {
-              state.emit({ type: "content.delta", text: redact(part["text"] ?? "") });
-            } else if (part["type"] === "step-finish") {
-              const usage = stepUsage(part);
-              if (usage === undefined) throw openCodeError("VES_OPENCODE_STREAM_INVALID", "OpenCode usage is invalid");
-              state.emit(usage);
-            }
-          } else if (event["type"] === "session.error") {
-            state.outcome = "failed";
-            state.emit({
-              type: "error",
-              code: "VES_OPENCODE_EXECUTION_FAILED",
-              message: "OpenCode failed",
-              retryable: true
-            });
-          } else if (event["type"] === "session.status") {
-            const status = properties["status"] as Record<string, unknown> | undefined;
-            if (status?.["type"] === "idle") return;
-          }
-        }
-        throw openCodeError("VES_OPENCODE_STREAM_INCOMPLETE", "OpenCode stream ended before idle");
-      })();
+      const consume = consumeOpenCodeStream(subscribed.stream, {
+        providerSessionId,
+        execution,
+        state,
+        redact,
+        client
+      });
       const prompt = await client.session.prompt({
         sessionID: providerSessionId,
         model: { providerID: candidate.provider, modelID: candidate.model },
@@ -423,11 +464,7 @@ export class OpenCodeDriver implements Driver {
       await Promise.race([consume, abortedPromise]);
       if (!aborted) await consume;
     } catch (error) {
-      if (!aborted) {
-        state.outcome = "failed";
-        const code = error instanceof DriverProtocolError ? error.code : "VES_OPENCODE_PROTOCOL_FAILED";
-        state.emit({ type: "error", code, message: "OpenCode protocol failed", retryable: false });
-      }
+      if (!aborted) recordProtocolFailure(state, error);
     } finally {
       if (providerSessionId !== undefined && !aborted)
         await client.session.delete({ sessionID: providerSessionId }).catch(() => undefined);
@@ -436,19 +473,28 @@ export class OpenCodeDriver implements Driver {
       delete state.resources.stop;
     }
     try {
-      if (aborted) {
-        state.outcome = "cancelled";
-        state.emit({
-          type: "error",
-          code: "VES_OPENCODE_ABORTED",
-          message: "OpenCode was aborted",
-          retryable: true
-        });
-      }
+      if (aborted) recordAborted(state);
     } finally {
       runEnded();
     }
     return Object.freeze({ sessionId: sessionRef });
+  }
+
+  async #prepareExecution(request: DriverStartRequest, signal: AbortSignal): Promise<OpenCodeExecution> {
+    if (signal.aborted) throw openCodeError("VES_DRIVER_CANCELLED", "OpenCode start was cancelled");
+    validateDriverStartRequest(request);
+    const probe = await this.probe();
+    if (!probe.available) throw openCodeError(probe.error.code, probe.error.message);
+    if (signal.aborted) throw openCodeError("VES_DRIVER_CANCELLED", "OpenCode start was cancelled during probe");
+    let execution: OpenCodeExecution;
+    try {
+      execution = await this.#dependencies.resolveExecution(request);
+    } catch {
+      throw openCodeError("VES_OPENCODE_RESOLUTION_FAILED", "OpenCode execution resolution failed");
+    }
+    if (signal.aborted) throw openCodeError("VES_DRIVER_CANCELLED", "OpenCode start was cancelled during resolution");
+    this.#validateExecution(request, execution);
+    return execution;
   }
 
   async send(): Promise<void> {
