@@ -19,6 +19,8 @@ each asserts the refusal instead of skipping (repository rule XP-04).
 
 ### S1 - register, approve, list, revoke and check a workspace probe worker · ~22 files · ~190 KB · ~50k
 
+Complete: C1-C34, every proof green on Linux and Windows at `34b34cf7` (validation.md).
+
 **C1** - `vestra extension add` writes the next lock generation with one skill whose `extensionRef` carries the given extension id and approval ref and whose entry digest is the file's sha256, and prints `lockDigest` and `generation` (AC 1)
 Proof: `node --test --test-name-pattern "add registers the worker in a signed lock" tests/e2e/extension-cli-e2e.test.mjs`
 
@@ -160,3 +162,6 @@ Proof: `node --test --test-name-pattern "an extension-only lock passes updates a
 ## Handoff
 
 - S1 = ~50k: ~117 KB of existing sources it reads or changes (the CLI dispatch, release manifest, task signing, confirmation, workspace and errors; the skill registry; admission; the spawned worker and launch digest; DSSE; the composition guard; the task CLI fixture) is ~29k, plus ~70 KB of new code and tests at ~18k, plus run output; under the 150k budget - one builder
+- **Boundary:** C1-C34 closed at `34b34cf7` (C33 and C34 at `9ebb9fb2`)
+- **Settled mid-build:** the registry update's evidence is a registration record `{skillId, extensionId, entryDigest, registeredAt}` digested with the V2 canonical contract, not a qualification; generation 1 bootstraps through `activate` with a plan naming the placeholder's raw-bytes digest; harness version `0.0.0` for the registry and each worker; licenses Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MIT; extension kind `plugin`; `add` refuses no `origin` and strips userinfo; re-approval after revoke and a duplicate skill id are refused (Out of scope follow-ups); a revocation fails closed and an unverifiable one is listed `invalid`; the parser gains repeatable options and command-family help; the contract-test command lists are extended; the environment rule is exported from platform-node; the three predicate types live in dsse.ts; the commit trailer is kept (owner, 2026-10-28)
+- **Abandoned:** the TLC rule placed in `resolve` after lock validation - the existing `lock rejects invalid missing TLC` case edits a sealed lock without recomputing its digest, so the digest check answered first; replaced by a required-skill set that only `resolve` passes into the walk, at the rule's old place. Importing admission from the package root - it loads the worker and the supervisor modules; replaced by the `./admission` export. A DSSE envelope serialized as a string to fit the registry's `signature: string` - the lock is read by reviewers; the registry type was widened to `unknown`, the verifier decides
