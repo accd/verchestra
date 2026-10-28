@@ -48,6 +48,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   `VES_BUDGET_INVALID`, the rule a task command already applied to a stored
   one (#597).
 - `jose` 6.2.13.
+- `canonicalize` 5.1.0 behind the V1 evidence canonicalizer. V1 bytes are
+  unchanged: every input whose canonical form changed upstream was already
+  refused before the library runs.
 - The Cedar policy engine is 4.14.0, with Cedar language 4.6. A policy view
   whose schema declares an `external` type, or with a policy scope that no
   action applies to, is still refused with `VES_POLICY_VALIDATION_FAILED`

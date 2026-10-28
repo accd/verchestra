@@ -9,6 +9,7 @@ import {
   canonicalizeJson,
   sha256Digest
 } from "../../packages/evidence/src/index.ts";
+import { canonicalizeJsonV2 } from "../../packages/domain/src/index.ts";
 
 const binding = Object.freeze({
   schema: { name: "execution-package", version: 1 },
@@ -76,6 +77,48 @@ test("canonicalization rejects lone Unicode surrogates", () => {
   assert.throws(() => canonicalizeJson("\ud800"), {
     code: "VES_INTEGRITY_INVALID_UNICODE"
   });
+});
+
+// why: canonicalize 4 started throwing on lone surrogates, and canonicalize 5
+// changed the output for sparse arrays, functions, boxed primitives and toJSON.
+// V1 bytes stay those of canonicalize 3 only while every such shape is refused
+// here, with this package's own code, before the library sees it.
+test("canonicalization refuses, with its own code, every shape canonicalize 4 and 5 changed", () => {
+  const cases = [
+    ["a sparse array", [, , 1], "VES_INTEGRITY_NON_JSON_VALUE"],
+    ["a function element", [function element() {}], "VES_INTEGRITY_NON_JSON_VALUE"],
+    ["a boxed number", { value: new Number(5) }, "VES_INTEGRITY_NON_JSON_VALUE"],
+    ["a boxed string", { value: new String("x") }, "VES_INTEGRITY_NON_JSON_VALUE"],
+    ["a toJSON that returns undefined", { value: { toJSON: () => undefined } }, "VES_INTEGRITY_NON_JSON_VALUE"],
+    ["a lone high surrogate in a key", { "\ud800": 1 }, "VES_INTEGRITY_INVALID_UNICODE"],
+    ["a lone low surrogate in a nested string", { a: ["ok", "\udc00"] }, "VES_INTEGRITY_INVALID_UNICODE"]
+  ];
+  for (const [label, value, code] of cases)
+    assert.throws(
+      () => canonicalizeJson(value),
+      (error) => error instanceof IntegrityError && error.code === code,
+      label
+    );
+});
+
+// invariant: V1 delegates to the canonicalize package and V2 is this
+// repository's own RFC 8785 serializer, so they must write the same bytes for
+// every value V1 accepts. A package release that changes valid output fails
+// here before any stored digest stops verifying.
+test("V1 and V2 write the same bytes for every JSON value V1 accepts", () => {
+  const numbers = [0, -0, 1, -1, 0.1, 0.1 + 0.2, 1 / 3, 2 ** 53, 2 ** 53 + 2, 1e21, 1e-7, 5e-324, Number.MAX_VALUE];
+  const corpus = [
+    { b: 2, a: 1, c: { z: [3, 2, 1], y: null } },
+    numbers,
+    numbers.map((value) => -value),
+    { "\u20ac": "\u20ac", "\ud83d\ude00": "\ud83d\ude00", "a\u0000b": "\u001f", "\u00e9": "e\u0301" },
+    // UTF-16 code-unit order puts the surrogate pair before U+FFFF; code-point
+    // order would not.
+    { "\uffff": 1, "\ud83d\ude00": 2, "\u00c5": 3, A: 4, a: 5, 10: 6, 9: 7, "": 8 },
+    'line\nbreak "quoted" \\ slash / tab\t',
+    Object.assign(Object.create(null), { k: [true, false, null, { deep: { deeper: [] } }] })
+  ];
+  for (const value of corpus) assert.equal(canonicalizeJson(value), canonicalizeJsonV2(value));
 });
 
 test("canonicalization rejects cyclic values", () => {
