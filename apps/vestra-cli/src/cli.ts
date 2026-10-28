@@ -220,10 +220,7 @@ export function parseCliArguments(argv: readonly string[], manifest: InstalledCl
   });
 }
 
-function findCommandManifest(
-  manifest: InstalledCliManifest,
-  rest: readonly string[]
-): CliCommandManifest | undefined {
+function findCommandManifest(manifest: InstalledCliManifest, rest: readonly string[]): CliCommandManifest | undefined {
   return [...manifest.commands]
     .sort((left, right) => right.name.split(" ").length - left.name.split(" ").length)
     .find((candidate) => {
