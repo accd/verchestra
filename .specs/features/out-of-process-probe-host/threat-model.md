@@ -76,10 +76,14 @@ to the test that proves it (see `validation.md` for file and line).
   toolchain binary outside the Workspace.
 - **Approval adapters (#569).** Admission trusts its approval port to answer
   only with an approval it verified, that is not revoked and has not expired.
-  The adapter, and where approvals and grants are issued, are T3's.
-- **No composition before T3.** The owner ratified AD-037 as amended by #569
-  on 2026-10-28. Nothing composes the host until T3 does, under a reviewed plan;
-  `tests/architecture/extension-host-composition.test.mjs` fails on any import
-  of it reachable from the CLI or the launcher.
+  T3 slice 1 (`.specs/features/probe-host-composition/`) issues approvals: a
+  signed record per approval reference in the Workspace state, looked up only
+  when it verifies against the pinned anchor, is unexpired, and has no
+  revocation beside it. Grants are slice 2's.
+- **Admission only, until slice 2.** T3 slice 1 composes admission alone, from
+  one CLI module and through the `./admission` export;
+  `tests/architecture/extension-host-composition.test.mjs` fails on any other
+  import of the host reachable from the CLI or the launcher, and on any app
+  import of the worker, the supervisor or the spawned transport.
 - **Resource limits.** CPU and memory are not bounded beyond wall-clock time.
 - **Windows.** Not supported; refused explicitly.
