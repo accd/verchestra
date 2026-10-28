@@ -313,7 +313,7 @@ export class NodeAtomicGitCommitAdapter {
       !/^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,511}$/u.test(request.runId) ||
       !/^[A-Za-z0-9][A-Za-z0-9._:@/+-]{0,511}$/u.test(request.taskId) ||
       request.requirementIds.length === 0 ||
-      request.requirementIds.some((id) => !/^VES-[A-Z]{3}-[0-9]{3}$/u.test(id)) ||
+      request.requirementIds.some((id) => !/^VES-[A-Z]{3}-\d{3}$/u.test(id)) ||
       request.expectedChangedPaths.length === 0 ||
       !/^[\x20-\x7e]{1,512}$/u.test(request.subject)
     )

@@ -50,7 +50,7 @@ function snapshotEnvironment(value: unknown): Readonly<Record<string, string>> {
   const names = new Set<string>();
   for (const [key, entry] of Object.entries(value)) {
     const name = process.platform === "win32" ? key.toUpperCase() : key;
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(key) || typeof entry !== "string" || entry.includes("\0")) invalidContext();
+    if (!/^[A-Za-z_]\w*$/u.test(key) || typeof entry !== "string" || entry.includes("\0")) invalidContext();
     if (names.has(name)) invalidContext();
     names.add(name);
     result[name] = entry;

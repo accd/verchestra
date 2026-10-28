@@ -116,7 +116,7 @@ const VIEW_MODES = Object.freeze(["air-gapped", "mirror", "offline", "online"]);
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const REVISION = /^[0-9a-f]{40}$/u;
 const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
-const RUN_ID = /^[0-9]{1,20}$/u;
+const RUN_ID = /^\d{1,20}$/u;
 const BASE_URL_MAX_LENGTH = 512;
 const COMPONENT_KEYS = Object.freeze(["componentId", "kind", "logicalPath", "contentDigest", "sizeBytes"]);
 

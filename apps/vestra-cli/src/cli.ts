@@ -46,7 +46,7 @@ interface CliRunOptions {
   readonly stderr: (value: string) => void;
 }
 
-const SEMVER = /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?$/u;
+const SEMVER = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/u;
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 // Shown instead of a digest when no verified release artifact backs this build.
 const SOURCE_BUILD = "source build, no verified release artifact";

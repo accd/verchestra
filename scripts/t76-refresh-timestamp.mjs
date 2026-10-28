@@ -72,10 +72,10 @@ export const REFRESH_UPLOAD_STEPS = Object.freeze([
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
-const RUN_ID = /^[0-9]{1,20}$/u;
+const RUN_ID = /^\d{1,20}$/u;
 const OFFLINE_FILE = Object.freeze({
-  targets: /^([1-9][0-9]*)\.targets\.json$/u,
-  components: /^([1-9][0-9]*)\.components\.json$/u
+  targets: /^([1-9]\d*)\.targets\.json$/u,
+  components: /^([1-9]\d*)\.components\.json$/u
 });
 const MANIFEST_FILE = "publication-manifest.json";
 
@@ -278,7 +278,7 @@ const readPublishedTarget = async (directory, key, manifest) => {
     fail("VES_T76_REFRESH_ROOT_CHANGED", `${key} root.json is not the root the publication pinned`);
   const targetsName = await offlineFileName(metadata, "targets");
   const componentsName = await offlineFileName(metadata, "components");
-  const snapshotNames = (await readdir(metadata)).filter((name) => /^[1-9][0-9]*\.snapshot\.json$/u.test(name));
+  const snapshotNames = (await readdir(metadata)).filter((name) => /^[1-9]\d*\.snapshot\.json$/u.test(name));
   const servedVersions = [
     await publishedOnlineVersion(join(metadata, "timestamp.json")),
     ...snapshotNames.map((name) => Number(name.split(".")[0]))
