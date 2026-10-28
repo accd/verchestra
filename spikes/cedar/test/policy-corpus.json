@@ -28,6 +28,8 @@
   { "id": "schema-parse-failure", "scenario": "schema-parse", "expectedDecision": "deny", "expectedCode": "VES_POLICY_SCHEMA_INVALID" },
   { "id": "policy-validation-action", "scenario": "validation-action", "expectedDecision": "deny", "expectedCode": "VES_POLICY_VALIDATION_FAILED" },
   { "id": "policy-validation-attribute", "scenario": "validation-attribute", "expectedDecision": "deny", "expectedCode": "VES_POLICY_VALIDATION_FAILED" },
+  { "id": "policy-validation-action-application", "scenario": "validation-action-application", "expectedDecision": "deny", "expectedCode": "VES_POLICY_VALIDATION_FAILED" },
+  { "id": "schema-external-declaration", "scenario": "schema-external", "expectedDecision": "deny", "expectedCode": "VES_POLICY_VALIDATION_FAILED" },
   { "id": "request-principal-invalid", "scenario": "request-principal", "expectedDecision": "deny", "expectedCode": "VES_POLICY_EVALUATION_FAILED" },
   { "id": "request-resource-invalid", "scenario": "request-resource", "expectedDecision": "deny", "expectedCode": "VES_POLICY_EVALUATION_FAILED" },
   { "id": "request-context-missing", "scenario": "request-context-missing", "expectedDecision": "deny", "expectedCode": "VES_POLICY_EVALUATION_FAILED" },
