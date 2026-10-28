@@ -52,6 +52,18 @@ export function resolveReleaseIdentity(root = new URL("../../../", import.meta.u
 
 const identity = resolveReleaseIdentity();
 
+// why: an option several commands take is declared once and shared, so the
+// commands that take it name it instead of spelling it again. The manifest's
+// serialized form is the same as when each command spelled them out.
+const KEYCHAIN = Object.freeze({ name: "keychain", kind: "string" as const });
+const CONFIRM_STDIN = Object.freeze({ name: "confirm-stdin", kind: "boolean" as const });
+const RUN_ID = Object.freeze({ name: "run-id", kind: "string" as const });
+const APPROVAL_REF = Object.freeze({ name: "approval-ref", kind: "string" as const });
+// invariant: the options of `secret set`, `secret status` and `secret delete`.
+const SECRET_OPTIONS = Object.freeze([Object.freeze({ name: "name", kind: "string" as const }), KEYCHAIN]);
+// invariant: the options of `task start`, `task status` and `task cancel`.
+const RUN_OPTIONS = Object.freeze([RUN_ID, KEYCHAIN]);
+
 export const installedReleaseManifest: InstalledCliManifest = Object.freeze({
   schemaVersion: 1,
   semanticVersion: identity.semanticVersion,
@@ -112,50 +124,35 @@ export const installedReleaseManifest: InstalledCliManifest = Object.freeze({
       summary: "Run read-only deep diagnostics and emit a signed report",
       supportsJson: true,
       mutating: false,
-      options: Object.freeze([
-        Object.freeze({ name: "deep", kind: "boolean" as const }),
-        Object.freeze({ name: "keychain", kind: "string" as const })
-      ])
+      options: Object.freeze([Object.freeze({ name: "deep", kind: "boolean" as const }), KEYCHAIN])
     }),
     Object.freeze({
       name: "secret set",
       summary: "Store a Workspace credential in the OS credential store, read from stdin",
       supportsJson: true,
       mutating: true,
-      options: Object.freeze([
-        Object.freeze({ name: "name", kind: "string" as const }),
-        Object.freeze({ name: "keychain", kind: "string" as const })
-      ])
+      options: SECRET_OPTIONS
     }),
     Object.freeze({
       name: "secret status",
       summary: "Report whether a Workspace credential is bound, never its value",
       supportsJson: true,
       mutating: false,
-      options: Object.freeze([
-        Object.freeze({ name: "name", kind: "string" as const }),
-        Object.freeze({ name: "keychain", kind: "string" as const })
-      ])
+      options: SECRET_OPTIONS
     }),
     Object.freeze({
       name: "secret delete",
       summary: "Remove a Workspace credential from the OS credential store",
       supportsJson: true,
       mutating: true,
-      options: Object.freeze([
-        Object.freeze({ name: "name", kind: "string" as const }),
-        Object.freeze({ name: "keychain", kind: "string" as const })
-      ])
+      options: SECRET_OPTIONS
     }),
     Object.freeze({
       name: "task check",
       summary: "Check every prerequisite of a governed task at once, before planning it",
       supportsJson: true,
       mutating: false,
-      options: Object.freeze([
-        Object.freeze({ name: "request", kind: "string" as const }),
-        Object.freeze({ name: "keychain", kind: "string" as const })
-      ])
+      options: Object.freeze([Object.freeze({ name: "request", kind: "string" as const }), KEYCHAIN])
     }),
     Object.freeze({
       name: "task plan",
@@ -165,7 +162,7 @@ export const installedReleaseManifest: InstalledCliManifest = Object.freeze({
       options: Object.freeze([
         Object.freeze({ name: "request", kind: "string" as const }),
         Object.freeze({ name: "dry-run", kind: "boolean" as const }),
-        Object.freeze({ name: "keychain", kind: "string" as const })
+        KEYCHAIN
       ])
     }),
     Object.freeze({
@@ -174,10 +171,10 @@ export const installedReleaseManifest: InstalledCliManifest = Object.freeze({
       supportsJson: true,
       mutating: true,
       options: Object.freeze([
-        Object.freeze({ name: "run-id", kind: "string" as const }),
+        RUN_ID,
         Object.freeze({ name: "binding-digest", kind: "string" as const }),
-        Object.freeze({ name: "confirm-stdin", kind: "boolean" as const }),
-        Object.freeze({ name: "keychain", kind: "string" as const })
+        CONFIRM_STDIN,
+        KEYCHAIN
       ])
     }),
     Object.freeze({
@@ -185,41 +182,28 @@ export const installedReleaseManifest: InstalledCliManifest = Object.freeze({
       summary: "Run an approved task: implement, gate, commit to a task branch, and verify",
       supportsJson: true,
       mutating: true,
-      options: Object.freeze([
-        Object.freeze({ name: "run-id", kind: "string" as const }),
-        Object.freeze({ name: "keychain", kind: "string" as const })
-      ])
+      options: RUN_OPTIONS
     }),
     Object.freeze({
       name: "task status",
       summary: "Report a task run's durable state, evidence, and next allowed actions",
       supportsJson: true,
       mutating: false,
-      options: Object.freeze([
-        Object.freeze({ name: "run-id", kind: "string" as const }),
-        Object.freeze({ name: "keychain", kind: "string" as const })
-      ])
+      options: RUN_OPTIONS
     }),
     Object.freeze({
       name: "task resume",
       summary: "Resume an interrupted task run without repeating completed effects",
       supportsJson: true,
       mutating: true,
-      options: Object.freeze([
-        Object.freeze({ name: "run-id", kind: "string" as const }),
-        Object.freeze({ name: "reconcile", kind: "string" as const }),
-        Object.freeze({ name: "keychain", kind: "string" as const })
-      ])
+      options: Object.freeze([RUN_ID, Object.freeze({ name: "reconcile", kind: "string" as const }), KEYCHAIN])
     }),
     Object.freeze({
       name: "task cancel",
       summary: "Cancel a task run; a running process stops and the run is aborted",
       supportsJson: true,
       mutating: true,
-      options: Object.freeze([
-        Object.freeze({ name: "run-id", kind: "string" as const }),
-        Object.freeze({ name: "keychain", kind: "string" as const })
-      ])
+      options: RUN_OPTIONS
     }),
     Object.freeze({
       name: "task review",
@@ -227,15 +211,15 @@ export const installedReleaseManifest: InstalledCliManifest = Object.freeze({
       supportsJson: true,
       mutating: true,
       options: Object.freeze([
-        Object.freeze({ name: "run-id", kind: "string" as const }),
+        RUN_ID,
         Object.freeze({
           name: "outcome",
           kind: "string" as const,
           values: Object.freeze(["accepted", "rejected"])
         }),
         Object.freeze({ name: "surface-digest", kind: "string" as const }),
-        Object.freeze({ name: "confirm-stdin", kind: "boolean" as const }),
-        Object.freeze({ name: "keychain", kind: "string" as const })
+        CONFIRM_STDIN,
+        KEYCHAIN
       ])
     }),
     // invariant: door 5 of .specs/features/probe-host-composition/plan.md. The
@@ -250,10 +234,10 @@ export const installedReleaseManifest: InstalledCliManifest = Object.freeze({
         Object.freeze({ name: "skill", kind: "string" as const }),
         Object.freeze({ name: "extension", kind: "string" as const }),
         Object.freeze({ name: "entry", kind: "string" as const }),
-        Object.freeze({ name: "approval-ref", kind: "string" as const }),
+        APPROVAL_REF,
         Object.freeze({ name: "version", kind: "string" as const }),
         Object.freeze({ name: "license", kind: "string" as const }),
-        Object.freeze({ name: "keychain", kind: "string" as const })
+        KEYCHAIN
       ])
     }),
     Object.freeze({
@@ -262,13 +246,13 @@ export const installedReleaseManifest: InstalledCliManifest = Object.freeze({
       supportsJson: true,
       mutating: true,
       options: Object.freeze([
-        Object.freeze({ name: "approval-ref", kind: "string" as const }),
+        APPROVAL_REF,
         Object.freeze({ name: "executable", kind: "string" as const }),
         Object.freeze({ name: "arg", kind: "string" as const, repeatable: true }),
         Object.freeze({ name: "env", kind: "string" as const, repeatable: true }),
         Object.freeze({ name: "expires", kind: "string" as const }),
-        Object.freeze({ name: "confirm-stdin", kind: "boolean" as const }),
-        Object.freeze({ name: "keychain", kind: "string" as const })
+        CONFIRM_STDIN,
+        KEYCHAIN
       ])
     }),
     Object.freeze({
@@ -283,17 +267,14 @@ export const installedReleaseManifest: InstalledCliManifest = Object.freeze({
       summary: "Revoke a probe worker approval; it is never deleted",
       supportsJson: true,
       mutating: true,
-      options: Object.freeze([
-        Object.freeze({ name: "approval-ref", kind: "string" as const }),
-        Object.freeze({ name: "keychain", kind: "string" as const })
-      ])
+      options: Object.freeze([APPROVAL_REF, KEYCHAIN])
     }),
     Object.freeze({
       name: "extension check",
       summary: "Check that admission would accept a probe worker, without starting it",
       supportsJson: true,
       mutating: false,
-      options: Object.freeze([Object.freeze({ name: "approval-ref", kind: "string" as const })])
+      options: Object.freeze([APPROVAL_REF])
     })
   ])
 });
