@@ -1,7 +1,7 @@
 import { lstat, mkdir, realpath } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 
-import { StableId } from "@verchestra/domain";
+import { PublicErrorException, StableId } from "@verchestra/domain";
 import {
   NodeGitWorktreeAdapter,
   PlatformSecurityError,
@@ -13,7 +13,6 @@ import {
   type WorkspaceStateLayout
 } from "@verchestra/platform-node";
 import { initPublicErrorRegistry, readWorkspaceIdentity } from "@verchestra/workspace";
-import { PublicErrorException } from "@verchestra/domain";
 
 import { cliError } from "../cli-errors.ts";
 import { notConfigured } from "./task-errors.ts";

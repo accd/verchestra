@@ -68,13 +68,13 @@ function workflowPort(context: VerifierContext): VerificationPorts["workflow"] {
   return {
     apply: async (snapshot: RunSnapshot, command: WorkflowCommand): Promise<WorkflowDecision> => {
       const decided = WorkflowMachine.decide(snapshot, command);
-      if (!decided.accepted) return decided;
-      applyWorkflow(context.runtime, context.plan.runId, {
-        type: command.type,
-        actorRole: command.actorRole,
-        actorId: command.actorId,
-        evidence: command.evidence
-      });
+      if (decided.accepted)
+        applyWorkflow(context.runtime, context.plan.runId, {
+          type: command.type,
+          actorRole: command.actorRole,
+          actorId: command.actorId,
+          evidence: command.evidence
+        });
       return decided;
     }
   };

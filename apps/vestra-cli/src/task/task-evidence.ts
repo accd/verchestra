@@ -76,7 +76,7 @@ export class TaskEvidenceStore {
     const latest = gateIds.map(
       (gateId) => passing.filter((item) => item.gateId === gateId).sort((a, b) => b.sequence - a.sequence)[0]
     );
-    if (latest.some((item) => item === undefined))
+    if (latest.includes(undefined))
       throw stateInvalid("VES_TASK_EVIDENCE_MISSING", "Gate evidence for the committed change is missing");
     const refs = latest.map((item) => item!.ref);
     const digests = latest.map((item) => item!.digest);

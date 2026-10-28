@@ -44,7 +44,8 @@ export class MutationSensor {
     const scratch = await scratchCheckouts(this.#context.workspace, this.#context.runId, "mutations");
     // why: stable for this mutation within one verification, so a resumed
     // verification replaces the checkout a killed one left behind.
-    const name = `${request.mutation.mutationId}:${(this.#runs += 1)}`;
+    this.#runs += 1;
+    const name = `${request.mutation.mutationId}:${this.#runs}`;
     const killed = await scratch.checkouts.withScratchCheckout(
       { name, commitId: request.commitId },
       async (checkout) => {
