@@ -165,13 +165,10 @@ export class CedarPolicyAdapter {
     });
     const policyViewDigest = computePolicyViewDigest(view);
     const policies: Record<string, string> = {};
-    const rejected = (
-      rejection: PolicyRejection,
-      compiledPolicies: CompiledView["policies"] = { staticPolicies: policies }
-    ): CompiledView => ({
+    const rejected = (rejection: PolicyRejection, compiledPolicies?: CompiledView["policies"]): CompiledView => ({
       validation: validationFailure(rejection.code, rejection.explanation, policyViewDigest),
       normalized,
-      policies: compiledPolicies
+      policies: compiledPolicies ?? { staticPolicies: policies }
     });
     try {
       normalized = normalizedView(view);
