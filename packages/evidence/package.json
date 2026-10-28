@@ -9,7 +9,7 @@
   "dependencies": {
     "@verchestra/contracts": "workspace:*",
     "@verchestra/domain": "workspace:*",
-    "canonicalize": "3.0.0",
+    "canonicalize": "5.1.0",
     "jose": "6.2.13"
   }
 }
