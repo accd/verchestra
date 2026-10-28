@@ -167,38 +167,20 @@
     "packages/data-probe/src/database-knowledge.ts :: Arrow function": [
       12
     ],
-    "packages/data-probe/src/database-knowledge.ts :: Function 'buildDatabaseKnowledgePackage'": [
-      23
-    ],
-    "packages/data-probe/src/database-knowledge.ts :: Function 'importSchemaSource'": [
-      22
-    ],
     "packages/data-probe/src/database-knowledge.ts :: Function 'isEmailValue'": [
       11
     ],
-    "packages/data-probe/src/database-knowledge.ts :: Function 'normalizePromotedProbeEvidence'": [
-      22
-    ],
     "packages/data-probe/src/database-knowledge.ts :: Function 'planSyntheticSeedScenarios'": [
-      53
+      11
     ],
     "packages/data-probe/src/database-knowledge.ts :: Function 'promoteProbeEvidence'": [
       13
-    ],
-    "packages/data-probe/src/index.ts :: Async method 'plan'": [
-      15
     ],
     "packages/data-probe/src/index.ts :: Function 'normalizeOperation'": [
       11
     ],
     "packages/data-probe/src/mongodb-adapter.ts :: Async method 'inspectPrincipal'": [
       11
-    ],
-    "packages/data-probe/src/mongodb-adapter.ts :: Function 'filter'": [
-      21
-    ],
-    "packages/data-probe/src/mongodb-adapter.ts :: Function 'parseMongoDbReadOperation'": [
-      25
     ],
     "packages/data-probe/src/mongodb-adapter.ts :: Function 'pipeline'": [
       13
@@ -209,23 +191,14 @@
     "packages/data-probe/src/mysql-family-adapter.ts :: Function 'decodeRequest'": [
       12
     ],
-    "packages/data-probe/src/mysql-family-adapter.ts :: Function 'parseMySqlFamilyReadOperation'": [
-      40
-    ],
     "packages/data-probe/src/oracle-adapter.ts :: Async method 'inspectPrincipal'": [
       16
     ],
     "packages/data-probe/src/oracle-adapter.ts :: Async method 'verifyIdentity'": [
       12
     ],
-    "packages/data-probe/src/oracle-adapter.ts :: Function 'parseOracleReadOperation'": [
-      45
-    ],
     "packages/data-probe/src/postgresql-adapter.ts :: Function 'decodeRequest'": [
       12
-    ],
-    "packages/data-probe/src/postgresql-adapter.ts :: Function 'parsePostgreSqlReadOperation'": [
-      39
     ],
     "packages/data-probe/src/sap-ase-adapter.ts :: Async method 'inspectPrincipal'": [
       17
@@ -236,17 +209,8 @@
     "packages/data-probe/src/sap-ase-adapter.ts :: Function 'decodeRequest'": [
       12
     ],
-    "packages/data-probe/src/sap-ase-adapter.ts :: Function 'parseSapAseReadOperation'": [
-      39
-    ],
-    "packages/data-probe/src/sqlite-adapter.ts :: Function 'parseSqliteReadOperation'": [
-      38
-    ],
     "packages/data-probe/src/sqlserver-adapter.ts :: Function 'decodeRequest'": [
       12
-    ],
-    "packages/data-probe/src/sqlserver-adapter.ts :: Function 'parseSqlServerReadOperation'": [
-      43
     ],
     "packages/distribution/src/hermetic-bundle.ts :: Arrow function": [
       16,

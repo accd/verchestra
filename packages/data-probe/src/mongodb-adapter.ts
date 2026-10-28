@@ -76,35 +76,41 @@ function parameter(value: unknown, state: ValidationState) {
     fail("VES_MONGODB_LITERAL_DENIED", "MongoDB data literals are not permitted");
   state.parameters.add(token["$param"] as number);
 }
+function logicalFilter(operator: string, operands: unknown, state: ValidationState, depth: number): void {
+  if (operator !== "$and" && operator !== "$or")
+    fail("VES_MONGODB_OPERATOR_DENIED", "MongoDB query operator is not approved");
+  if (!Array.isArray(operands) || operands.length === 0 || operands.length > 32)
+    fail("VES_MONGODB_COMMAND_INVALID", "MongoDB logical filter is invalid");
+  state.functions.add(operator.slice(1));
+  for (const item of operands) filter(item, state, depth + 1);
+}
+function conditionOperator(operator: string, operand: unknown, state: ValidationState): void {
+  if (operator === "$exists") {
+    if (typeof operand !== "boolean") fail("VES_MONGODB_LITERAL_DENIED", "MongoDB exists control is invalid");
+    return;
+  }
+  if (!COMPARISON_OPERATORS.has(operator))
+    fail("VES_MONGODB_OPERATOR_DENIED", "MongoDB query operator is not approved");
+  parameter(operand, state);
+}
+function fieldFilter(field: string, conditionValue: unknown, state: ValidationState): void {
+  if (!FIELD.test(field)) fail("VES_MONGODB_FIELD_DENIED", "MongoDB field is not approved");
+  if (typeof conditionValue !== "object" || conditionValue === null || Array.isArray(conditionValue))
+    fail("VES_MONGODB_LITERAL_DENIED", "MongoDB data literals are not permitted");
+  const condition = conditionValue as UnknownRecord;
+  if (Object.keys(condition).length === 0 || Object.keys(condition).length > 4)
+    fail("VES_MONGODB_COMMAND_INVALID", "MongoDB field condition is invalid");
+  for (const [operator, operand] of Object.entries(condition)) {
+    conditionOperator(operator, operand, state);
+    state.functions.add(operator.slice(1));
+  }
+}
 function filter(value: unknown, state: ValidationState, depth = 0): void {
   if (depth > 12) fail("VES_MONGODB_COMMAND_INVALID", "MongoDB filter exceeds structural bounds");
   const input = record(value);
   for (const [field, conditionValue] of Object.entries(input)) {
-    if (field.startsWith("$")) {
-      if (field !== "$and" && field !== "$or")
-        fail("VES_MONGODB_OPERATOR_DENIED", "MongoDB query operator is not approved");
-      if (!Array.isArray(conditionValue) || conditionValue.length === 0 || conditionValue.length > 32)
-        fail("VES_MONGODB_COMMAND_INVALID", "MongoDB logical filter is invalid");
-      state.functions.add(field.slice(1));
-      for (const item of conditionValue) filter(item, state, depth + 1);
-      continue;
-    }
-    if (!FIELD.test(field)) fail("VES_MONGODB_FIELD_DENIED", "MongoDB field is not approved");
-    if (typeof conditionValue !== "object" || conditionValue === null || Array.isArray(conditionValue))
-      fail("VES_MONGODB_LITERAL_DENIED", "MongoDB data literals are not permitted");
-    const condition = conditionValue as UnknownRecord;
-    if (Object.keys(condition).length === 0 || Object.keys(condition).length > 4)
-      fail("VES_MONGODB_COMMAND_INVALID", "MongoDB field condition is invalid");
-    for (const [operator, operand] of Object.entries(condition)) {
-      if (operator === "$exists") {
-        if (typeof operand !== "boolean") fail("VES_MONGODB_LITERAL_DENIED", "MongoDB exists control is invalid");
-      } else {
-        if (!COMPARISON_OPERATORS.has(operator))
-          fail("VES_MONGODB_OPERATOR_DENIED", "MongoDB query operator is not approved");
-        parameter(operand, state);
-      }
-      state.functions.add(operator.slice(1));
-    }
+    if (field.startsWith("$")) logicalFilter(field, conditionValue, state, depth);
+    else fieldFilter(field, conditionValue, state);
   }
 }
 function projection(value: unknown) {
@@ -141,21 +147,24 @@ function pipeline(value: unknown, state: ValidationState) {
   }
 }
 
-export function parseMongoDbReadOperation(command: unknown, options: ParseOptions): MongoDbOperation {
-  preflight(command, 0, { nodes: 0 });
-  const input = record(command);
-  const kind = input["kind"];
+function assertReadKind(kind: unknown): asserts kind is string {
   if (kind === "mapReduce") fail("VES_MONGODB_SERVER_EXECUTION_DENIED", "MongoDB server execution is not permitted");
   if (typeof kind === "string" && WRITE_KINDS.has(kind))
     fail("VES_MONGODB_WRITE_DENIED", "MongoDB write commands are not permitted");
   if (typeof kind !== "string" || !READ_KINDS.has(kind))
     fail("VES_MONGODB_COMMAND_INVALID", "MongoDB command kind is invalid");
-  const database = input["database"];
-  const collection = input["collection"];
+}
+function approvedDatabase(database: unknown): string {
   if (typeof database !== "string" || !DATABASE.test(database) || ["admin", "config", "local"].includes(database))
     fail("VES_MONGODB_DATABASE_DENIED", "MongoDB database is not approved");
+  return database;
+}
+function approvedCollection(collection: unknown): string {
   if (typeof collection !== "string" || !COLLECTION.test(collection) || collection.startsWith("system"))
     fail("VES_MONGODB_COLLECTION_DENIED", "MongoDB collection is not approved");
+  return collection;
+}
+function assertMongoDbOptions(options: ParseOptions): void {
   if (!/^protected-request:[a-z0-9-]{16,128}$/u.test(options.protectedRequestRef))
     fail("VES_MONGODB_REQUEST_INVALID", "Protected MongoDB request reference is invalid");
   if (
@@ -164,19 +173,21 @@ export function parseMongoDbReadOperation(command: unknown, options: ParseOption
     options.parameterClassifications.some((item) => !CLASSIFICATIONS.includes(item as Classification))
   )
     fail("VES_MONGODB_PARAMETERS_INVALID", "MongoDB parameter classifications are invalid");
-  const state: ValidationState = { parameters: new Set(), functions: new Set() };
+}
+function query(input: UnknownRecord, state: ValidationState): void {
+  filter(input["filter"], state);
+  projection(input["projection"]);
+  sort(input["sort"]);
+}
+function commandBody(kind: string, input: UnknownRecord, collection: string, state: ValidationState): void {
   if (kind === "find") {
     exactKeys(input, ["kind", "database", "collection", "filter", "projection", "sort"]);
-    filter(input["filter"], state);
-    projection(input["projection"]);
-    sort(input["sort"]);
+    query(input, state);
   } else if (kind === "explain") {
     exactKeys(input, ["kind", "database", "collection", "filter", "projection", "sort", "verbosity"]);
     if (input["verbosity"] !== "queryPlanner")
       fail("VES_MONGODB_COMMAND_INVALID", "MongoDB explain verbosity is invalid");
-    filter(input["filter"], state);
-    projection(input["projection"]);
-    sort(input["sort"]);
+    query(input, state);
     state.functions.add("explain");
   } else if (kind === "aggregate") {
     exactKeys(input, ["kind", "database", "collection", "pipeline"]);
@@ -186,6 +197,20 @@ export function parseMongoDbReadOperation(command: unknown, options: ParseOption
     if (collection !== "collections_catalog")
       fail("VES_MONGODB_COLLECTION_DENIED", "MongoDB introspection collection is not approved");
   }
+}
+
+export function parseMongoDbReadOperation(command: unknown, options: ParseOptions): MongoDbOperation {
+  preflight(command, 0, { nodes: 0 });
+  const input = record(command);
+  const kind = input["kind"];
+  assertReadKind(kind);
+  const rawDatabase = input["database"];
+  const rawCollection = input["collection"];
+  const database = approvedDatabase(rawDatabase);
+  const collection = approvedCollection(rawCollection);
+  assertMongoDbOptions(options);
+  const state: ValidationState = { parameters: new Set(), functions: new Set() };
+  commandBody(kind, input, collection, state);
   const parameters = [...state.parameters].sort((a, b) => a - b);
   if (
     parameters.length !== options.parameterClassifications.length ||

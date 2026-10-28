@@ -72,42 +72,67 @@ export interface SapAseOperation {
   readonly parameterClassifications: readonly Classification[];
 }
 
-export function parseSapAseReadOperation(sql: unknown, options: ParseOptions): SapAseOperation {
-  if (typeof sql !== "string" || sql.length === 0 || sql.length > 131_072) {
-    fail("VES_SAP_ASE_REQUEST_INVALID", "Protected SAP ASE statement is invalid");
-  }
-  if (!/^[\t\n\r\x20-\x7e]+$/u.test(sql) || /\\/u.test(sql)) {
-    fail("VES_SAP_ASE_ENCODING_DENIED", "SAP ASE statement encoding is not permitted");
-  }
-  if (/--|\/\*|\*\//u.test(sql)) fail("VES_SAP_ASE_COMMENT_DENIED", "SAP ASE comments are not permitted");
-  if (sql.includes(";") || sql.split("\n").some((line) => line.trim().toUpperCase() === "GO")) {
-    fail("VES_SAP_ASE_BATCH_DENIED", "SAP ASE batches are not permitted");
-  }
-  if (
+type SapAseObject = { schema: string; name: string; type: "table" | "catalog" };
+type StatementRule = readonly [denied: (sql: string) => boolean, code: string, message: string];
+
+function containsLiteral(sql: string): boolean {
+  return (
     sql.includes("'") ||
     sql.includes('"') ||
     sql.includes("[") ||
     sql.includes("]") ||
     sql.includes("`") ||
     /\b\d+(?:\.\d+)?\b/u.test(sql)
-  ) {
-    fail("VES_SAP_ASE_LITERAL_DENIED", "Inline literals and quoted identifiers are not permitted");
+  );
+}
+
+// invariant: the rules run in this order, so a statement breaking several of
+// them is refused with the first one listed.
+const STATEMENT_RULES: readonly StatementRule[] = [
+  [
+    (sql) => !/^[\t\n\r\x20-\x7e]+$/u.test(sql) || /\\/u.test(sql),
+    "VES_SAP_ASE_ENCODING_DENIED",
+    "SAP ASE statement encoding is not permitted"
+  ],
+  [(sql) => /--|\/\*|\*\//u.test(sql), "VES_SAP_ASE_COMMENT_DENIED", "SAP ASE comments are not permitted"],
+  [
+    (sql) => sql.includes(";") || sql.split("\n").some((line) => line.trim().toUpperCase() === "GO"),
+    "VES_SAP_ASE_BATCH_DENIED",
+    "SAP ASE batches are not permitted"
+  ],
+  [containsLiteral, "VES_SAP_ASE_LITERAL_DENIED", "Inline literals and quoted identifiers are not permitted"],
+  [(sql) => /@/u.test(sql), "VES_SAP_ASE_VARIABLE_DENIED", "SAP ASE variables are not permitted"],
+  [(sql) => EXECUTION.test(sql), "VES_SAP_ASE_EXECUTION_DENIED", "SAP ASE execution syntax is not permitted"],
+  [
+    (sql) => /#|\btempdb\b/iu.test(sql),
+    "VES_SAP_ASE_TEMP_OBJECT_DENIED",
+    "SAP ASE temporary objects are not permitted"
+  ],
+  [
+    (sql) => /\b[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)?/iu.test(sql),
+    "VES_SAP_ASE_REMOTE_OBJECT_DENIED",
+    "SAP ASE cross database or remote objects are not permitted"
+  ],
+  [
+    (sql) => /\bINTO\s+[a-z]/iu.test(sql) || WRITE.test(sql),
+    "VES_SAP_ASE_WRITE_DENIED",
+    "SAP ASE write syntax is not permitted"
+  ],
+  [
+    (sql) => !sql.replace(/\s+/gu, " ").trim().toLowerCase().startsWith("select "),
+    "VES_SAP_ASE_READ_FORM_DENIED",
+    "SAP ASE read form is not permitted"
+  ]
+];
+
+function assertSapAseStatement(sql: unknown): asserts sql is string {
+  if (typeof sql !== "string" || sql.length === 0 || sql.length > 131_072) {
+    fail("VES_SAP_ASE_REQUEST_INVALID", "Protected SAP ASE statement is invalid");
   }
-  if (/@/u.test(sql)) fail("VES_SAP_ASE_VARIABLE_DENIED", "SAP ASE variables are not permitted");
-  if (EXECUTION.test(sql)) fail("VES_SAP_ASE_EXECUTION_DENIED", "SAP ASE execution syntax is not permitted");
-  if (/#|\btempdb\b/iu.test(sql)) {
-    fail("VES_SAP_ASE_TEMP_OBJECT_DENIED", "SAP ASE temporary objects are not permitted");
-  }
-  if (/\b[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)?/iu.test(sql)) {
-    fail("VES_SAP_ASE_REMOTE_OBJECT_DENIED", "SAP ASE cross database or remote objects are not permitted");
-  }
-  if (/\bINTO\s+[a-z]/iu.test(sql) || WRITE.test(sql)) {
-    fail("VES_SAP_ASE_WRITE_DENIED", "SAP ASE write syntax is not permitted");
-  }
-  const normalized = sql.replace(/\s+/gu, " ").trim().toLowerCase();
-  if (!normalized.startsWith("select ")) {
-    fail("VES_SAP_ASE_READ_FORM_DENIED", "SAP ASE read form is not permitted");
-  }
+  for (const [denied, code, message] of STATEMENT_RULES) if (denied(sql)) fail(code, message);
+}
+
+function assertSapAseOptions(options: ParseOptions): void {
   if (!/^protected-request:[a-z0-9-]{16,128}$/u.test(options.protectedRequestRef)) {
     fail("VES_SAP_ASE_REQUEST_INVALID", "Protected SAP ASE request reference is invalid");
   }
@@ -118,21 +143,26 @@ export function parseSapAseReadOperation(sql: unknown, options: ParseOptions): S
   ) {
     fail("VES_SAP_ASE_PARAMETERS_INVALID", "SAP ASE parameter classifications are invalid");
   }
+}
 
-  const objects = new Map<string, { schema: string; name: string; type: "table" | "catalog" }>();
+function sapAseObjects(sql: string, kind: ParseOptions["kind"]): Map<string, SapAseObject> {
+  const objects = new Map<string, SapAseObject>();
   for (const match of sql.matchAll(/\b(?:from|join)\s+([a-z][a-z0-9_]*)(?:\.([a-z][a-z0-9_]*))?/giu)) {
     const schema = (match[1] as string).toLowerCase();
     const name = match[2]?.toLowerCase();
     if (name === undefined) fail("VES_SAP_ASE_OBJECT_INVALID", "SAP ASE objects must be owner qualified");
     const identity = `${schema}.${name}`;
     const catalog = schema === "dbo" && name.startsWith("sys");
-    if (catalog && (options.kind !== "introspect" || !SAFE_CATALOGS.has(identity))) {
+    if (catalog && (kind !== "introspect" || !SAFE_CATALOGS.has(identity))) {
       fail("VES_SAP_ASE_CATALOG_DENIED", "SAP ASE catalog object is not approved");
     }
     objects.set(identity, { schema, name, type: catalog ? "catalog" : "table" });
   }
   if (objects.size === 0) fail("VES_SAP_ASE_OBJECT_INVALID", "SAP ASE read requires an approved object");
+  return objects;
+}
 
+function sapAseFunctions(sql: string): Set<string> {
   const functions = new Set<string>();
   for (const match of sql.matchAll(/\b([a-z][a-z0-9_]*)\s*\(/giu)) {
     const name = (match[1] as string).toLowerCase();
@@ -140,6 +170,14 @@ export function parseSapAseReadOperation(sql: unknown, options: ParseOptions): S
     if (!SAFE_FUNCTIONS.has(name)) fail("VES_SAP_ASE_FUNCTION_DENIED", "SAP ASE function is not approved");
     functions.add(name);
   }
+  return functions;
+}
+
+export function parseSapAseReadOperation(sql: unknown, options: ParseOptions): SapAseOperation {
+  assertSapAseStatement(sql);
+  assertSapAseOptions(options);
+  const objects = sapAseObjects(sql, options.kind);
+  const functions = sapAseFunctions(sql);
   const placeholders = [...sql].filter((character) => character === "?").length;
   if (placeholders !== options.parameterClassifications.length) {
     fail("VES_SAP_ASE_PARAMETERS_INVALID", "SAP ASE parameter classifications do not match placeholders");

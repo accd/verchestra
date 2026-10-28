@@ -125,6 +125,65 @@ export interface DatabaseSchemaSource {
   readonly sourceDigest: string;
 }
 
+function importSchemaColumn(rawColumn: unknown, code: string): SchemaColumn {
+  const column = record(rawColumn, code, "Database schema column is invalid");
+  exactKeys(
+    column,
+    ["name", "dataType", "nullable", "primaryKey", "unique"],
+    code,
+    "Database schema column is invalid"
+  );
+  const columnName = text(
+    column["name"],
+    /^(?:_id|[a-z][a-z0-9_]{0,126})$/u,
+    code,
+    "Database schema column is invalid"
+  );
+  if (typeof column["dataType"] !== "string" || !/^[a-z][a-z0-9_(), ]{0,126}$/iu.test(column["dataType"]))
+    fail(code, "Database schema data type is invalid");
+  if ([column["nullable"], column["primaryKey"], column["unique"]].some((item) => typeof item !== "boolean"))
+    fail(code, "Database schema constraints are invalid");
+  return {
+    name: columnName,
+    dataType: column["dataType"].trim().replace(/\s+/gu, " ").toLowerCase(),
+    nullable: column["nullable"] as boolean,
+    primaryKey: column["primaryKey"] as boolean,
+    unique: column["unique"] as boolean
+  };
+}
+function importSchemaEntity(rawEntity: unknown, code: string): SchemaEntity {
+  const entity = record(rawEntity, code, "Database schema entity is invalid");
+  exactKeys(entity, ["schema", "name", "type", "columns"], code, "Database schema entity is invalid");
+  const schema = text(entity["schema"], IDENTIFIER, code, "Database schema entity is invalid");
+  const name = text(entity["name"], IDENTIFIER, code, "Database schema entity is invalid");
+  if (entity["type"] !== "table" && entity["type"] !== "view") fail(code, "Database schema entity type is invalid");
+  if (!Array.isArray(entity["columns"]) || entity["columns"].length === 0 || entity["columns"].length > 1024)
+    fail(code, "Database schema columns are invalid");
+  const columns = new Map<string, SchemaColumn>();
+  for (const rawColumn of entity["columns"]) {
+    const column = importSchemaColumn(rawColumn, code);
+    if (columns.has(column.name)) fail(code, "Database schema column is duplicated");
+    columns.set(column.name, column);
+  }
+  return {
+    schema,
+    name,
+    type: entity["type"],
+    columns: [...columns.values()].sort((a, b) => codeUnitCompare(a.name, b.name))
+  };
+}
+function importSchemaEntities(rawEntities: unknown, code: string): Map<string, SchemaEntity> {
+  if (!Array.isArray(rawEntities) || rawEntities.length === 0 || rawEntities.length > 512)
+    fail(code, "Database schema entities are invalid");
+  const entities = new Map<string, SchemaEntity>();
+  for (const rawEntity of rawEntities) {
+    const entity = importSchemaEntity(rawEntity, code);
+    const key = `${entity.schema}.${entity.name}`;
+    if (entities.has(key)) fail(code, "Database schema entity is duplicated");
+    entities.set(key, entity);
+  }
+  return entities;
+}
 function importSchemaSource(value: unknown, expectedKind: SourceKind): DatabaseSchemaSource {
   const code = "VES_DATABASE_SCHEMA_SOURCE_INVALID";
   const input = record(value, code, "Database schema source is invalid");
@@ -142,54 +201,7 @@ function importSchemaSource(value: unknown, expectedKind: SourceKind): DatabaseS
   const logicalRef = text(input["logicalRef"], LOGICAL_REF, code, "Database schema source reference is invalid");
   if (logicalRef.includes("://") || /(?:password|credential|token|secret)/iu.test(logicalRef))
     fail(code, "Database schema source reference is invalid");
-  if (!Array.isArray(input["entities"]) || input["entities"].length === 0 || input["entities"].length > 512)
-    fail(code, "Database schema entities are invalid");
-  const entities = new Map<string, SchemaEntity>();
-  for (const rawEntity of input["entities"]) {
-    const entity = record(rawEntity, code, "Database schema entity is invalid");
-    exactKeys(entity, ["schema", "name", "type", "columns"], code, "Database schema entity is invalid");
-    const schema = text(entity["schema"], IDENTIFIER, code, "Database schema entity is invalid");
-    const name = text(entity["name"], IDENTIFIER, code, "Database schema entity is invalid");
-    if (entity["type"] !== "table" && entity["type"] !== "view") fail(code, "Database schema entity type is invalid");
-    if (!Array.isArray(entity["columns"]) || entity["columns"].length === 0 || entity["columns"].length > 1024)
-      fail(code, "Database schema columns are invalid");
-    const columns = new Map<string, SchemaColumn>();
-    for (const rawColumn of entity["columns"]) {
-      const column = record(rawColumn, code, "Database schema column is invalid");
-      exactKeys(
-        column,
-        ["name", "dataType", "nullable", "primaryKey", "unique"],
-        code,
-        "Database schema column is invalid"
-      );
-      const columnName = text(
-        column["name"],
-        /^(?:_id|[a-z][a-z0-9_]{0,126})$/u,
-        code,
-        "Database schema column is invalid"
-      );
-      if (typeof column["dataType"] !== "string" || !/^[a-z][a-z0-9_(), ]{0,126}$/iu.test(column["dataType"]))
-        fail(code, "Database schema data type is invalid");
-      if ([column["nullable"], column["primaryKey"], column["unique"]].some((item) => typeof item !== "boolean"))
-        fail(code, "Database schema constraints are invalid");
-      if (columns.has(columnName)) fail(code, "Database schema column is duplicated");
-      columns.set(columnName, {
-        name: columnName,
-        dataType: column["dataType"].trim().replace(/\s+/gu, " ").toLowerCase(),
-        nullable: column["nullable"] as boolean,
-        primaryKey: column["primaryKey"] as boolean,
-        unique: column["unique"] as boolean
-      });
-    }
-    const key = `${schema}.${name}`;
-    if (entities.has(key)) fail(code, "Database schema entity is duplicated");
-    entities.set(key, {
-      schema,
-      name,
-      type: entity["type"],
-      columns: [...columns.values()].sort((a, b) => codeUnitCompare(a.name, b.name))
-    });
-  }
+  const entities = importSchemaEntities(input["entities"], code);
   const material = {
     schemaVersion: 1 as const,
     sourceId: text(input["sourceId"], STABLE_ID, code, "Database schema source identity is invalid"),
@@ -255,6 +267,124 @@ function packageDigestOf(packageValue: DatabaseKnowledgePackage): string {
     contradictions: packageValue.contradictions
   });
 }
+function knowledgeSource(rawSource: DatabaseSchemaSource, databaseId: string, code: string): DatabaseSchemaSource {
+  if (!SOURCE_KINDS.includes(rawSource.kind)) fail(code, "Database Knowledge source is invalid");
+  const normalized = importSchemaSource(
+    {
+      schemaVersion: rawSource.schemaVersion,
+      sourceId: rawSource.sourceId,
+      kind: rawSource.kind,
+      databaseId: rawSource.databaseId,
+      revision: rawSource.revision,
+      capturedAt: rawSource.capturedAt,
+      logicalRef: rawSource.logicalRef,
+      coverage: rawSource.coverage,
+      entities: rawSource.entities
+    },
+    rawSource.kind
+  );
+  if (
+    normalized.databaseId !== databaseId ||
+    !DIGEST.test(rawSource.sourceDigest) ||
+    normalized.sourceDigest !== rawSource.sourceDigest
+  )
+    fail(code, "Database Knowledge source is invalid");
+  return normalized;
+}
+function knowledgeSources(
+  rawSources: readonly DatabaseSchemaSource[],
+  databaseId: string,
+  code: string
+): DatabaseSchemaSource[] {
+  const sourcesById = new Map<string, DatabaseSchemaSource>();
+  for (const rawSource of rawSources) {
+    const normalized = knowledgeSource(rawSource, databaseId, code);
+    const current = sourcesById.get(normalized.sourceId);
+    if (current !== undefined && current.sourceDigest !== normalized.sourceDigest)
+      fail("VES_DATABASE_SCHEMA_SOURCE_CONFLICT", "Database schema source identity has conflicting evidence");
+    sourcesById.set(normalized.sourceId, normalized);
+  }
+  return [...sourcesById.values()].sort(
+    (a, b) => codeUnitCompare(a.kind, b.kind) || codeUnitCompare(a.sourceId, b.sourceId)
+  );
+}
+
+type ClaimValues = Map<string, Map<string, { value: string | boolean; sourceIds: Set<string> }>>;
+type AddClaim = (factKey: string, value: string | boolean, sourceId: string) => void;
+
+function entityUniverseOf(sources: readonly DatabaseSchemaSource[]): Map<string, Set<string>> {
+  const entityUniverse = new Map<string, Set<string>>();
+  for (const source of sources)
+    for (const entity of source.entities) {
+      const key = `${entity.schema}.${entity.name}`;
+      const columns = entityUniverse.get(key) ?? new Set<string>();
+      for (const column of entity.columns) columns.add(column.name);
+      entityUniverse.set(key, columns);
+    }
+  return entityUniverse;
+}
+function addColumnClaims(
+  add: AddClaim,
+  source: DatabaseSchemaSource,
+  entityKey: string,
+  entity: SchemaEntity,
+  universeColumns: ReadonlySet<string>
+): void {
+  const sourceColumns = new Map(entity.columns.map((column) => [column.name, column]));
+  for (const columnName of universeColumns) {
+    const column = sourceColumns.get(columnName);
+    if (source.coverage === "complete")
+      add(`${entityKey}.column.${columnName}.present`, column !== undefined, source.sourceId);
+    if (column === undefined) continue;
+    const prefix = `${entityKey}.column.${column.name}`;
+    add(`${prefix}.data_type`, column.dataType, source.sourceId);
+    add(`${prefix}.nullable`, column.nullable, source.sourceId);
+    add(`${prefix}.primary_key`, column.primaryKey, source.sourceId);
+    add(`${prefix}.unique`, column.unique, source.sourceId);
+  }
+}
+function addEntityClaims(
+  add: AddClaim,
+  source: DatabaseSchemaSource,
+  entityUniverse: ReadonlyMap<string, ReadonlySet<string>>
+): void {
+  const sourceEntities = new Map(source.entities.map((entity) => [`${entity.schema}.${entity.name}`, entity]));
+  for (const [entityKey, universeColumns] of entityUniverse) {
+    const entity = sourceEntities.get(entityKey);
+    if (source.coverage === "complete") add(`${entityKey}.present`, entity !== undefined, source.sourceId);
+    if (entity === undefined) continue;
+    add(`${entityKey}.entity_type`, entity.type, source.sourceId);
+    addColumnClaims(add, source, entityKey, entity, universeColumns);
+  }
+}
+function sourceClaims(sources: readonly DatabaseSchemaSource[]): ClaimValues {
+  const claims: ClaimValues = new Map();
+  const add: AddClaim = (factKey, value, sourceId) => {
+    const alternatives = claims.get(factKey) ?? new Map();
+    const valueDigest = digest(value);
+    const alternative = alternatives.get(valueDigest) ?? { value, sourceIds: new Set<string>() };
+    alternative.sourceIds.add(sourceId);
+    alternatives.set(valueDigest, alternative);
+    claims.set(factKey, alternatives);
+  };
+  const entityUniverse = entityUniverseOf(sources);
+  for (const source of sources) addEntityClaims(add, source, entityUniverse);
+  return claims;
+}
+function knowledgeFacts(claims: ClaimValues): KnowledgeFact[] {
+  return [...claims.entries()]
+    .sort(([a], [b]) => codeUnitCompare(a, b))
+    .map(([factKey, values]) => {
+      const alternatives = [...values.entries()]
+        .sort(([a], [b]) => codeUnitCompare(a, b))
+        .map(([valueDigest, item]) => ({
+          value: item.value,
+          valueDigest,
+          sourceIds: [...item.sourceIds].sort(codeUnitCompare)
+        }));
+      return { factKey, status: alternatives.length === 1 ? "agreed" : "contradictory", alternatives };
+    });
+}
 export function buildDatabaseKnowledgePackage(value: unknown): DatabaseKnowledgePackage {
   const code = "VES_DATABASE_KNOWLEDGE_INVALID";
   const input = record(value, code, "Database Knowledge Package is invalid");
@@ -279,87 +409,8 @@ export function buildDatabaseKnowledgePackage(value: unknown): DatabaseKnowledge
   );
   const databaseId = text(input["databaseId"], STABLE_ID, code, "Database Knowledge database is invalid");
   const generation = positive(input["generation"], code, "Database Knowledge generation is invalid");
-  const sourcesById = new Map<string, DatabaseSchemaSource>();
-  for (const rawSource of input["sources"] as DatabaseSchemaSource[]) {
-    if (!SOURCE_KINDS.includes(rawSource.kind)) fail(code, "Database Knowledge source is invalid");
-    const normalized = importSchemaSource(
-      {
-        schemaVersion: rawSource.schemaVersion,
-        sourceId: rawSource.sourceId,
-        kind: rawSource.kind,
-        databaseId: rawSource.databaseId,
-        revision: rawSource.revision,
-        capturedAt: rawSource.capturedAt,
-        logicalRef: rawSource.logicalRef,
-        coverage: rawSource.coverage,
-        entities: rawSource.entities
-      },
-      rawSource.kind
-    );
-    if (
-      normalized.databaseId !== databaseId ||
-      !DIGEST.test(rawSource.sourceDigest) ||
-      normalized.sourceDigest !== rawSource.sourceDigest
-    )
-      fail(code, "Database Knowledge source is invalid");
-    const current = sourcesById.get(normalized.sourceId);
-    if (current !== undefined && current.sourceDigest !== normalized.sourceDigest)
-      fail("VES_DATABASE_SCHEMA_SOURCE_CONFLICT", "Database schema source identity has conflicting evidence");
-    sourcesById.set(normalized.sourceId, normalized);
-  }
-  const sources = [...sourcesById.values()].sort(
-    (a, b) => codeUnitCompare(a.kind, b.kind) || codeUnitCompare(a.sourceId, b.sourceId)
-  );
-  const claims = new Map<string, Map<string, { value: string | boolean; sourceIds: Set<string> }>>();
-  const add = (factKey: string, value: string | boolean, sourceId: string) => {
-    const alternatives = claims.get(factKey) ?? new Map();
-    const valueDigest = digest(value);
-    const alternative = alternatives.get(valueDigest) ?? { value, sourceIds: new Set<string>() };
-    alternative.sourceIds.add(sourceId);
-    alternatives.set(valueDigest, alternative);
-    claims.set(factKey, alternatives);
-  };
-  const entityUniverse = new Map<string, Set<string>>();
-  for (const source of sources)
-    for (const entity of source.entities) {
-      const key = `${entity.schema}.${entity.name}`;
-      const columns = entityUniverse.get(key) ?? new Set<string>();
-      for (const column of entity.columns) columns.add(column.name);
-      entityUniverse.set(key, columns);
-    }
-  for (const source of sources) {
-    const sourceEntities = new Map(source.entities.map((entity) => [`${entity.schema}.${entity.name}`, entity]));
-    for (const [entityKey, universeColumns] of entityUniverse) {
-      const entity = sourceEntities.get(entityKey);
-      if (source.coverage === "complete") add(`${entityKey}.present`, entity !== undefined, source.sourceId);
-      if (entity === undefined) continue;
-      add(`${entityKey}.entity_type`, entity.type, source.sourceId);
-      const sourceColumns = new Map(entity.columns.map((column) => [column.name, column]));
-      for (const columnName of universeColumns) {
-        const column = sourceColumns.get(columnName);
-        if (source.coverage === "complete")
-          add(`${entityKey}.column.${columnName}.present`, column !== undefined, source.sourceId);
-        if (column === undefined) continue;
-        const prefix = `${entityKey}.column.${column.name}`;
-        add(`${prefix}.data_type`, column.dataType, source.sourceId);
-        add(`${prefix}.nullable`, column.nullable, source.sourceId);
-        add(`${prefix}.primary_key`, column.primaryKey, source.sourceId);
-        add(`${prefix}.unique`, column.unique, source.sourceId);
-      }
-    }
-  }
-  const facts: KnowledgeFact[] = [...claims.entries()]
-    .sort(([a], [b]) => codeUnitCompare(a, b))
-    .map(([factKey, values]) => {
-      const alternatives = [...values.entries()]
-        .sort(([a], [b]) => codeUnitCompare(a, b))
-        .map(([valueDigest, item]) => ({
-          value: item.value,
-          valueDigest,
-          sourceIds: [...item.sourceIds].sort(codeUnitCompare)
-        }));
-      return { factKey, status: alternatives.length === 1 ? "agreed" : "contradictory", alternatives };
-    });
+  const sources = knowledgeSources(input["sources"] as DatabaseSchemaSource[], databaseId, code);
+  const facts = knowledgeFacts(sourceClaims(sources));
   const contradictions: Contradiction[] = facts
     .filter((fact) => fact.status === "contradictory")
     .map((fact) => ({
@@ -604,6 +655,59 @@ export function promoteProbeEvidence(value: unknown): PromotedProbeEvidence {
   return deepFreeze({ ...material, evidenceDigest: digest(material) });
 }
 
+function assertPromotedBoundsAndCounts(evidence: UnknownRecord, code: string): void {
+  const bounds = record(evidence["bounds"], code, "Promoted Probe evidence is invalid");
+  exactKeys(
+    bounds,
+    ["timeoutMs", "rowLimit", "byteLimit", "concurrencyLimit"],
+    code,
+    "Promoted Probe evidence is invalid"
+  );
+  for (const field of ["timeoutMs", "rowLimit", "byteLimit", "concurrencyLimit"])
+    positive(bounds[field], code, "Promoted Probe evidence is invalid");
+  for (const field of ["rowCount", "byteCount"])
+    if (!Number.isSafeInteger(evidence[field]) || (evidence[field] as number) < 0)
+      fail(code, "Promoted Probe evidence is invalid");
+}
+function assertPromotedRedaction(value: unknown, code: string): void {
+  const redaction = record(value, code, "Promoted Probe evidence is invalid");
+  exactKeys(
+    redaction,
+    ["policyRef", "method", "removedFields", "humanReviewRef"],
+    code,
+    "Promoted Probe evidence is invalid"
+  );
+  text(redaction["policyRef"], /^[a-z][a-z0-9._-]{2,127}$/u, code, "Promoted Probe evidence is invalid");
+  if (redaction["method"] !== "allowlist" && redaction["method"] !== "aggregation")
+    fail(code, "Promoted Probe evidence is invalid");
+  text(redaction["humanReviewRef"], REVIEW_REF, code, "Promoted Probe evidence is invalid");
+  if (
+    !Array.isArray(redaction["removedFields"]) ||
+    redaction["removedFields"].some((item) => typeof item !== "string" || !/^[a-z][a-z0-9_.]{0,126}$/u.test(item))
+  )
+    fail(code, "Promoted Probe evidence is invalid");
+}
+function assertPromotedClaims(value: unknown, code: string): void {
+  if (!Array.isArray(value) || value.length === 0) fail(code, "Promoted Probe evidence is invalid");
+  const factKeys = new Set<string>();
+  for (const item of value) {
+    const claim = record(item, code, "Promoted Probe evidence is invalid");
+    exactKeys(
+      claim,
+      ["factKey", "classification", "valueDigest", "untrusted"],
+      code,
+      "Promoted Probe evidence is invalid"
+    );
+    const factKey = text(claim["factKey"], FACT_KEY, code, "Promoted Probe evidence is invalid");
+    if (/(?:password|credential|secret|token)/iu.test(factKey) || factKeys.has(factKey))
+      fail(code, "Promoted Probe evidence is invalid");
+    factKeys.add(factKey);
+    if (claim["classification"] !== "public" && claim["classification"] !== "internal")
+      fail(code, "Promoted Probe evidence is invalid");
+    if (claim["untrusted"] !== true) fail(code, "Promoted Probe evidence is invalid");
+    text(claim["valueDigest"], DIGEST, code, "Promoted Probe evidence is invalid");
+  }
+}
 function normalizePromotedProbeEvidence(value: unknown, code: string): PromotedProbeEvidence {
   const evidence = record(value, code, "Promoted Probe evidence is invalid");
   exactKeys(
@@ -644,18 +748,7 @@ function normalizePromotedProbeEvidence(value: unknown, code: string): PromotedP
   exactKeys(schemaIdentity, ["version", "fingerprint"], code, "Promoted Probe evidence is invalid");
   text(schemaIdentity["version"], STABLE_ID, code, "Promoted Probe evidence is invalid");
   text(schemaIdentity["fingerprint"], DIGEST, code, "Promoted Probe evidence is invalid");
-  const bounds = record(evidence["bounds"], code, "Promoted Probe evidence is invalid");
-  exactKeys(
-    bounds,
-    ["timeoutMs", "rowLimit", "byteLimit", "concurrencyLimit"],
-    code,
-    "Promoted Probe evidence is invalid"
-  );
-  for (const field of ["timeoutMs", "rowLimit", "byteLimit", "concurrencyLimit"])
-    positive(bounds[field], code, "Promoted Probe evidence is invalid");
-  for (const field of ["rowCount", "byteCount"])
-    if (!Number.isSafeInteger(evidence[field]) || (evidence[field] as number) < 0)
-      fail(code, "Promoted Probe evidence is invalid");
+  assertPromotedBoundsAndCounts(evidence, code);
   if (
     !Array.isArray(evidence["parameterClassifications"]) ||
     evidence["parameterClassifications"].some(
@@ -664,42 +757,8 @@ function normalizePromotedProbeEvidence(value: unknown, code: string): PromotedP
     )
   )
     fail(code, "Promoted Probe evidence is invalid");
-  const redaction = record(evidence["redaction"], code, "Promoted Probe evidence is invalid");
-  exactKeys(
-    redaction,
-    ["policyRef", "method", "removedFields", "humanReviewRef"],
-    code,
-    "Promoted Probe evidence is invalid"
-  );
-  text(redaction["policyRef"], /^[a-z][a-z0-9._-]{2,127}$/u, code, "Promoted Probe evidence is invalid");
-  if (redaction["method"] !== "allowlist" && redaction["method"] !== "aggregation")
-    fail(code, "Promoted Probe evidence is invalid");
-  text(redaction["humanReviewRef"], REVIEW_REF, code, "Promoted Probe evidence is invalid");
-  if (
-    !Array.isArray(redaction["removedFields"]) ||
-    redaction["removedFields"].some((item) => typeof item !== "string" || !/^[a-z][a-z0-9_.]{0,126}$/u.test(item))
-  )
-    fail(code, "Promoted Probe evidence is invalid");
-  if (!Array.isArray(evidence["sanitizedClaims"]) || evidence["sanitizedClaims"].length === 0)
-    fail(code, "Promoted Probe evidence is invalid");
-  const factKeys = new Set<string>();
-  for (const value of evidence["sanitizedClaims"]) {
-    const claim = record(value, code, "Promoted Probe evidence is invalid");
-    exactKeys(
-      claim,
-      ["factKey", "classification", "valueDigest", "untrusted"],
-      code,
-      "Promoted Probe evidence is invalid"
-    );
-    const factKey = text(claim["factKey"], FACT_KEY, code, "Promoted Probe evidence is invalid");
-    if (/(?:password|credential|secret|token)/iu.test(factKey) || factKeys.has(factKey))
-      fail(code, "Promoted Probe evidence is invalid");
-    factKeys.add(factKey);
-    if (claim["classification"] !== "public" && claim["classification"] !== "internal")
-      fail(code, "Promoted Probe evidence is invalid");
-    if (claim["untrusted"] !== true) fail(code, "Promoted Probe evidence is invalid");
-    text(claim["valueDigest"], DIGEST, code, "Promoted Probe evidence is invalid");
-  }
+  assertPromotedRedaction(evidence["redaction"], code);
+  assertPromotedClaims(evidence["sanitizedClaims"], code);
   const normalized = evidence as unknown as PromotedProbeEvidence;
   if (promotedEvidenceDigestOf(normalized) !== evidence["evidenceDigest"])
     fail(code, "Promoted Probe evidence is invalid");
@@ -712,6 +771,195 @@ function selectedFact(packageValue: DatabaseKnowledgePackage, factKey: string): 
   if (fact.alternatives.length === 1) return fact.alternatives[0]?.value;
   const resolution = packageValue.contradictions.find((item) => item.factKey === factKey)?.resolution;
   return fact.alternatives.find((item) => item.valueDigest === resolution?.selectedValueDigest)?.value;
+}
+interface SeedFactory {
+  readonly factoryRef: string;
+  readonly entity: string;
+  readonly generators: UnknownRecord;
+}
+function boundKnowledgePackage(
+  value: unknown,
+  workspaceId: string,
+  databaseId: string,
+  code: string
+): DatabaseKnowledgePackage {
+  const packageValue = value as DatabaseKnowledgePackage;
+  if (typeof packageValue !== "object" || packageValue === null)
+    fail(code, "Database Knowledge Package binding is invalid");
+  if (
+    packageValue.workspaceId !== workspaceId ||
+    packageValue.databaseId !== databaseId ||
+    !DIGEST.test(packageValue.packageDigest)
+  )
+    fail(code, "Database Knowledge Package binding is invalid");
+  const expectedPackageDigest = packageDigestOf(packageValue);
+  if (expectedPackageDigest !== packageValue.packageDigest) fail(code, "Database Knowledge Package digest is invalid");
+  return packageValue;
+}
+function seedFactories(rawFactories: readonly unknown[], code: string): Map<string, SeedFactory> {
+  const factories = new Map<string, SeedFactory>();
+  for (const rawFactory of rawFactories) {
+    const factory = record(rawFactory, code, "Synthetic seed factory is invalid");
+    exactKeys(factory, ["factoryRef", "entity", "origin", "generators"], code, "Synthetic seed factory is invalid");
+    const entity = text(factory["entity"], ENTITY_REF, code, "Synthetic seed factory entity is invalid");
+    if (factory["origin"] !== "synthetic") fail(code, "Synthetic seed factory origin is invalid");
+    const generators = record(factory["generators"], code, "Synthetic seed generators are invalid");
+    if (
+      Object.keys(generators).length === 0 ||
+      Object.entries(generators).some(
+        ([field, generator]) => !IDENTIFIER.test(field) || typeof generator !== "string" || !GENERATORS.has(generator)
+      )
+    )
+      fail(code, "Synthetic seed generator is invalid");
+    if (factories.has(entity)) fail(code, "Synthetic seed factory is duplicated");
+    factories.set(entity, {
+      factoryRef: text(
+        factory["factoryRef"],
+        /^[a-z][a-z0-9._-]{2,127}$/u,
+        code,
+        "Synthetic seed factory reference is invalid"
+      ),
+      entity,
+      generators: Object.fromEntries(Object.entries(generators).sort(([left], [right]) => codeUnitCompare(left, right)))
+    });
+  }
+  return factories;
+}
+function seedFixtures(rawFixtures: readonly unknown[], code: string) {
+  const fixtureRefs = new Map<string, string[]>();
+  const fixtureDigests = new Set<string>();
+  for (const rawFixture of rawFixtures) {
+    const fixture = record(rawFixture, code, "Synthetic seed fixture is invalid");
+    exactKeys(
+      fixture,
+      ["fixtureRef", "entity", "origin", "containsProductionData", "digest"],
+      code,
+      "Synthetic seed fixture is invalid"
+    );
+    const entity = text(fixture["entity"], ENTITY_REF, code, "Synthetic seed fixture entity is invalid");
+    if (fixture["origin"] !== "synthetic" || fixture["containsProductionData"] !== false)
+      fail(code, "Synthetic seed fixture origin is invalid");
+    fixtureDigests.add(text(fixture["digest"], DIGEST, code, "Synthetic seed fixture digest is invalid"));
+    const refs = fixtureRefs.get(entity) ?? [];
+    refs.push(
+      text(fixture["fixtureRef"], /^[a-z][a-z0-9._-]{2,127}$/u, code, "Synthetic seed fixture reference is invalid")
+    );
+    fixtureRefs.set(entity, refs);
+  }
+  return { fixtureRefs, fixtureDigests };
+}
+function seedEvidencePolicy(value: unknown, code: string): UnknownRecord {
+  const policy = record(value, code, "Synthetic seed evidence policy is invalid");
+  exactKeys(
+    policy,
+    ["allowSanitizedEvidence", "allowedEvidenceDigests"],
+    code,
+    "Synthetic seed evidence policy is invalid"
+  );
+  if (
+    typeof policy["allowSanitizedEvidence"] !== "boolean" ||
+    !Array.isArray(policy["allowedEvidenceDigests"]) ||
+    policy["allowedEvidenceDigests"].some((item) => typeof item !== "string" || !DIGEST.test(item))
+  )
+    fail(code, "Synthetic seed evidence policy is invalid");
+  return policy;
+}
+function approvedEvidenceDigests(
+  rawEvidence: readonly unknown[],
+  policy: UnknownRecord,
+  workspaceId: string,
+  databaseId: string,
+  code: string
+): string[] {
+  const evidenceDigests: string[] = [];
+  for (const raw of rawEvidence) {
+    const evidence = normalizePromotedProbeEvidence(raw, code);
+    if (
+      evidence.promotionStatus !== "accepted-sanitized" ||
+      !DIGEST.test(evidence.evidenceDigest) ||
+      promotedEvidenceDigestOf(evidence) !== evidence.evidenceDigest ||
+      evidence.workspaceId !== workspaceId ||
+      evidence.databaseId !== databaseId ||
+      policy["allowSanitizedEvidence"] !== true ||
+      !(policy["allowedEvidenceDigests"] as string[]).includes(evidence.evidenceDigest)
+    )
+      fail(code, "Synthetic seed evidence is not approved");
+    evidenceDigests.push(evidence.evidenceDigest);
+  }
+  return evidenceDigests;
+}
+function seedCriterion(rawCriterion: unknown, code: string) {
+  const criterion = record(rawCriterion, code, "Synthetic seed acceptance criterion is invalid");
+  exactKeys(
+    criterion,
+    ["requirementId", "criterionId", "when", "then", "shall", "targets"],
+    code,
+    "Synthetic seed acceptance criterion is invalid"
+  );
+  const requirementId = text(criterion["requirementId"], REQUIREMENT_ID, code, "Synthetic seed requirement is invalid");
+  const criterionId = text(criterion["criterionId"], CRITERION_ID, code, "Synthetic seed criterion is invalid");
+  for (const field of ["when", "then", "shall"])
+    if (typeof criterion[field] !== "string" || criterion[field].trim().length < 3 || criterion[field].length > 512)
+      fail(code, "Synthetic seed criterion text is invalid");
+  if (
+    !Array.isArray(criterion["targets"]) ||
+    criterion["targets"].length === 0 ||
+    criterion["targets"].some((item) => typeof item !== "string" || !ENTITY_REF.test(item))
+  )
+    fail(code, "Synthetic seed targets are invalid");
+  const targets = [...new Set(criterion["targets"] as string[])].sort(codeUnitCompare);
+  return { requirementId, criterionId, targets };
+}
+function resolvedTargetFields(packageValue: DatabaseKnowledgePackage, entity: string): string[] {
+  return [
+    ...new Set(
+      packageValue.facts
+        .filter((fact) => fact.factKey.startsWith(`${entity}.column.`))
+        .map((fact) => fact.factKey.split(".")[3] as string)
+    )
+  ]
+    .filter((field) => selectedFact(packageValue, `${entity}.column.${field}.present`) !== false)
+    .sort(codeUnitCompare);
+}
+function seedableTarget(
+  packageValue: DatabaseKnowledgePackage,
+  factories: ReadonlyMap<string, SeedFactory>,
+  entity: string,
+  code: string
+) {
+  if (packageValue.contradictions.some((item) => item.factKey.startsWith(`${entity}.`) && item.status === "unresolved"))
+    fail("VES_SEED_SCHEMA_UNRESOLVED", "Synthetic seed target has unresolved schema contradictions");
+  const factory = factories.get(entity);
+  if (factory === undefined) fail(code, "Synthetic seed target factory is unavailable");
+  if (selectedFact(packageValue, `${entity}.present`) === false)
+    fail(code, "Synthetic seed target does not exist in the resolved schema");
+  const fields = resolvedTargetFields(packageValue, entity);
+  if (
+    fields.length === 0 ||
+    Object.keys(factory.generators).some((field) => !fields.includes(field)) ||
+    fields.some((field) => !(field in factory.generators))
+  )
+    fail(code, "Synthetic seed factory does not cover the target schema");
+  return { factory, fields };
+}
+function targetScenarios(
+  packageValue: DatabaseKnowledgePackage,
+  base: UnknownRecord & { readonly entity: string },
+  fields: readonly string[]
+): UnknownRecord[] {
+  const scenarios: UnknownRecord[] = [];
+  const addScenario = (caseKind: string, expectedValid: boolean, field?: string) => {
+    const material = { ...base, caseKind, expectedValid, ...(field === undefined ? {} : { field }) };
+    scenarios.push({ scenarioId: digest(material), ...material });
+  };
+  addScenario("nominal", true);
+  for (const field of fields) {
+    if (selectedFact(packageValue, `${base.entity}.column.${field}.nullable`) === false)
+      addScenario("missing-required", false, field);
+    if (selectedFact(packageValue, `${base.entity}.column.${field}.unique`) === true)
+      addScenario("unique-collision", false, field);
+  }
+  return scenarios;
 }
 export function planSyntheticSeedScenarios(value: unknown) {
   const code = "VES_SEED_PLAN_INVALID";
@@ -740,17 +988,7 @@ export function planSyntheticSeedScenarios(value: unknown) {
     "Synthetic seed Workspace is invalid"
   );
   const databaseId = text(input["databaseId"], STABLE_ID, code, "Synthetic seed database is invalid");
-  const packageValue = input["knowledgePackage"] as DatabaseKnowledgePackage;
-  if (typeof packageValue !== "object" || packageValue === null)
-    fail(code, "Database Knowledge Package binding is invalid");
-  if (
-    packageValue.workspaceId !== workspaceId ||
-    packageValue.databaseId !== databaseId ||
-    !DIGEST.test(packageValue.packageDigest)
-  )
-    fail(code, "Database Knowledge Package binding is invalid");
-  const expectedPackageDigest = packageDigestOf(packageValue);
-  if (expectedPackageDigest !== packageValue.packageDigest) fail(code, "Database Knowledge Package digest is invalid");
+  const packageValue = boundKnowledgePackage(input["knowledgePackage"], workspaceId, databaseId, code);
   if (
     !Array.isArray(input["acceptanceCriteria"]) ||
     input["acceptanceCriteria"].length === 0 ||
@@ -760,151 +998,31 @@ export function planSyntheticSeedScenarios(value: unknown) {
     !Array.isArray(input["sanitizedEvidence"])
   )
     fail(code, "Synthetic seed plan collections are invalid");
-  const factories = new Map<string, { factoryRef: string; entity: string; generators: UnknownRecord }>();
-  for (const rawFactory of input["factories"]) {
-    const factory = record(rawFactory, code, "Synthetic seed factory is invalid");
-    exactKeys(factory, ["factoryRef", "entity", "origin", "generators"], code, "Synthetic seed factory is invalid");
-    const entity = text(factory["entity"], ENTITY_REF, code, "Synthetic seed factory entity is invalid");
-    if (factory["origin"] !== "synthetic") fail(code, "Synthetic seed factory origin is invalid");
-    const generators = record(factory["generators"], code, "Synthetic seed generators are invalid");
-    if (
-      Object.keys(generators).length === 0 ||
-      Object.entries(generators).some(
-        ([field, generator]) => !IDENTIFIER.test(field) || typeof generator !== "string" || !GENERATORS.has(generator)
-      )
-    )
-      fail(code, "Synthetic seed generator is invalid");
-    if (factories.has(entity)) fail(code, "Synthetic seed factory is duplicated");
-    factories.set(entity, {
-      factoryRef: text(
-        factory["factoryRef"],
-        /^[a-z][a-z0-9._-]{2,127}$/u,
-        code,
-        "Synthetic seed factory reference is invalid"
-      ),
-      entity,
-      generators: Object.fromEntries(Object.entries(generators).sort(([left], [right]) => codeUnitCompare(left, right)))
-    });
-  }
-  const fixtureRefs = new Map<string, string[]>();
-  const fixtureDigests = new Set<string>();
-  for (const rawFixture of input["fixtures"]) {
-    const fixture = record(rawFixture, code, "Synthetic seed fixture is invalid");
-    exactKeys(
-      fixture,
-      ["fixtureRef", "entity", "origin", "containsProductionData", "digest"],
-      code,
-      "Synthetic seed fixture is invalid"
-    );
-    const entity = text(fixture["entity"], ENTITY_REF, code, "Synthetic seed fixture entity is invalid");
-    if (fixture["origin"] !== "synthetic" || fixture["containsProductionData"] !== false)
-      fail(code, "Synthetic seed fixture origin is invalid");
-    fixtureDigests.add(text(fixture["digest"], DIGEST, code, "Synthetic seed fixture digest is invalid"));
-    const refs = fixtureRefs.get(entity) ?? [];
-    refs.push(
-      text(fixture["fixtureRef"], /^[a-z][a-z0-9._-]{2,127}$/u, code, "Synthetic seed fixture reference is invalid")
-    );
-    fixtureRefs.set(entity, refs);
-  }
-  const policy = record(input["policy"], code, "Synthetic seed evidence policy is invalid");
-  exactKeys(
+  const factories = seedFactories(input["factories"], code);
+  const { fixtureRefs, fixtureDigests } = seedFixtures(input["fixtures"], code);
+  const policy = seedEvidencePolicy(input["policy"], code);
+  const evidenceDigests = approvedEvidenceDigests(
+    input["sanitizedEvidence"] as unknown[],
     policy,
-    ["allowSanitizedEvidence", "allowedEvidenceDigests"],
-    code,
-    "Synthetic seed evidence policy is invalid"
+    workspaceId,
+    databaseId,
+    code
   );
-  if (
-    typeof policy["allowSanitizedEvidence"] !== "boolean" ||
-    !Array.isArray(policy["allowedEvidenceDigests"]) ||
-    policy["allowedEvidenceDigests"].some((item) => typeof item !== "string" || !DIGEST.test(item))
-  )
-    fail(code, "Synthetic seed evidence policy is invalid");
-  const evidenceDigests: string[] = [];
-  for (const rawEvidence of input["sanitizedEvidence"] as unknown[]) {
-    const evidence = normalizePromotedProbeEvidence(rawEvidence, code);
-    if (
-      evidence.promotionStatus !== "accepted-sanitized" ||
-      !DIGEST.test(evidence.evidenceDigest) ||
-      promotedEvidenceDigestOf(evidence) !== evidence.evidenceDigest ||
-      evidence.workspaceId !== workspaceId ||
-      evidence.databaseId !== databaseId ||
-      policy["allowSanitizedEvidence"] !== true ||
-      !(policy["allowedEvidenceDigests"] as string[]).includes(evidence.evidenceDigest)
-    )
-      fail(code, "Synthetic seed evidence is not approved");
-    evidenceDigests.push(evidence.evidenceDigest);
-  }
   const scenarios: UnknownRecord[] = [];
   for (const rawCriterion of input["acceptanceCriteria"]) {
-    const criterion = record(rawCriterion, code, "Synthetic seed acceptance criterion is invalid");
-    exactKeys(
-      criterion,
-      ["requirementId", "criterionId", "when", "then", "shall", "targets"],
-      code,
-      "Synthetic seed acceptance criterion is invalid"
-    );
-    const requirementId = text(
-      criterion["requirementId"],
-      REQUIREMENT_ID,
-      code,
-      "Synthetic seed requirement is invalid"
-    );
-    const criterionId = text(criterion["criterionId"], CRITERION_ID, code, "Synthetic seed criterion is invalid");
-    for (const field of ["when", "then", "shall"])
-      if (typeof criterion[field] !== "string" || criterion[field].trim().length < 3 || criterion[field].length > 512)
-        fail(code, "Synthetic seed criterion text is invalid");
-    if (
-      !Array.isArray(criterion["targets"]) ||
-      criterion["targets"].length === 0 ||
-      criterion["targets"].some((item) => typeof item !== "string" || !ENTITY_REF.test(item))
-    )
-      fail(code, "Synthetic seed targets are invalid");
-    for (const entity of [...new Set(criterion["targets"] as string[])].sort(codeUnitCompare)) {
-      if (
-        packageValue.contradictions.some(
-          (item) => item.factKey.startsWith(`${entity}.`) && item.status === "unresolved"
-        )
-      )
-        fail("VES_SEED_SCHEMA_UNRESOLVED", "Synthetic seed target has unresolved schema contradictions");
-      const factory = factories.get(entity);
-      if (factory === undefined) fail(code, "Synthetic seed target factory is unavailable");
-      if (selectedFact(packageValue, `${entity}.present`) === false)
-        fail(code, "Synthetic seed target does not exist in the resolved schema");
-      const fields = [
-        ...new Set(
-          packageValue.facts
-            .filter((fact) => fact.factKey.startsWith(`${entity}.column.`))
-            .map((fact) => fact.factKey.split(".")[3] as string)
-        )
-      ]
-        .filter((field) => selectedFact(packageValue, `${entity}.column.${field}.present`) !== false)
-        .sort(codeUnitCompare);
-      if (
-        fields.length === 0 ||
-        Object.keys(factory.generators).some((field) => !fields.includes(field)) ||
-        fields.some((field) => !(field in factory.generators))
-      )
-        fail(code, "Synthetic seed factory does not cover the target schema");
+    const criterion = seedCriterion(rawCriterion, code);
+    for (const entity of criterion.targets) {
+      const { factory, fields } = seedableTarget(packageValue, factories, entity, code);
       const base = {
-        requirementId,
-        criterionId,
+        requirementId: criterion.requirementId,
+        criterionId: criterion.criterionId,
         entity,
         factoryRef: factory.factoryRef,
         generatorPlan: factory.generators,
         fixtureRefs: (fixtureRefs.get(entity) ?? []).sort(codeUnitCompare),
         materialization: "synthetic-only"
       };
-      const addScenario = (caseKind: string, expectedValid: boolean, field?: string) => {
-        const material = { ...base, caseKind, expectedValid, ...(field === undefined ? {} : { field }) };
-        scenarios.push({ scenarioId: digest(material), ...material });
-      };
-      addScenario("nominal", true);
-      for (const field of fields) {
-        if (selectedFact(packageValue, `${entity}.column.${field}.nullable`) === false)
-          addScenario("missing-required", false, field);
-        if (selectedFact(packageValue, `${entity}.column.${field}.unique`) === true)
-          addScenario("unique-collision", false, field);
-      }
+      scenarios.push(...targetScenarios(packageValue, base, fields));
     }
   }
   const material = {

@@ -58,25 +58,53 @@ export interface SqliteOperation {
   readonly parameterClassifications: readonly Classification[];
 }
 
-export function parseSqliteReadOperation(sql: unknown, options: ParseOptions): SqliteOperation {
+type StatementRule = readonly [denied: (sql: string) => boolean, code: string, message: string];
+
+// invariant: the rules run in this order, so a statement breaking several of
+// them is refused with the first one listed.
+const STATEMENT_RULES: readonly StatementRule[] = [
+  [
+    (sql) => !/^[\t\n\r\x20-\x7e]+$/u.test(sql) || /\\/u.test(sql),
+    "VES_SQLITE_ENCODING_DENIED",
+    "SQLite statement encoding is not permitted"
+  ],
+  [(sql) => /--|\/\*|\*\//u.test(sql), "VES_SQLITE_COMMENT_DENIED", "SQLite comments are not permitted"],
+  [(sql) => sql.includes(";"), "VES_SQLITE_BATCH_DENIED", "SQLite batches are not permitted"],
+  [
+    (sql) => /\b(?:ATTACH|DETACH)\b/iu.test(sql) || /\b(?:TEMP|TEMPORARY)\b/iu.test(sql),
+    "VES_SQLITE_DATABASE_CONTROL_DENIED",
+    "SQLite database attachment and temporary objects are not permitted"
+  ],
+  [(sql) => /^\s*PRAGMA\b/iu.test(sql), "VES_SQLITE_PRAGMA_DENIED", "SQLite PRAGMA statements are not permitted"],
+  [
+    (sql) => /\bWITH\s+RECURSIVE\b/iu.test(sql),
+    "VES_SQLITE_RECURSIVE_DENIED",
+    "Recursive SQLite queries are not permitted"
+  ],
+  [(sql) => WRITE.test(sql), "VES_SQLITE_WRITE_DENIED", "SQLite write or transaction syntax is not permitted"],
+  [
+    (sql) => sql.includes("'") || sql.includes('"') || /\b\d+(?:\.\d+)?\b/u.test(sql),
+    "VES_SQLITE_LITERAL_DENIED",
+    "Inline literals and quoted identifiers are not permitted"
+  ],
+  [(sql) => /[:@$]\w|\?\d/u.test(sql), "VES_SQLITE_PARAMETERS_INVALID", "Only anonymous SQLite binds are permitted"],
+  [
+    (sql) => {
+      const normalized = sql.replace(/\s+/gu, " ").trim().toUpperCase();
+      return !normalized.startsWith("SELECT ") && !normalized.startsWith("WITH ");
+    },
+    "VES_SQLITE_READ_FORM_DENIED",
+    "SQLite read form is not permitted"
+  ]
+];
+
+function assertSqliteStatement(sql: unknown): asserts sql is string {
   if (typeof sql !== "string" || sql.length === 0 || sql.length > 131_072)
     fail("VES_SQLITE_REQUEST_INVALID", "Protected SQLite statement is invalid");
-  if (!/^[\t\n\r\x20-\x7e]+$/u.test(sql) || /\\/u.test(sql))
-    fail("VES_SQLITE_ENCODING_DENIED", "SQLite statement encoding is not permitted");
-  if (/--|\/\*|\*\//u.test(sql)) fail("VES_SQLITE_COMMENT_DENIED", "SQLite comments are not permitted");
-  if (sql.includes(";")) fail("VES_SQLITE_BATCH_DENIED", "SQLite batches are not permitted");
-  if (/\b(?:ATTACH|DETACH)\b/iu.test(sql) || /\b(?:TEMP|TEMPORARY)\b/iu.test(sql))
-    fail("VES_SQLITE_DATABASE_CONTROL_DENIED", "SQLite database attachment and temporary objects are not permitted");
-  if (/^\s*PRAGMA\b/iu.test(sql)) fail("VES_SQLITE_PRAGMA_DENIED", "SQLite PRAGMA statements are not permitted");
-  if (/\bWITH\s+RECURSIVE\b/iu.test(sql))
-    fail("VES_SQLITE_RECURSIVE_DENIED", "Recursive SQLite queries are not permitted");
-  if (WRITE.test(sql)) fail("VES_SQLITE_WRITE_DENIED", "SQLite write or transaction syntax is not permitted");
-  if (sql.includes("'") || sql.includes('"') || /\b\d+(?:\.\d+)?\b/u.test(sql))
-    fail("VES_SQLITE_LITERAL_DENIED", "Inline literals and quoted identifiers are not permitted");
-  if (/[:@$]\w|\?\d/u.test(sql)) fail("VES_SQLITE_PARAMETERS_INVALID", "Only anonymous SQLite binds are permitted");
-  const normalized = sql.replace(/\s+/gu, " ").trim().toUpperCase();
-  if (!normalized.startsWith("SELECT ") && !normalized.startsWith("WITH "))
-    fail("VES_SQLITE_READ_FORM_DENIED", "SQLite read form is not permitted");
+  for (const [denied, code, message] of STATEMENT_RULES) if (denied(sql)) fail(code, message);
+}
+
+function assertSqliteOptions(options: ParseOptions): void {
   if (!/^protected-request:[a-z0-9-]{16,128}$/u.test(options.protectedRequestRef))
     fail("VES_SQLITE_REQUEST_INVALID", "Protected SQLite request reference is invalid");
   if (
@@ -85,26 +113,44 @@ export function parseSqliteReadOperation(sql: unknown, options: ParseOptions): S
     options.parameterClassifications.some((value) => !CLASSIFICATIONS.includes(value as Classification))
   )
     fail("VES_SQLITE_PARAMETERS_INVALID", "SQLite parameter classifications are invalid");
+}
 
+function commonTableExpressions(sql: string): Set<string> {
   const ctes = new Set<string>();
   for (const match of sql.matchAll(/(?:\bWITH\b|,)\s*([a-z][a-z0-9_]*)\s+AS\s*\(/giu))
     ctes.add((match[1] as string).toLowerCase());
+  return ctes;
+}
+
+// Returns undefined for a reference to a common table expression.
+function sqliteObject(
+  first: string,
+  second: string | undefined,
+  ctes: ReadonlySet<string>,
+  kind: ParseOptions["kind"]
+): SqliteObject | undefined {
+  if (second === undefined) {
+    if (ctes.has(first)) return undefined;
+    fail("VES_SQLITE_OBJECT_INVALID", "SQLite objects must be main schema qualified");
+  }
+  if (first !== "main") fail("VES_SQLITE_DATABASE_CONTROL_DENIED", "Only the SQLite main database is permitted");
+  if (!second.startsWith("sqlite_")) return { schema: "main", name: second, type: "table" };
+  if (second !== "sqlite_schema" || kind !== "introspect")
+    fail("VES_SQLITE_CATALOG_DENIED", "SQLite catalog object is not approved");
+  return { schema: "main", name: second, type: "catalog" };
+}
+
+function sqliteObjects(sql: string, ctes: ReadonlySet<string>, kind: ParseOptions["kind"]): Map<string, SqliteObject> {
   const objects = new Map<string, SqliteObject>();
   for (const match of sql.matchAll(/\b(?:FROM|JOIN)\s+([a-z][a-z0-9_]*)(?:\.([a-z][a-z0-9_]*))?/giu)) {
-    const first = (match[1] as string).toLowerCase();
-    const second = match[2]?.toLowerCase();
-    if (second === undefined) {
-      if (ctes.has(first)) continue;
-      fail("VES_SQLITE_OBJECT_INVALID", "SQLite objects must be main schema qualified");
-    }
-    if (first !== "main") fail("VES_SQLITE_DATABASE_CONTROL_DENIED", "Only the SQLite main database is permitted");
-    if (second.startsWith("sqlite_")) {
-      if (second !== "sqlite_schema" || options.kind !== "introspect")
-        fail("VES_SQLITE_CATALOG_DENIED", "SQLite catalog object is not approved");
-      objects.set(`main.${second}`, { schema: "main", name: second, type: "catalog" });
-    } else objects.set(`main.${second}`, { schema: "main", name: second, type: "table" });
+    const object = sqliteObject((match[1] as string).toLowerCase(), match[2]?.toLowerCase(), ctes, kind);
+    if (object !== undefined) objects.set(`main.${object.name}`, object);
   }
   if (objects.size === 0) fail("VES_SQLITE_OBJECT_INVALID", "SQLite read requires an approved object");
+  return objects;
+}
+
+function sqliteFunctions(sql: string, ctes: ReadonlySet<string>): Set<string> {
   const functions = new Set<string>();
   for (const match of sql.matchAll(/\b([a-z][a-z0-9_]*)\s*\(/giu)) {
     const name = (match[1] as string).toLowerCase();
@@ -112,6 +158,15 @@ export function parseSqliteReadOperation(sql: unknown, options: ParseOptions): S
     if (!SAFE_FUNCTIONS.has(name)) fail("VES_SQLITE_FUNCTION_DENIED", "SQLite function is not approved");
     functions.add(name);
   }
+  return functions;
+}
+
+export function parseSqliteReadOperation(sql: unknown, options: ParseOptions): SqliteOperation {
+  assertSqliteStatement(sql);
+  assertSqliteOptions(options);
+  const ctes = commonTableExpressions(sql);
+  const objects = sqliteObjects(sql, ctes, options.kind);
+  const functions = sqliteFunctions(sql, ctes);
   const bindCount = [...sql.matchAll(/\?/gu)].length;
   if (bindCount !== options.parameterClassifications.length)
     fail("VES_SQLITE_PARAMETERS_INVALID", "SQLite binds are invalid");

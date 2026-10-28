@@ -22,6 +22,7 @@ const SAFE_FUNCTIONS = new Set([
   "upper"
 ]);
 const FUNCTION_SYNTAX = new Set(["as", "case", "exists", "if", "in", "over"]);
+const METADATA_SCHEMAS = new Set(["information_schema", "mysql", "performance_schema"]);
 const SAFE_METADATA = new Set([
   "information_schema.columns",
   "information_schema.key_column_usage",
@@ -63,31 +64,48 @@ export interface MySqlFamilyOperation {
   readonly parameterClassifications: readonly Classification[];
 }
 
-export function parseMySqlFamilyReadOperation(sql: unknown, options: ParseOptions): MySqlFamilyOperation {
-  if (options.engine !== "mysql" && options.engine !== "mariadb") {
-    fail("VES_MYSQL_FAMILY_ENGINE_INVALID", "MySQL-family engine identity is invalid");
-  }
+type FamilyObject = { schema: string; name: string; type: "table" | "catalog" };
+type StatementRule = readonly [denied: (sql: string) => boolean, code: string, message: string];
+
+// invariant: the rules run in this order, so a statement breaking several of
+// them is refused with the first one listed.
+const STATEMENT_RULES: readonly StatementRule[] = [
+  [
+    (sql) => !/^[\t\n\r\x20-\x7e]+$/u.test(sql) || /\\/u.test(sql),
+    "VES_MYSQL_FAMILY_ENCODING_DENIED",
+    "MySQL-family statement encoding is not permitted"
+  ],
+  [(sql) => /--|#|\/\*|\*\//u.test(sql), "VES_MYSQL_FAMILY_COMMENT_DENIED", "MySQL-family comments are not permitted"],
+  [(sql) => sql.includes(";"), "VES_MYSQL_FAMILY_MULTI_STATEMENT", "MySQL-family request must contain one statement"],
+  [
+    (sql) => sql.includes("'") || sql.includes('"') || sql.includes("`"),
+    "VES_MYSQL_FAMILY_LITERAL_DENIED",
+    "Inline literals and quoted identifiers are not permitted"
+  ],
+  [
+    (sql) => /\bINTO\s+(?:OUTFILE|DUMPFILE)\b/iu.test(sql),
+    "VES_MYSQL_FAMILY_EXPORT_DENIED",
+    "MySQL-family server-side export is not permitted"
+  ],
+  [(sql) => WRITE.test(sql), "VES_MYSQL_FAMILY_WRITE_DENIED", "MySQL-family write syntax is not permitted"],
+  [
+    (sql) => {
+      const normalized = sql.replace(/\s+/gu, " ").trim().toUpperCase();
+      return !normalized.startsWith("SELECT ") && !normalized.startsWith("WITH ");
+    },
+    "VES_MYSQL_FAMILY_READ_FORM_DENIED",
+    "MySQL-family read form is not permitted"
+  ]
+];
+
+function assertFamilyStatement(sql: unknown): asserts sql is string {
   if (typeof sql !== "string" || sql.length === 0 || sql.length > 131_072) {
     fail("VES_MYSQL_FAMILY_REQUEST_INVALID", "Protected MySQL-family statement is invalid");
   }
-  if (!/^[\t\n\r\x20-\x7e]+$/u.test(sql) || /\\/u.test(sql)) {
-    fail("VES_MYSQL_FAMILY_ENCODING_DENIED", "MySQL-family statement encoding is not permitted");
-  }
-  if (/--|#|\/\*|\*\//u.test(sql)) {
-    fail("VES_MYSQL_FAMILY_COMMENT_DENIED", "MySQL-family comments are not permitted");
-  }
-  if (sql.includes(";")) fail("VES_MYSQL_FAMILY_MULTI_STATEMENT", "MySQL-family request must contain one statement");
-  if (sql.includes("'") || sql.includes('"') || sql.includes("`")) {
-    fail("VES_MYSQL_FAMILY_LITERAL_DENIED", "Inline literals and quoted identifiers are not permitted");
-  }
-  if (/\bINTO\s+(?:OUTFILE|DUMPFILE)\b/iu.test(sql)) {
-    fail("VES_MYSQL_FAMILY_EXPORT_DENIED", "MySQL-family server-side export is not permitted");
-  }
-  if (WRITE.test(sql)) fail("VES_MYSQL_FAMILY_WRITE_DENIED", "MySQL-family write syntax is not permitted");
-  const normalized = sql.replace(/\s+/gu, " ").trim().toUpperCase();
-  if (!normalized.startsWith("SELECT ") && !normalized.startsWith("WITH ")) {
-    fail("VES_MYSQL_FAMILY_READ_FORM_DENIED", "MySQL-family read form is not permitted");
-  }
+  for (const [denied, code, message] of STATEMENT_RULES) if (denied(sql)) fail(code, message);
+}
+
+function assertFamilyRequestOptions(options: ParseOptions): void {
   if (!/^protected-request:[a-z0-9-]{16,128}$/u.test(options.protectedRequestRef)) {
     fail("VES_MYSQL_FAMILY_REQUEST_INVALID", "Protected request reference is invalid");
   }
@@ -98,30 +116,48 @@ export function parseMySqlFamilyReadOperation(sql: unknown, options: ParseOption
   ) {
     fail("VES_MYSQL_FAMILY_PARAMETERS_INVALID", "MySQL-family parameter classifications are invalid");
   }
+}
 
+function commonTableExpressions(sql: string): Set<string> {
   const ctes = new Set<string>();
   for (const match of sql.matchAll(/(?:\bWITH\b|,)\s*([a-z][a-z0-9_]*)\s+AS\s*\(/giu)) {
     ctes.add((match[1] as string).toLowerCase());
   }
-  const objects = new Map<string, { schema: string; name: string; type: "table" | "catalog" }>();
+  return ctes;
+}
+
+// Returns undefined for a reference to a common table expression.
+function familyObject(
+  first: string,
+  second: string | undefined,
+  ctes: ReadonlySet<string>,
+  kind: ParseOptions["kind"]
+): FamilyObject | undefined {
+  if (second === undefined) {
+    if (ctes.has(first)) return undefined;
+    fail("VES_MYSQL_FAMILY_OBJECT_INVALID", "MySQL-family objects must be schema-qualified");
+  }
+  if (!IDENTIFIER.test(first) || !IDENTIFIER.test(second)) {
+    fail("VES_MYSQL_FAMILY_OBJECT_INVALID", "MySQL-family object identity is invalid");
+  }
+  const catalog = METADATA_SCHEMAS.has(first);
+  if (catalog && (kind !== "introspect" || !SAFE_METADATA.has(`${first}.${second}`))) {
+    fail("VES_MYSQL_FAMILY_CATALOG_DENIED", "MySQL-family metadata relation is not approved");
+  }
+  return { schema: first, name: second, type: catalog ? "catalog" : "table" };
+}
+
+function familyObjects(sql: string, ctes: ReadonlySet<string>, kind: ParseOptions["kind"]): Map<string, FamilyObject> {
+  const objects = new Map<string, FamilyObject>();
   for (const match of sql.matchAll(/\b(?:FROM|JOIN)\s+([a-z][a-z0-9_]*)(?:\.([a-z][a-z0-9_]*))?/giu)) {
-    const first = (match[1] as string).toLowerCase();
-    const second = match[2]?.toLowerCase();
-    if (second === undefined) {
-      if (ctes.has(first)) continue;
-      fail("VES_MYSQL_FAMILY_OBJECT_INVALID", "MySQL-family objects must be schema-qualified");
-    }
-    if (!IDENTIFIER.test(first) || !IDENTIFIER.test(second)) {
-      fail("VES_MYSQL_FAMILY_OBJECT_INVALID", "MySQL-family object identity is invalid");
-    }
-    const identity = `${first}.${second}`;
-    const catalog = first === "information_schema" || first === "mysql" || first === "performance_schema";
-    if (catalog && (options.kind !== "introspect" || !SAFE_METADATA.has(identity))) {
-      fail("VES_MYSQL_FAMILY_CATALOG_DENIED", "MySQL-family metadata relation is not approved");
-    }
-    objects.set(identity, { schema: first, name: second, type: catalog ? "catalog" : "table" });
+    const object = familyObject((match[1] as string).toLowerCase(), match[2]?.toLowerCase(), ctes, kind);
+    if (object !== undefined) objects.set(`${object.schema}.${object.name}`, object);
   }
   if (objects.size === 0) fail("VES_MYSQL_FAMILY_OBJECT_INVALID", "MySQL-family read requires an object");
+  return objects;
+}
+
+function familyFunctions(sql: string, ctes: ReadonlySet<string>): Set<string> {
   const functions = new Set<string>();
   for (const match of sql.matchAll(/\b([a-z][a-z0-9_]*)\s*\(/giu)) {
     const name = (match[1] as string).toLowerCase();
@@ -131,6 +167,18 @@ export function parseMySqlFamilyReadOperation(sql: unknown, options: ParseOption
     }
     functions.add(name);
   }
+  return functions;
+}
+
+export function parseMySqlFamilyReadOperation(sql: unknown, options: ParseOptions): MySqlFamilyOperation {
+  if (options.engine !== "mysql" && options.engine !== "mariadb") {
+    fail("VES_MYSQL_FAMILY_ENGINE_INVALID", "MySQL-family engine identity is invalid");
+  }
+  assertFamilyStatement(sql);
+  assertFamilyRequestOptions(options);
+  const ctes = commonTableExpressions(sql);
+  const objects = familyObjects(sql, ctes, options.kind);
+  const functions = familyFunctions(sql, ctes);
   const placeholders = [...sql].filter((character) => character === "?").length;
   if (placeholders !== options.parameterClassifications.length) {
     fail("VES_MYSQL_FAMILY_PARAMETERS_INVALID", "Parameter classifications do not match placeholders");

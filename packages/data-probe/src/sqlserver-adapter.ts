@@ -57,27 +57,65 @@ export interface SqlServerOperation {
   readonly parameterClassifications: readonly Classification[];
 }
 
-export function parseSqlServerReadOperation(sql: unknown, options: ParseOptions): SqlServerOperation {
+type SqlServerObject = { schema: string; name: string; type: "table" | "catalog" };
+type StatementRule = readonly [denied: (sql: string) => boolean, code: string, message: string];
+
+// invariant: the rules run in this order, so a statement breaking several of
+// them is refused with the first one listed.
+const STATEMENT_RULES: readonly StatementRule[] = [
+  [
+    (sql) => !/^[\t\n\r\x20-\x7e]+$/u.test(sql) || /\\/u.test(sql),
+    "VES_SQLSERVER_ENCODING_DENIED",
+    "SQL Server statement encoding is not permitted"
+  ],
+  [(sql) => /--|\/\*|\*\//u.test(sql), "VES_SQLSERVER_COMMENT_DENIED", "SQL Server comments are not permitted"],
+  [
+    (sql) => sql.includes(";") || sql.split("\n").some((line) => line.trim().toUpperCase() === "GO"),
+    "VES_SQLSERVER_BATCH_DENIED",
+    "SQL Server batches are not permitted"
+  ],
+  [
+    (sql) => sql.includes("'") || sql.includes('"') || sql.includes("[") || sql.includes("]"),
+    "VES_SQLSERVER_LITERAL_DENIED",
+    "Inline literals and quoted identifiers are not permitted"
+  ],
+  [
+    (sql) => /\b(?:OPENROWSET|OPENDATASOURCE)\s*\(/iu.test(sql),
+    "VES_SQLSERVER_FUNCTION_DENIED",
+    "SQL Server external data functions are not permitted"
+  ],
+  [
+    (sql) => /\bINTO\s+[a-z#]/iu.test(sql) || WRITE.test(sql),
+    "VES_SQLSERVER_WRITE_DENIED",
+    "SQL Server write or execution syntax is not permitted"
+  ],
+  [
+    (sql) => /#|\btempdb\b/iu.test(sql),
+    "VES_SQLSERVER_TEMP_OBJECT_DENIED",
+    "SQL Server temporary objects are not permitted"
+  ],
+  [
+    (sql) => /\bWITH\s*\(|\bOPTION\s*\(/iu.test(sql),
+    "VES_SQLSERVER_HINT_DENIED",
+    "SQL Server query hints are not permitted"
+  ],
+  [
+    (sql) => {
+      const normalized = sql.replace(/\s+/gu, " ").trim().toUpperCase();
+      return !normalized.startsWith("SELECT ") && !normalized.startsWith("WITH ");
+    },
+    "VES_SQLSERVER_READ_FORM_DENIED",
+    "SQL Server read form is not permitted"
+  ]
+];
+
+function assertSqlServerStatement(sql: unknown): asserts sql is string {
   if (typeof sql !== "string" || sql.length === 0 || sql.length > 131_072)
     fail("VES_SQLSERVER_REQUEST_INVALID", "Protected SQL Server statement is invalid");
-  if (!/^[\t\n\r\x20-\x7e]+$/u.test(sql) || /\\/u.test(sql))
-    fail("VES_SQLSERVER_ENCODING_DENIED", "SQL Server statement encoding is not permitted");
-  if (/--|\/\*|\*\//u.test(sql)) fail("VES_SQLSERVER_COMMENT_DENIED", "SQL Server comments are not permitted");
-  if (sql.includes(";") || sql.split("\n").some((line) => line.trim().toUpperCase() === "GO"))
-    fail("VES_SQLSERVER_BATCH_DENIED", "SQL Server batches are not permitted");
-  if (sql.includes("'") || sql.includes('"') || sql.includes("[") || sql.includes("]"))
-    fail("VES_SQLSERVER_LITERAL_DENIED", "Inline literals and quoted identifiers are not permitted");
-  if (/\b(?:OPENROWSET|OPENDATASOURCE)\s*\(/iu.test(sql))
-    fail("VES_SQLSERVER_FUNCTION_DENIED", "SQL Server external data functions are not permitted");
-  if (/\bINTO\s+[a-z#]/iu.test(sql) || WRITE.test(sql))
-    fail("VES_SQLSERVER_WRITE_DENIED", "SQL Server write or execution syntax is not permitted");
-  if (/#|\btempdb\b/iu.test(sql))
-    fail("VES_SQLSERVER_TEMP_OBJECT_DENIED", "SQL Server temporary objects are not permitted");
-  if (/\bWITH\s*\(|\bOPTION\s*\(/iu.test(sql))
-    fail("VES_SQLSERVER_HINT_DENIED", "SQL Server query hints are not permitted");
-  const normalized = sql.replace(/\s+/gu, " ").trim().toUpperCase();
-  if (!normalized.startsWith("SELECT ") && !normalized.startsWith("WITH "))
-    fail("VES_SQLSERVER_READ_FORM_DENIED", "SQL Server read form is not permitted");
+  for (const [denied, code, message] of STATEMENT_RULES) if (denied(sql)) fail(code, message);
+}
+
+function assertSqlServerOptions(options: ParseOptions): void {
   if (!/^protected-request:[a-z0-9-]{16,128}$/u.test(options.protectedRequestRef))
     fail("VES_SQLSERVER_REQUEST_INVALID", "Protected SQL Server request reference is invalid");
   if (
@@ -86,24 +124,47 @@ export function parseSqlServerReadOperation(sql: unknown, options: ParseOptions)
     options.parameterClassifications.some((c) => !CLASSIFICATIONS.includes(c as Classification))
   )
     fail("VES_SQLSERVER_PARAMETERS_INVALID", "SQL Server parameter classifications are invalid");
+}
+
+function commonTableExpressions(sql: string): Set<string> {
   const ctes = new Set<string>();
   for (const match of sql.matchAll(/(?:\bWITH\b|,)\s*([a-z][a-z0-9_]*)\s+AS\s*\(/giu))
     ctes.add((match[1] as string).toLowerCase());
-  const objects = new Map<string, { schema: string; name: string; type: "table" | "catalog" }>();
+  return ctes;
+}
+
+// Returns undefined for a reference to a common table expression.
+function sqlServerObject(
+  schema: string,
+  name: string | undefined,
+  ctes: ReadonlySet<string>,
+  kind: ParseOptions["kind"]
+): SqlServerObject | undefined {
+  if (name === undefined) {
+    if (ctes.has(schema)) return undefined;
+    fail("VES_SQLSERVER_OBJECT_INVALID", "SQL Server objects must be schema-qualified");
+  }
+  const catalog = schema === "sys" || schema === "information_schema";
+  if (catalog && (kind !== "introspect" || !SAFE_CATALOGS.has(`${schema}.${name}`)))
+    fail("VES_SQLSERVER_CATALOG_DENIED", "SQL Server catalog object is not approved");
+  return { schema, name, type: catalog ? "catalog" : "table" };
+}
+
+function sqlServerObjects(
+  sql: string,
+  ctes: ReadonlySet<string>,
+  kind: ParseOptions["kind"]
+): Map<string, SqlServerObject> {
+  const objects = new Map<string, SqlServerObject>();
   for (const match of sql.matchAll(/\b(?:FROM|JOIN)\s+([a-z][a-z0-9_]*)(?:\.([a-z][a-z0-9_]*))?/giu)) {
-    const schema = (match[1] as string).toLowerCase();
-    const name = match[2]?.toLowerCase();
-    if (name === undefined) {
-      if (ctes.has(schema)) continue;
-      fail("VES_SQLSERVER_OBJECT_INVALID", "SQL Server objects must be schema-qualified");
-    }
-    const identity = `${schema}.${name}`;
-    const catalog = schema === "sys" || schema === "information_schema";
-    if (catalog && (options.kind !== "introspect" || !SAFE_CATALOGS.has(identity)))
-      fail("VES_SQLSERVER_CATALOG_DENIED", "SQL Server catalog object is not approved");
-    objects.set(identity, { schema, name, type: catalog ? "catalog" : "table" });
+    const object = sqlServerObject((match[1] as string).toLowerCase(), match[2]?.toLowerCase(), ctes, kind);
+    if (object !== undefined) objects.set(`${object.schema}.${object.name}`, object);
   }
   if (objects.size === 0) fail("VES_SQLSERVER_OBJECT_INVALID", "SQL Server read requires an object");
+  return objects;
+}
+
+function sqlServerFunctions(sql: string, ctes: ReadonlySet<string>): Set<string> {
   const functions = new Set<string>();
   for (const match of sql.matchAll(/\b([a-z][a-z0-9_]*)\s*\(/giu)) {
     const name = (match[1] as string).toLowerCase();
@@ -111,14 +172,27 @@ export function parseSqlServerReadOperation(sql: unknown, options: ParseOptions)
     if (!SAFE_FUNCTIONS.has(name)) fail("VES_SQLSERVER_FUNCTION_DENIED", "SQL Server function is not approved");
     functions.add(name);
   }
+  return functions;
+}
+
+function assertSqlServerParameters(sql: string, classificationCount: number): void {
   const params = [...sql.matchAll(/@p(\d+)\b/giu)].map((m) => Number(m[1]));
   const maximum = params.length ? Math.max(...params) : 0;
   if (
-    maximum !== options.parameterClassifications.length ||
+    maximum !== classificationCount ||
     new Set(params).size !== maximum ||
     params.some((value) => !Number.isSafeInteger(value) || value < 1 || value > 64)
   )
     fail("VES_SQLSERVER_PARAMETERS_INVALID", "SQL Server parameters are invalid");
+}
+
+export function parseSqlServerReadOperation(sql: unknown, options: ParseOptions): SqlServerOperation {
+  assertSqlServerStatement(sql);
+  assertSqlServerOptions(options);
+  const ctes = commonTableExpressions(sql);
+  const objects = sqlServerObjects(sql, ctes, options.kind);
+  const functions = sqlServerFunctions(sql, ctes);
+  assertSqlServerParameters(sql, options.parameterClassifications.length);
   return Object.freeze({
     kind: options.kind,
     statementCount: 1,
