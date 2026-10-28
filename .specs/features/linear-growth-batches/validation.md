@@ -49,6 +49,14 @@ With quarter counts, one-batch calibration and the median, two
 `importsCanonicalizeJsonV2` trials in 10 misread (0.3x and 40.7x), which the
 fastest-of-three calibration removed.
 
+## Fleet runs
+
+`platform-matrix.yml` with `gate=quick` on the pull request head `08caf92`,
+dispatched twice: runs 40672534713 and 40672546465. Both passed on all five
+legs, macOS x64 included. On that leg the same sensor had failed twice on
+#632's head before `e7ec847` (`withoutLeadingTitle` 8.8x, `importSpecifiers`
+10.6x), and once on `main` after it (`withoutLeadingTitle` 9.7x).
+
 ## Discrimination sensors
 
 Each mutant was applied to `tests/helpers/linear-growth.mjs`, the unit suite

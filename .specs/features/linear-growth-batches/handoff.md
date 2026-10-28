@@ -6,9 +6,9 @@ status: verification
 branch: test/linear-growth-equal-batches
 baseRevision: ff557cf2a31e39625b77b9f11db65ec073742ffb
 lastCompletedTask: T1
-nextTask: "T2: dispatch platform-matrix.yml with gate=quick twice on the pull request head and record macOS x64; merge on review with every required check green."
-lastGate: "tests/unit/linear-growth.test.mjs 7 of 7, five helper mutants killed, the helper's callers 146 of 146, pnpm gate:quick and agent:check PASS on Windows; the contention runs in validation.md"
-updatedAt: 2026-10-28T10:20:00Z
+nextTask: "T2: merge #637 on review with every required check green on its exact head (Site quality waits for #638), then verify by content."
+lastGate: "platform-matrix gate=quick runs 40672534713 and 40672546465 green on all five legs at 08caf92, macOS x64 included; tests/unit/linear-growth.test.mjs 7 of 7, five helper mutants killed, the callers 146 of 146, pnpm gate:quick and agent:check PASS"
+updatedAt: 2026-10-28T11:30:00Z
 ---
 
 # Evidence
@@ -21,5 +21,5 @@ while both still fail quadratic work.
 
 # Next exact action
 
-Open the pull request, dispatch `platform-matrix.yml` with `gate=quick` twice
-on its head, and record each macOS x64 result in `validation.md`.
+Merge #637 once `Site quality` passes on its head, which needs #638 on `main`
+first, and verify the merge by content.
