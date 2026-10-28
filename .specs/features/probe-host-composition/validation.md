@@ -183,3 +183,147 @@ returned FAIL on one finding outside the checks. Dispositions:
   rewritten again, and the history stays as it is.
 - **F5, F6 (info).** No change: door 4 replaces the #569 guard and its file
   header still names #569; the plan does not require a README entry.
+
+## SonarCloud follow-up
+
+SonarCloud's quality gate failed on #679's new code on two conditions:
+`new_coverage` 77.2 % (below 80 %) and `new_duplicated_lines_density` 4.4 %
+(above 3 %). The follow-up branch `sonar/679-extension-follow-up` starts at
+#679's head, `985f3b8f`, and changes no behaviour. Every existing assertion
+is unchanged, and the extension, CLI surface, launcher, sealed closure,
+architecture and task suites pass as they are.
+
+### Duplication
+
+SonarCloud named duplicated blocks in three places. Each one is gone:
+
+- **The command dispatch.** `extension-command.ts:147-168` repeated
+  `task-command.ts:67-88`: the handler lookup, the io with the home directory
+  and keychain path, and the error mapping. Both now call
+  `executeTaskFamilyCommand` in `apps/vestra-cli/src/task/task-dispatch.ts`.
+  Each family passes its own handlers, its own "is not installed" message and
+  its own error mapper.
+- **The extension error definitions.** `extension-errors.ts:11-43` repeated
+  `:49-81`, and `:94-129` repeated `task-errors.ts:61-96`. The thirteen
+  definitions are now built by a typed `extensionDefinition` factory. It
+  fixes `component: "extension"`, `documentationVersion: "1"` and a default
+  of `safeDetails: {}`, and it keeps each code a literal, so `extensionError`
+  still takes only an extension code. `init-errors.ts` already uses the same
+  pattern. `tests/unit/extension-errors.test.mjs` pins every definition to the
+  values slice 1 published, key order included (`JSON.stringify` equality).
+- **The release manifest options.** The blocks across
+  `release-manifest.ts:108-270` were option declarations spelled out per
+  command. `keychain`, `confirm-stdin`, `run-id` and `approval-ref` are now
+  declared once, as are the option lists of the three `secret` commands and of
+  `task start`, `status` and `cancel`. The manifest's `JSON.stringify` output
+  is byte-identical before and after, and the manifest is still deeply frozen.
+  The option lists stay pinned by `tests/contract/cli-surface.test.mjs`.
+  `release-manifest.ts` gains no import, so the doctor's read-only graph is
+  unchanged.
+
+No local tool reproduces SonarCloud's duplication measure. The next analysis
+of the follow-up PR confirms the new density.
+
+### Coverage
+
+SonarCloud imports LCOV only from the `unit`, `contract` and `security`
+scopes. The extension commands were proven mostly by
+`tests/e2e/extension-cli-e2e.test.mjs`, which spawns the CLI, so most of
+their coverage did not count. The follow-up adds tests that run the commands
+in process:
+
+- `tests/contract/extension-command.test.mjs` runs `add`, `approve`, `list`,
+  `revoke` and `check` through `executeExtensionCommand`, and `main`'s
+  dispatch through `main()`. It uses the e2e fixture's Workspace, set up with
+  the real `vestra init`, and the fake keychain answers in the test process.
+  On Windows, `approve` and `check` assert `VES_PROBE_HOST_PLATFORM_UNSUPPORTED`
+  instead of skipping (AC 13). On POSIX they run in full: AC 4-11, each failing
+  `check` row, and a lock that is not JSON.
+- `tests/unit/skill-lock-file-refusals.test.mjs` covers door 1's refusals: a
+  `.verchestra` that is missing, a file, or a link; a lock that is a
+  directory, a link, or not JSON. It also covers the staged transaction:
+  commit only over the planned lock, a kept generation, and rollback.
+- `tests/unit/extension-approval-listing.test.mjs` covers door 3 and AC 8:
+  `list` in code-unit order with every state, an approvals path that is no
+  directory, no pinned anchor, and revoking an approval that does not verify.
+- `tests/unit/extension-origin.test.mjs` covers the origin the lock records:
+  userinfo is removed, and a local path is refused.
+- `tests/unit/extension-errors.test.mjs` covers each path of the error mapper.
+
+Linux new-code coverage was measured under WSL 2 on Ubuntu 24.04, Node
+24.14.0. It counts lines changed since `d069bf92` (the merge base of #679),
+covered lines plus covered conditions, the way SonarCloud counts them. The
+input is `test:unit` and `test:contract` with `VES_COVERAGE=1`, merged by
+`scripts/merge-coverage.mjs`. The security scope was not run, so these are
+lower bounds. The "before" column reproduces SonarCloud's per-file figures to
+within a point; `main.ts` differs by one line.
+
+| File | Before (`985f3b8f`) | After |
+| --- | --- | --- |
+| `extension/extension-add.ts` | 31.2 % | 99.4 % |
+| `extension/extension-approve.ts` | 41.7 % | 99.2 % |
+| `extension/extension-workspace.ts` | 50.9 % | 100 % |
+| `extension/extension-check.ts` | 65.2 % | 96.8 % |
+| `extension/extension-command.ts` | 67.4 % | 99.5 % |
+| `extension/extension-approval-store.ts` | 84.8 % | 96.6 % |
+| `extension/skill-lock-file.ts` | 92.8 % | 99.2 % |
+| `extension/extension-errors.ts` | 91.0 % | 100 % |
+| `extension/extension-seal.ts` | 96.0 % | 99.0 % |
+| `main.ts` | 6.7 % | 100 % |
+| `task/task-dispatch.ts` (new) | - | 98.3 % |
+| All product sources changed since `d069bf92` | 76.8 % | 98.4 % |
+
+SonarCloud reported 77.2 % for the last row; the difference is the security
+scope.
+
+### Issues
+
+- **Fixed: S6582**, `skill-lock-file.ts:116`. The `.verchestra` check uses an
+  optional chain.
+- **Fixed: S7503**, `extension-seal.ts:72`. The verify-only signer returns
+  `Promise.reject(...)` instead of being an `async` function with no `await`.
+  `EvidenceSigner.sign` only asks for a promise, and a call still rejects with
+  the same error.
+- **Left: S9382**, `extension-workspace.ts:50`. `requireNoLink` must walk the
+  path from the Workspace root down and stop at the first link or non-directory.
+  Concurrent `lstat`s would reach components through a link before the link
+  is seen, which is exactly what the walk refuses.
+- **Left: S9382**, `extension-approval-store.ts:286`. `list` evaluates each
+  approval in code-unit order and stops at the first one whose read fails.
+  Concurrent evaluation would keep reading after a failure, and would report
+  whichever failure settled first instead of the first in order.
+- **Left: S3776**, `governed-skill-registry.ts:301`. The cognitive complexity
+  predates this feature. SonarCloud flagged it only because #679 changed the
+  signature line.
+
+### Gates
+
+Windows 11 Pro, x64, Node 24.14.0:
+
+- `corepack pnpm gate:quick` passes. format:check, lint, typecheck and
+  complexity pass; complexity reports 169 baselined keys and nothing new
+  above 10. Unit: 3226 passed. Agent-readiness: 413 passed. Census: 14 passed.
+- `corepack pnpm test:contract`: 991 passed, 0 failed.
+- `node --test tests/architecture/*.test.mjs`: 146 passed.
+- `tests/e2e/extension-cli-e2e.test.mjs`, `tests/e2e/cli-launchers-e2e.test.mjs`
+  and `tests/e2e/task-check-e2e.test.mjs`: 62 passed, 0 failed.
+- `corepack pnpm agent:check` passes.
+
+Linux, Ubuntu 24.04 under WSL 2, Node 24.14.0:
+
+- `test:unit` and `test:contract` pass with `VES_COVERAGE=1`; they are the
+  coverage run.
+- In one run, 292 passed, 0 failed and 0 skipped across:
+  - `tests/e2e/extension-cli-e2e.test.mjs`
+  - `tests/contract/cli-surface.test.mjs`
+  - `tests/e2e/cli-launchers-e2e.test.mjs`
+  - `tests/build/sealed-launcher-closure.test.mjs`
+  - `tests/architecture/*.test.mjs`
+  - `tests/contract/task-command-platform.test.mjs`
+  - `tests/unit/task-cli-composition.test.mjs`
+  - the new tests
+- `tests/e2e/task-check-e2e.test.mjs` and `tests/e2e/task-cli-e2e.test.mjs`:
+  73 passed, 0 failed.
+
+`pnpm install --frozen-lockfile` left `pnpm-lock.yaml` unchanged on both
+hosts. Not run: `gate:full`, the security scope, and macOS, which CI covers.
