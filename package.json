@@ -63,7 +63,7 @@
     "site:preview": "pnpm --filter @verchestra/site preview"
   },
   "devDependencies": {
-    "@cedar-policy/cedar-wasm": "4.12.0",
+    "@cedar-policy/cedar-wasm": "4.14.0",
     "@earendil-works/pi-agent-core": "1.4.0",
     "@earendil-works/pi-ai": "1.4.0",
     "@opencode-ai/sdk": "1.19.4",
@@ -72,7 +72,7 @@
     "esbuild": "0.28.2",
     "eslint": "10.11.0",
     "jose": "6.2.13",
-    "json-schema-to-typescript": "15.0.4",
+    "json-schema-to-typescript": "16.0.0",
     "opencode-ai": "1.19.4",
     "prettier": "3.9.6",
     "prettier-plugin-astro": "1.1.0",

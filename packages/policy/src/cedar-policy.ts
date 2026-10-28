@@ -138,8 +138,8 @@ export class CedarPolicyAdapter {
     readonly expectedLanguageVersion?: string;
   }) {
     this.#engine = options.engine;
-    this.#expectedEngineVersion = options.expectedEngineVersion ?? "4.12.0";
-    this.#expectedLanguageVersion = options.expectedLanguageVersion ?? "4.5";
+    this.#expectedEngineVersion = options.expectedEngineVersion ?? "4.14.0";
+    this.#expectedLanguageVersion = options.expectedLanguageVersion ?? "4.6";
   }
 
   #compile(view: PolicyView): CompiledView {

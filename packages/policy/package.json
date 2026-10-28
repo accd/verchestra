@@ -8,7 +8,7 @@
     "./readonly": "./src/readonly.ts"
   },
   "dependencies": {
-    "@cedar-policy/cedar-wasm": "4.12.0",
+    "@cedar-policy/cedar-wasm": "4.14.0",
     "@verchestra/domain": "workspace:0.0.0"
   }
 }

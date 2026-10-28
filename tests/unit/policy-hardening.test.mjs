@@ -112,8 +112,8 @@ test("secret-shaped values never leave an explanation unredacted", () => {
     determiningPolicies: ["organization.leaky"],
     policyViewDigest: "sha256:" + "0".repeat(64),
     requestDigest: "sha256:" + "0".repeat(64),
-    engineVersion: "4.12.0",
-    languageVersion: "4.5",
+    engineVersion: "4.14.0",
+    languageVersion: "4.6",
     evidenceDigest: "sha256:" + "0".repeat(64)
   };
   const leakyView = view({
