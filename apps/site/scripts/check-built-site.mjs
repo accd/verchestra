@@ -159,6 +159,17 @@ assert.match(homepage, /1.0 decision pending/u);
 assert.doesNotMatch(homepage, /npm (?:install|add).{0,40}verchestra/iu);
 assert.doesNotMatch(homepage, /production[- ]ready/iu);
 
+// The evidence sidebar group is labelled with the first and the last report that
+// exist, so its range cannot fall behind an inserted or appended report.
+const reportIds = (await readdir(resolve(siteRoot, "../../docs/qualification")))
+  .map((entry) => /^(t\d+[a-z]?)-validation\.md$/iu.exec(entry)?.[1])
+  .filter(Boolean)
+  .sort()
+  .map((id) => id.toUpperCase());
+assert.ok(reportIds.length > 1, "docs/qualification must hold more than one report");
+const docsIndex = await readFile(join(distRoot, "docs", "index.html"), "utf8");
+assert.match(docsIndex, new RegExp(`${reportIds[0]}–${reportIds.at(-1)} evidence`, "u"));
+
 const assetUrls = new Set(
   [...homepage.matchAll(/\b(?:href|src)="([^"]+)"/gu)]
     .map((match) => outputForUrl(match[1]))
