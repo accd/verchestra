@@ -53,6 +53,50 @@
       "reason": "The reviewed source hashes raw bytes or a fixed primitive, not structured JSON."
     },
     {
+      "path": "apps/vestra-cli/src/extension/extension-approval-store.ts",
+      "classification": "retained-v1-versioned",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 1
+      },
+      "reason": "Persists the extension approval and revocation DSSE envelopes extension-seal.ts seals under the V1 evidence contract their /v1 predicate types name; JSON.stringify writes an envelope whose signed bytes travel base64-encoded, so no identity depends on it."
+    },
+    {
+      "path": "apps/vestra-cli/src/extension/extension-seal.ts",
+      "classification": "retained-v1-versioned",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 2,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "Seals and verifies the skill lock, extension approval, and revocation records under the V1 evidence contract their /v1 predicate types name (probe-host-composition doors 2 and 3); the content digest it compares is that contract's own."
+    },
+    {
+      "path": "apps/vestra-cli/src/extension/extension-workspace.ts",
+      "classification": "raw-byte-digest",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 2,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "SHA-256 applies only to the raw bytes of a probe worker entry file."
+    },
+    {
+      "path": "apps/vestra-cli/src/extension/skill-lock-file.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 3,
+        "digest": 2,
+        "localeCompare": 0,
+        "serialization": 1
+      },
+      "reason": "The registration record digest and the bootstrap plan identity use the declared V2 canonical contract; raw SHA-256 applies only to the lock file bytes, and JSON.stringify only writes the already-digested lock for a reviewer to read."
+    },
+    {
       "path": "apps/vestra-cli/src/promotion-composition.ts",
       "classification": "migrated-v2",
       "signals": {

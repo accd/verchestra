@@ -15,6 +15,7 @@
     "@verchestra/drivers": "workspace:0.0.0",
     "@verchestra/evidence": "workspace:0.0.0",
     "@verchestra/effects": "workspace:0.0.0",
+    "@verchestra/extension-host": "workspace:0.0.0",
     "@verchestra/platform-node": "workspace:0.0.0",
     "@verchestra/policy": "workspace:0.0.0",
     "@verchestra/self-test": "workspace:0.0.0",

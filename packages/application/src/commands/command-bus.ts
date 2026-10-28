@@ -1,6 +1,7 @@
 export interface CliCommand {
   readonly name: string;
-  readonly options: Readonly<Record<string, string | boolean>>;
+  // why: a repeatable option collects its values in the order given.
+  readonly options: Readonly<Record<string, string | boolean | readonly string[]>>;
 }
 
 export interface InvocationContext {
