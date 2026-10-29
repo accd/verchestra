@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: probe-run
 issue: 235
-status: in_progress
+status: verification
 branch: feat/235-probe-run
 baseRevision: 02b50ba88bea5d8917f9cdcfd03a2d82df9ba878
 lastCompletedTask: null
-nextTask: "Build batch B (C1-C15, C17-C19, C23-C25, C27-C30) from checks.md and batch A's diff (55e2b7ea..053c7c07), then dispatch an independent Verifier over 02b50ba8..HEAD with every check."
-lastGate: "Batch A (C16, C20-C22, C26, C31) closed at 053c7c07, on Windows: the six batch-A proofs pass; gate:quick exit 0 (unit 3654/3654, agent-readiness 428/428, census 14/14); test:contract 1009/1009; test:architecture 148/148; sealed-launcher-closure 14/14; test:integration 1263/1285, the 22 failures all the fixture symlink refusal of a host without Developer Mode (L-017), none in a file this batch touches"
-updatedAt: 2026-10-29T15:29:05Z
+nextTask: "Dispatch the independent Verifier over 02b50ba8..HEAD with every check (C1-C32); the owner rules on the three deviations batch B recorded under checks.md `## Handoff` (the fixture statement names `main.orders`, the supervisor leak fix, C7 admitting the credential store's tool)."
+lastGate: "Batch B closed at a5c5310e. Every Proof: line passes on Linux (WSL, real worker) and on Windows (the real-worker cases assert the platform refusal), batch A's six included. Linux at 8f65c2cb: gate:quick exit 0 (unit 3664/3664, agent-readiness 428/428, census 14/14); test:contract 1028/1028; test:e2e 363/363; test:build 186/186; test:integration 1285/1285; test:architecture 148/149, the failure the keychain guard on the new probe composition test, fixed in a5c5310e and 149/149 at a5c5310e. Windows at a5c5310e: gate:quick exit 0 (3664/3664, 428/428, 14/14); test:architecture 149/149; at 8f65c2cb test:contract 1028/1028, e2e probe-cli, cli-launchers, database-cli and extension-cli 40/40, sealed-launcher-closure 14/14 with the process-scoped exclude."
+updatedAt: 2026-10-29T16:52:20Z
 ---
 
 # Evidence
@@ -30,6 +30,20 @@ migration `013_probe_runs` and the runner's `tableRebuild` flag, with
 approval action, which batch B proves (C23, C25). What batch A settled, and
 what batch B must know, is under `## Handoff` in `checks.md`.
 
+Batch B is built (b58e145d..a5c5310e): `vestra probe run` in
+`apps/vestra-cli/src/probe/` (the request file, the SQLite statement and its
+engine adapter, the authority glue and the built-in probe policy view, the
+review, the run module that alone starts a worker, and the family's public
+errors), the release manifest and every pinned command list, both guards
+admitting the probe family and a new one pinning that it reads no credential
+but the signing passphrase, a SQLite worker fixture over data-probe's real read
+connection, the probe run's terminal decisions owing no capsule (C32), and a
+supervisor fix: it now refuses a result echoing the JSON protected request
+escaped. Three proofs depart from the letter of checks.md and need the owner's
+ruling; they and everything else batch B settled are under `## Handoff` in
+`checks.md`. New-code coverage on Linux from the unit and contract tests:
+every module under `apps/vestra-cli/src/probe/` at 99-100%.
+
 Facts found while planning, with their places:
 
 - `runs.run_kind` is a CHECK in `001_runtime`
@@ -49,9 +63,11 @@ Facts found while planning, with their places:
 
 # Next exact action
 
-Build batch B on `feat/235-probe-run` from `checks.md` and batch A's diff
-(`55e2b7ea..053c7c07`): the `vestra probe run` family in
-`apps/vestra-cli/src/probe/`, its authority glue and probe policy view, the
-worker fixture, the guards and the pinned command lists. Then dispatch an
-independent Verifier over `02b50ba8..HEAD` with every check. The real-worker
-proofs run on Linux; on Windows the command refuses (AC 15).
+Dispatch an independent Verifier over `02b50ba8..HEAD` with every check
+(C1-C32) and `checks.md`'s `## Handoff`. The real-worker proofs run on Linux
+or macOS; on Windows the command refuses (AC 15). The owner rules on the three
+deviations recorded there: the fixture statement reads `main.orders` (SQLite's
+parser refuses the unqualified name), the supervisor's leak guard now also
+refuses the escaped form (a change to `packages/extension-host`), and C7's
+proof admits the credential store's own tool for the passphrase read before
+the run exists.
