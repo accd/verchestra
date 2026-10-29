@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash, createPublicKey, verify as verifyBytes } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { dirname, join, posix, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -607,10 +607,14 @@ function decisionPublicKey(reference) {
 // supplies one, so a decision on disk is always verified, not merely present.
 function checkDecisionSignature(source, fields, report, resolveKeyRef) {
   if (resolveKeyRef === undefined || unfilled(fields.signature) || unfilled(fields.publicKeyRef)) return;
-  const reference = resolveKeyRef(fields.publicKeyRef);
-  if (reference === null) return report("publicKeyRef does not resolve to a committed key");
+  // A resolver returns the active anchor alone, or the active anchor followed by
+  // the retired anchors whose window still covers `decidedAt`.
+  const resolved = resolveKeyRef(fields.publicKeyRef, fields.decidedAt);
+  if (resolved === null) return report("publicKeyRef does not resolve to a committed key");
+  const [reference, ...retired] = [resolved].flat();
   const publicKey = decisionPublicKey(reference);
   if (publicKey === null) return report("publicKeyRef does not resolve to a usable Ed25519 public key");
+  const keys = [publicKey, ...retired.map(decisionPublicKey).filter((key) => key !== null)];
   const signed = decisionSignatureBytes(source, fields);
   if (signed === null) return report("decision body could not be read for signature verification");
   let signature;
@@ -619,7 +623,8 @@ function checkDecisionSignature(source, fields, report, resolveKeyRef) {
   } catch {
     return report("signature is not base64url");
   }
-  if (!verifyBytes(null, signed, publicKey, signature)) report("signature does not verify against publicKeyRef");
+  if (!keys.some((key) => verifyBytes(null, signed, key, signature)))
+    report("signature does not verify against publicKeyRef");
 }
 
 function checkDecisionAccountability(source, fields, report, options) {
@@ -790,12 +795,52 @@ function settleDecisionRounds(rounds, options, errors) {
 // verified, not merely present. A path outside docs/qualification/trust/ or a
 // missing file resolves to null and fails closed at the verification step.
 function decisionKeyResolver(root) {
-  return (reference) => {
+  return (reference, decidedAt) => {
     if (typeof reference !== "string" || !/^docs\/qualification\/trust\/[A-Za-z0-9._-]+\.json$/u.test(reference))
       return null;
     const path = join(root, reference);
-    return existsSync(path) ? readFileSync(path, "utf8") : null;
+    if (!existsSync(path)) return null;
+    const active = readFileSync(path, "utf8");
+    const directory = join(root, "docs", "qualification", "trust", "retired");
+    const retired = existsSync(directory)
+      ? readdirSync(directory)
+          .filter((name) => name.endsWith(".json"))
+          .sort(codeUnitCompare)
+          .map((name) => readFileSync(join(directory, name), "utf8"))
+      : [];
+    return [active, ...retiredDecisionAnchors(active, retired, decidedAt)];
   };
+}
+
+// why: a rotation (docs/release-custody.md 7.4) moves the old anchor to
+// trust/retired/ with `validUntil` and gives the role's file the new key, while a
+// signed decision's `publicKeyRef` names the role's file and is never edited.
+// A retired anchor of the same purpose therefore still verifies what was decided
+// before it retired, and nothing decided at or after that instant, as
+// t75-evidence-attestation.mjs bounds a retired evidence key.
+export function retiredDecisionAnchors(active, retired, decidedAt) {
+  const at = Date.parse(decidedAt ?? "");
+  if (Number.isNaN(at)) return [];
+  let purposes;
+  try {
+    purposes = JSON.parse(active)?.purposes;
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(purposes)) return [];
+  return retired.filter((source) => {
+    try {
+      const anchor = JSON.parse(source);
+      return (
+        typeof anchor?.validUntil === "string" &&
+        at < Date.parse(anchor.validUntil) &&
+        Array.isArray(anchor.purposes) &&
+        anchor.purposes.some((purpose) => purposes.includes(purpose))
+      );
+    } catch {
+      return false;
+    }
+  });
 }
 
 // invariant: each version maps to its effective decision (`file`, `round`,

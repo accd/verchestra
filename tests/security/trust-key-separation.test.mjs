@@ -84,9 +84,15 @@ test("no active trust reference is retired", () => {
 
 test("every retired trust reference is a usable Ed25519 key, named by its key id, retired at a real instant", () => {
   const retired = jsonNames(RETIRED);
-  // why: the #408 rotation retired the offline, online, and evidence keys; the
-  // set may grow with later rotations but never shrink, or history is lost.
-  for (const keyId of ["verchestra-release-20260825", "verchestra-release-timestamp-20260930", "t75-evidence-20260825"])
+  // why: the #408 rotation retired the offline, online, and evidence keys, and
+  // the 2026-10-29 rotation the release-decision key; the set may grow with later
+  // rotations but never shrink, or history is lost.
+  for (const keyId of [
+    "verchestra-release-20260825",
+    "verchestra-release-timestamp-20260930",
+    "t75-evidence-20260825",
+    "release-decision-20260828"
+  ])
     assert.ok(retired.includes(`${keyId}.json`), `${keyId} stays recorded as retired`);
   const activePurposes = new Set(jsonNames(TRUST).flatMap((name) => read(name).purposes));
   for (const name of retired) {
@@ -110,7 +116,7 @@ test("no key is ever reused: every committed trust identity, active or retired, 
     ...jsonNames(TRUST).map((name) => ({ name, ref: read(name) })),
     ...jsonNames(RETIRED).map((name) => ({ name: `retired/${name}`, ref: read(name, RETIRED) }))
   ];
-  assert.ok(refs.length >= 7, "four active and three retired identities are committed");
+  assert.ok(refs.length >= 8, "four active and four retired identities are committed");
   for (let i = 0; i < refs.length; i += 1)
     for (let j = i + 1; j < refs.length; j += 1) {
       const pair = `${refs[i].name} vs ${refs[j].name}`;

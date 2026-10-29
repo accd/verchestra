@@ -13,6 +13,7 @@ import {
   latestLedgerRelease,
   readVersionLineRecord,
   repositoryWarnings,
+  retiredDecisionAnchors,
   validateVersionLineRecord
 } from "../../scripts/agent-readiness.mjs";
 import { temporaryDirectory } from "../helpers/temporary-directory.mjs";
@@ -350,6 +351,50 @@ test("a signed record on disk is verified with the committed key and carries no 
   assert.equal(forged.signature, "invalid");
   assert.deepEqual(forged.warnings, []);
   assert.deepEqual(forged.errors, [`${VERSION_LINE_RECORD}: signature does not verify against publicKeyRef`]);
+});
+
+// invariant: a rotation retires the old anchor under trust/retired/ with
+// `validUntil` and puts the new key in the role's file (docs/release-custody.md
+// 7.4). What the old key signed before that instant still verifies; nothing it
+// signs at or after it does, and a retired key of another purpose never does.
+test("a record signed by a retired key verifies only inside the key's window", async (t) => {
+  const root = await repositoryFixture(t);
+  const retiredAt = "2026-11-01T00:00:00.000Z";
+  const retire = (keyPair, purposes) =>
+    writeFile(
+      join(root, "docs", "qualification", "trust", "retired", "version-line-fixture-old.json"),
+      `${JSON.stringify({ ...JSON.parse(anchorFor(keyPair)), keyId: "version-line-fixture-old", purposes, validUntil: retiredAt })}\n`
+    );
+  await mkdir(join(root, "docs", "qualification", "trust", "retired"), { recursive: true });
+  await retire(WRONG_KEY_PAIR, ["release-decision"]);
+
+  await writeRecord(root, record({ decidedAt: "2026-10-31T23:59:59Z" }, { signWith: WRONG_KEY_PAIR }));
+  assert.equal((await readVersionLineRecord(root)).signature, "verified");
+
+  await writeRecord(root, record({ decidedAt: "2026-11-01T00:00:00Z" }, { signWith: WRONG_KEY_PAIR }));
+  const late = await readVersionLineRecord(root);
+  assert.equal(late.signature, "invalid");
+  assert.deepEqual(late.errors, [`${VERSION_LINE_RECORD}: signature does not verify against publicKeyRef`]);
+
+  await retire(WRONG_KEY_PAIR, ["qualification-evidence-index"]);
+  await writeRecord(root, record({ decidedAt: "2026-10-31T23:59:59Z" }, { signWith: WRONG_KEY_PAIR }));
+  assert.equal((await readVersionLineRecord(root)).signature, "invalid");
+
+  await writeRecord(root, record({}, { signWith: KEY_PAIR }));
+  assert.equal((await readVersionLineRecord(root)).signature, "verified", "the active key is unaffected");
+});
+
+test("only a same-purpose retired anchor whose window covers the instant is a candidate", () => {
+  const active = anchorFor(KEY_PAIR);
+  const anchor = (fields) => JSON.stringify({ ...JSON.parse(active), ...fields });
+  const inside = anchor({ keyId: "a", validUntil: "2026-11-01T00:00:00.000Z" });
+  const otherPurpose = anchor({ keyId: "b", validUntil: "2026-11-01T00:00:00.000Z", purposes: ["other"] });
+  const unretired = anchor({ keyId: "c" });
+  const all = [inside, otherPurpose, unretired, "not json"];
+  assert.deepEqual(retiredDecisionAnchors(active, all, "2026-10-31T00:00:00Z"), [inside]);
+  assert.deepEqual(retiredDecisionAnchors(active, all, "2026-11-01T00:00:00Z"), []);
+  assert.deepEqual(retiredDecisionAnchors(active, all, "<placeholder>"), []);
+  assert.deepEqual(retiredDecisionAnchors("not json", all, "2026-10-31T00:00:00Z"), []);
 });
 
 test("no record is not a failure, because nothing has been recorded", async (t) => {
