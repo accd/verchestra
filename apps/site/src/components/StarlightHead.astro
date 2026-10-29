@@ -49,6 +49,10 @@ const llmsFullUrl = new URL("llms-full.txt", siteUrl);
         .join("\n");
       if (!source) return [];
       pre.dataset.mermaidPending = "";
+      // why: the block is scrollable while it waits for its render, and a
+      // scrollable region must be reachable by keyboard (Axe
+      // scrollable-region-focusable); the rendered diagram replaces it.
+      pre.tabIndex = 0;
       const diagram = document.createElement("div");
       diagram.className = "mermaid-diagram";
       diagram.setAttribute("role", "img");
