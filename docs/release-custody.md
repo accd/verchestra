@@ -166,15 +166,21 @@ choose them.
   sign only timestamp and snapshot. It cannot change targets or root. The short
   online expiry bounds how long misuse lasts. As a detective control, custodian #2
   reviews each refresh run's summary.
-- **Status (2026-10-23, #567): implemented, not operating.** The refresh path
-  (#382, #428) exists, but no refresh has run: the publication ledger records
-  seven `release` entries and no `role-refresh`, and the only refresh run
-  (36779932633, 2026-09-30) failed. The live `.7` timestamp, snapshot, targets
-  and root all expire with the publication horizon, `2027-09-30T00:00:00Z`. Until
-  refreshes run on a cadence with ledger entries, there is no short online
-  expiry and no refresh run to review, so a frozen client stays frozen until that
-  date. The signed `1.0.0` decision counts F2 closed on its code; a later round
-  must not cite short online expiry as an operating control before then.
+- **Status (2026-10-29, #382): operating once, no short window.** The first
+  refresh ran on 2026-10-29: run 40963107506, dispatched from `main` and
+  approved in `tuf-release-signing`, re-signed the `.8` snapshot and timestamp
+  at version 8 for all five targets. The files were uploaded and served bytes
+  match the signed ones, the published `.8` launcher accepted timestamp
+  version 8, and the ledger records it as `role-refresh` entry 9. The earlier
+  run (36779932633, 2026-09-30) failed because it was dispatched from a feature
+  branch. That refresh kept `timestampExpires` at the publication horizon,
+  `2027-09-30T00:00:00Z`, so it proves the path, not a short window.
+- **Still missing: a short window.** The live `.8` timestamp, snapshot,
+  targets and root all expire with the publication horizon,
+  `2027-09-30T00:00:00Z`, so a frozen client stays frozen until that date.
+  The signed `1.0.0` decision counts F2 closed on its code; a later round must
+  not cite short online expiry as an operating control until refreshes run on
+  a cadence with a short `timestampExpires`.
 - **Does not constrain.** A holder of the online key can still freeze clients on
   current metadata or re-sign current snapshots until the key is rotated. This is
   accepted and bounded by expiry, not prevented.

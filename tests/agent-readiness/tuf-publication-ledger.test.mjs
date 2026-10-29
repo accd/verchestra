@@ -303,21 +303,30 @@ test("a refresh is admitted only for a recorded lineage, above every version, ov
 // release is (ADR2-11): the refresh script assembles no ledger entry itself.
 test("the refresh admission refuses what assertRefreshAdmitted refuses and derives the role-refresh entry", () => {
   const ledger = committed();
-  const newest = ledger.entries.at(-1);
+  // why: the ledger may already end in a role-refresh, so the entry chains to the
+  // last entry while the refreshed targets are the newest release's, and the
+  // version must exceed every role version recorded for that root.
+  const last = ledger.entries.at(-1);
+  const newest = ledger.entries.findLast((entry) => entry.kind === "release");
+  const highest = Math.max(
+    ...ledger.entries
+      .filter((entry) => entry.rootDigest === newest.rootDigest)
+      .flatMap((entry) => Object.values(entry.roles))
+  );
   const refresh = {
     releaseId: newest.releaseId,
     semanticVersion: newest.semanticVersion,
     baseUrl: `${newest.baseUrl}${newest.urlPrefix}`,
     rootDigest: newest.rootDigest,
-    metadataVersion: newest.roles.timestamp + 1,
+    metadataVersion: highest + 1,
     targetsVersion: newest.roles.targets,
     publicationRunId: "123456789",
     evidence: ["docs/qualification/tuf-publication-ledger.json"]
   };
   const entry = admitRefresh(ledger, refresh);
   assert.deepEqual(entry, {
-    sequence: newest.sequence + 1,
-    previousEntryDigest: ledgerEntryDigest(newest),
+    sequence: last.sequence + 1,
+    previousEntryDigest: ledgerEntryDigest(last),
     kind: "role-refresh",
     releaseId: refresh.releaseId,
     semanticVersion: refresh.semanticVersion,
@@ -332,7 +341,7 @@ test("the refresh admission refuses what assertRefreshAdmitted refuses and deriv
   assert.deepEqual(Object.keys(entry).slice(0, 2), ["sequence", "previousEntryDigest"]);
   assert.notEqual(entry.evidence, refresh.evidence, "the entry never aliases the caller's list");
   for (const [change, code] of [
-    [{ metadataVersion: newest.roles.timestamp }, "VES_T76_PUBLISH_METADATA_VERSION_NOT_MONOTONIC"],
+    [{ metadataVersion: highest }, "VES_T76_PUBLISH_METADATA_VERSION_NOT_MONOTONIC"],
     [{ targetsVersion: newest.roles.targets - 1 }, "VES_T76_REFRESH_TARGETS_CHANGED"],
     [{ rootDigest: `sha256:${"0".repeat(64)}` }, "VES_T76_REFRESH_LINEAGE_UNKNOWN"]
   ]) {

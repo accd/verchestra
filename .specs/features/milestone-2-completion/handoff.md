@@ -53,8 +53,8 @@ the owner later names one, the custody work resumes from O1, and a promotion
 round then starts from a fresh candidate. The prerequisites for that round
 are:
 
-- #382: TUF timestamp/snapshot refresh (closed 2026-09-30; implemented, not
-  operating: no `role-refresh` ledger entry yet).
+- #382: TUF timestamp/snapshot refresh (closed 2026-09-30; first refresh run
+  2026-10-29, ledger entry 9, at the publication-horizon expiry).
 - #387 and #393: the live update and rollback legs (closed; the leg passes
   inside the line, `.7` to `.8` on 2026-10-25).
 - #379: doctor reaching `PASS` (closed; six deep-doctor checks still `blocked`

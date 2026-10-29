@@ -40,7 +40,7 @@ tracked evidence it produces is named beside it.
       `.github/workflows/npm-publish.yml` and that environment, and publish
       `0.0.0-qualification.9` through `npm-publish.yml` (#596;
       `docs/release-custody.md` section 9, O6; exit condition X1).
-- [ ] Dispatch `.github/workflows/t76-refresh-timestamp.yml` from `main`,
+- [x] Dispatch `.github/workflows/t76-refresh-timestamp.yml` from `main`,
       approve it in `tuf-release-signing`, upload the refreshed snapshot and
       timestamp, and append the `role-refresh` entry to
       `docs/qualification/tuf-publication-ledger.json` in a reviewed pull

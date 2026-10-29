@@ -178,6 +178,25 @@
         ".specs/features/live-activation-matrix/validation.md",
         ".specs/features/tuf-role-separation/republish-v3-runbook.md"
       ]
+    },
+    {
+      "sequence": 9,
+      "previousEntryDigest": "sha256:f19cd2bea4a38109388b01c2865bb50e5afd1a5f26487af35c13270fcb57e941",
+      "kind": "role-refresh",
+      "releaseId": "release:verchestra:0.0.0-qualification.8:d83fc139a846",
+      "semanticVersion": "0.0.0-qualification.8",
+      "baseUrl": "https://pub-0fa3e4c3f26540e793952fa2c187d536.r2.dev/v8/",
+      "urlPrefix": null,
+      "rootDigest": "sha256:949fbce3c56f7a10729750d3d18dc54537eb32f2701aae7eb8370ff06e5dcff7",
+      "rootDigestPrefix": null,
+      "roles": {
+        "snapshot": 8,
+        "timestamp": 8
+      },
+      "publicationRunId": "40963107506",
+      "evidence": [
+        ".specs/features/tuf-role-separation/republish-v3-runbook.md"
+      ]
     }
   ]
 }
