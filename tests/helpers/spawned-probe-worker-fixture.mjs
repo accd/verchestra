@@ -13,6 +13,7 @@ import {
   WorkspaceProbeAdmission
 } from "../../packages/extension-host/src/index.ts";
 import { SpawnedProbeWorker, probeLaunchDigest } from "../../packages/platform-node/src/index.ts";
+import { request } from "./database-probe-fixture.mjs";
 import { probePlan } from "./probe-worker-fixture.mjs";
 import { grillSkill, lock, skill, verifier } from "./skill-registry-fixture.mjs";
 
@@ -124,9 +125,12 @@ export function approvalFor(extension, launchDigest = LAUNCH_DIGEST, overrides =
   };
 }
 
+// why: the grant a controller issues for the fixture plan, so its reference is
+// the plan's (database-probe-fixture's request): the supervisor serves only the
+// plan made under the grant the worker was admitted with.
 export function controllerGrant(extension, workspaceId, overrides = {}) {
   return {
-    grantRef: "capability-grant:probe-worker:001",
+    grantRef: request().grantRef,
     workspaceId,
     lockDigest: extension.lockDigest,
     extensionId: extension.extensionRef.id,
