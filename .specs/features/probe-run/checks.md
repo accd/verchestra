@@ -3,7 +3,7 @@
 Profile: light
 Plan: `.specs/features/probe-run/plan.md`
 
-30 checks in 1 slice · 5 one-way doors · 0 open, of which 0 block
+31 checks in 1 slice · 5 one-way doors · 0 open, of which 0 block
 
 The proofs name tests this slice writes or extends:
 - `D` is `tests/contract/probe-run-command.test.mjs`. It runs `executeProbeCommand` and `main()` in process, against a Workspace the real `vestra init` set up, with the fake keychain, so SonarCloud's coverage counts it (lesson of #682). Its worker cases spawn a real worker, so they run on Linux and macOS. On Windows each asserts the platform refusal instead of skipping (repository rule XP-04).
@@ -113,6 +113,9 @@ Proof: `node --test --test-name-pattern "migration 013 keeps every row and admit
 **C22** - `DEFAULT_RUNTIME_MIGRATIONS` has 13 entries, the last `013_probe_runs`, and a store opened with the first 12 refuses a store migrated by 13 with `VES_RUNTIME_MIGRATION_INCOMPATIBLE` (door 1)
 Proof: `node --test --test-name-pattern "migration 013 is the last migration and older binaries refuse it" tests/integration/runtime-probe-run-migration.test.mjs`
 
+**C31** - A migration the runner marks a table rebuild runs with foreign keys off. If it leaves a row whose reference has no parent, the runner rolls it back and refuses with `VES_RUNTIME_MIGRATION_FOREIGN_KEY`, the store's tables and migration ledger are unchanged, and `PRAGMA foreign_keys` reads 1 afterwards. After a rebuild that succeeds, `PRAGMA foreign_keys` also reads 1 and a dangling insert is refused (door 1, amended 2026-10-29)
+Proof: `node --test --test-name-pattern "a rebuild migration runs with foreign keys off and commits only without violations" tests/integration/runtime-probe-run-migration.test.mjs`
+
 **C23** - The probe approval request's binding has:
 - action `probe-execution`;
 - `packageDigest` equal to the statement fingerprint, and `sourceStateDigest` equal to the registration digest;
@@ -170,14 +173,14 @@ Proof: `node --test --test-name-pattern "the plan's independent test" tests/e2e/
 | task commands that read a run (4) | `status` C19 · `resume` C19 · `cancel` C19 · `review` C19 | - |
 | workflow events for a probe run (8) | `COMPLETE_PROBE` C20 · `START_IMPLEMENTATION` C20 · `START_VERIFICATION` C20 · `REQUEST_REPAIR` C20 · `PASS_VERIFICATION` C20 · `APPROVE_HUMAN_REVIEW` C20 · `PREPARE_HANDOFF` C20 · `COMPLETE_RECOVERY` C20 | - |
 | run kinds (3) | `feature` C20, C21 · `recovery` C20, C21 · `probe` C20, C21, C26 | - |
-| one-way doors (5) | door 1 C20, C21, C22 · door 2 C23, C25 · door 3 C24, C5 · door 4 C13 · door 5 C27, C28 | - |
+| one-way doors (5) | door 1 C20, C21, C22, C31 · door 2 C23, C25 · door 3 C24, C5 · door 4 C13 · door 5 C27, C28 | - |
 | entities (5) | `ProbeRun` C4, C21 · `ProbeApproval` C3, C23 · `DatabaseReadGrant` C3, C5, C24 · `DatabaseRegistration` C8, C23 · `ExtensionApproval` C12, C24 | - |
 | pinned command lists (L-019) (4) | release manifest C27 · `cli-surface` C27 · `--help` snapshot C28 · `SEALED_COMMANDS` C28 | - |
 | startup config: the CLI command dispatch (2 assemblies) | `main.ts` routing C3, C30 · release command manifest C27 | - |
 | platforms (2) | POSIX (Linux CI, WSL) C3, C30 · win32 C15 | - |
 
 - Claims naming an exit code or envelope field (C3, C6-C15, C19, C30): each proof runs the command, in process through `executeProbeCommand` or `main()`, or through the launcher for C30, and reads its exit code and envelope.
-- C16, C20-C26 are proven at their own layer. The command cases pass through that code again but are not its proof.
+- C16, C20-C26 and C31 are proven at their own layer. The command cases pass through that code again but are not its proof.
 - macOS: the nightly platform matrix runs `test:contract` there after merge. No darwin run is claimed before merge.
 
 ## Swept
@@ -188,7 +191,7 @@ Proof: `node --test --test-name-pattern "the plan's independent test" tests/e2e/
 - authorization: C7 (the typed-back digest, AD-040), C3 and C24 (the broker's approval-bound grant under the probe policy view), C16 (the supervisor binds the plan to the admitted grant), C25 (a probe approval satisfies no task check)
 - concurrency: existing - the runtime store applies each transition with compare-and-set on the run's version (`applyWorkflow`, `task-workflow.ts`); the supervisor's concurrency limit holds within one process (plan, Out of scope)
 - data lifecycle: C5 (the grant is revoked when its run ends), C3 (it expires 10 minutes after issue); result rows are dropped (plan, Out of scope)
-- dependency failure: C14 (credential store without the passphrase), C6 (worker failure), C15 (platform)
+- dependency failure: C31 (a rebuild that would break a reference is rolled back), C14 (credential store without the passphrase), C6 (worker failure), C15 (platform)
 - state transitions: C1 (`AWAITING_EXECUTION_APPROVAL`), C4 (-> `COMPLETED`), C6 (-> `FAILED`), C7 (-> `ABORTED`), C20 (the probe run's allowed events)
 - observability: n/a - the command envelope and the authority store's run, approval and grant records are the record; this slice adds no logging requirement
 
@@ -202,6 +205,6 @@ Proof: `node --test --test-name-pattern "the plan's independent test" tests/e2e/
   - the guards and the pinned lists.
 
   This is over the 150k budget. The proposed cut is where the surface changes:
-  - **A**, the foundations, ~75k: C16, C20-C22, C26 (migration 013, the run kind's unions, `COMPLETE_PROBE`, the approval action, the supervisor's `grantRef` check, the run capsule).
+  - **A**, the foundations, ~75k: C16, C20-C22, C26, C31 (migration 013 and the runner's rebuild flag, the run kind's unions, `COMPLETE_PROBE`, the approval action, the supervisor's `grantRef` check, the run capsule).
   - **B**, the command, ~115k: C1-C15, C17-C19, C23-C25, C27-C30 (the probe family, its authority glue and policy view, the worker fixture, the guards and the pinned lists). B starts only after A is green.
 - Mechanism: handoff in two batches, A then B (owner, 2026-10-29)
