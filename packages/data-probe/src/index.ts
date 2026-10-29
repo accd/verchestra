@@ -463,7 +463,10 @@ function normalizeOperation(value: unknown): NormalizedReadOperation {
   }) as NormalizedReadOperation;
 }
 
-function normalizePolicy(value: unknown): DatabaseAccessPolicy {
+// invariant: the one policy validation: the probe planner applies it to every
+// policy it plans under, and a Workspace registration is written only with a
+// policy it accepts.
+export function normalizeDatabaseAccessPolicy(value: unknown): DatabaseAccessPolicy {
   const input = record(value, "VES_PROBE_POLICY_INVALID", "Database access policy");
   exactKeys(
     input,
@@ -620,7 +623,7 @@ export class ProbePlanner {
     const registration = await this.#registry.resolve(workspaceId, databaseId);
     const adapter = this.#adapters.get(registration.engine);
     if (adapter === undefined) fail("VES_PROBE_ENGINE_UNAVAILABLE", "Qualified database engine adapter is unavailable");
-    const policy = normalizePolicy(rawPolicy);
+    const policy = normalizeDatabaseAccessPolicy(rawPolicy);
     if (policy.policyRef !== registration.policyRef)
       fail("VES_PROBE_POLICY_MISMATCH", "Database policy reference differs");
     const purpose = textValue(request.purpose, IDENTIFIER, "VES_PROBE_REQUEST_INVALID", "Probe purpose");

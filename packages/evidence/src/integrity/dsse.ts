@@ -36,7 +36,11 @@ const PREDICATE_TYPES_V1 = Object.freeze({
   // doors 2 and 3), sealed by the Workspace evidence key.
   "skill-lock": `${PREDICATE_BASE}/skill-lock/v1`,
   "extension-approval": `${PREDICATE_BASE}/extension-approval/v1`,
-  "extension-approval-revocation": `${PREDICATE_BASE}/extension-approval-revocation/v1`
+  "extension-approval-revocation": `${PREDICATE_BASE}/extension-approval-revocation/v1`,
+  // why: a Workspace's database registration and the access policy it names
+  // (.specs/features/database-registration/plan.md, door 1), sealed by the
+  // same Workspace evidence key.
+  "database-registration": `${PREDICATE_BASE}/database-registration/v1`
 } as const);
 
 // Schema V2 artifacts order every declared set by UTF-16 code unit and
