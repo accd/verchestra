@@ -5,10 +5,10 @@ issue: 235
 status: in_progress
 branch: feat/235-database-registration
 baseRevision: d713137387cb1f7b7ea882cd01227cb0a8ad22ee
-lastCompletedTask: null
-nextTask: "Build C1-C27 of checks.md; then dispatch an independent Verifier over d7131373..HEAD."
-lastGate: "validate_plan.py and validate_checks.py 0 errors, 0 warnings"
-updatedAt: 2026-10-29T10:00:00Z
+lastCompletedTask: T1
+nextTask: "dispatch the independent Verifier over d7131373..HEAD"
+lastGate: "Every C1-C27 proof PASS on Windows (28 runs; C26's sealed proof with .claude/ excluded from the replica copy); gate:quick, test:contract, test:architecture, the database, launcher and extension e2e suites, and the sealed closure suite PASS on Windows"
+updatedAt: 2026-10-29T09:15:00Z
 ---
 
 # Evidence
@@ -18,7 +18,49 @@ database registrations as signed Workspace documents. Slice 2b runs a probe.
 The owner approved `plan.md` on 2026-10-29 (#683), then narrowed AC 15 before any
 check existed: no `vestra database` command starts a probe worker or a
 database client, and the only child processes are Git and the OS credential
-store's tool. `checks.md` holds 27 checks at profile `light`. No code exists.
+store's tool. `checks.md` holds 27 checks at profile `light`.
+
+S1 is built (task T1), C1-C27 closed at `7f8a381a`; nothing is verified
+independently yet. The commits after the plan:
+
+- `e7cfffe3` exports `normalizeDatabaseAccessPolicy` from data-probe, which
+  `ProbePlanner.plan` keeps using, and declares the predicate type
+  `database-registration/v1`.
+- `7be52c61` moves the family error factory and mapper to
+  `apps/vestra-cli/src/task/task-family-errors.ts`; the extension
+  definitions and mapping are unchanged.
+- `7f8a381a` adds `vestra database add|list|remove`
+  (`apps/vestra-cli/src/database/`), the `@verchestra/data-probe` workspace
+  link, the pinned command lists (L-019), the census row, and the tests:
+  - `tests/contract/database-command.test.mjs`, in process, with a child
+    process spy for AC 15;
+  - `tests/unit/database-registration-file.test.mjs`, the store layer;
+  - `tests/unit/database-access-policy.test.mjs`,
+    `tests/unit/database-definition.test.mjs` and
+    `tests/unit/database-errors.test.mjs`;
+  - `tests/architecture/database-command-composition.test.mjs`;
+  - `tests/e2e/database-cli-e2e.test.mjs`, the plan's independent test.
+- `62220dfa` records the commands in `CHANGELOG.md`.
+
+Evidence, all on Windows:
+
+- Each `Proof:` command of `checks.md` passes: 28 runs, C26 has two.
+- `gate:quick` passes.
+- `test:contract` passes, 1009 tests.
+- `test:architecture` passes, 148 tests.
+- The database, launcher and extension e2e files pass, 39 tests.
+- `tests/build/sealed-launcher-closure.test.mjs` passes, 14 tests.
+- In process, the unit and contract files cover the database family at
+  99.7-100 % of lines and 95-100 % of branches.
+
+Linux and macOS are not run before the Verifier; the nightly matrix runs
+`test:contract` on macOS after merge (checks.md, Coverage).
+
+On this machine, the sealed replica copies untracked files, and the
+untracked `.claude/worktrees/` checkouts of other sessions make its copy fail
+with EPERM before any test runs. The sealed proofs ran with a process-scoped
+`core.excludesFile` that excludes `.claude/`; no tracked file changed for it.
+Decisions taken mid-build are in `checks.md`, Handoff.
 
 ## Slice 2b, sketched for the next plan
 
@@ -51,7 +93,6 @@ planning 2a. It is not a reviewed plan.
 
 # Next exact action
 
-Build C1-C27 of `checks.md` on `feat/235-database-registration` (one builder,
-~80k), run the gates the checks name plus `pnpm gate:quick`, `test:contract`,
-`test:e2e`, `test:architecture` and the sealed-closure test (lesson L-019), then
-dispatch an independent Verifier over `d7131373..HEAD` with every check.
+Dispatch an independent Verifier over `d7131373..HEAD` with every check of
+`checks.md`, including a Linux run of `test:contract`, the database e2e file
+and the sealed closure test.
