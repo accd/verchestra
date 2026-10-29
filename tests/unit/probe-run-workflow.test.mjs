@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { afterEach, test } from "node:test";
 
 import { WorkflowMachine } from "../../packages/domain/src/index.ts";
 import { capsuleHarness, capsuleInput } from "../helpers/run-capsule-fixture.mjs";
+import { cleanup, opened } from "../helpers/runtime-store-fixture.mjs";
+
+afterEach(cleanup);
 
 const bindingDigest = `sha256:${"a".repeat(64)}`;
 const KIND_MISMATCH = { accepted: false, code: "VES_WORKFLOW_RUN_KIND_MISMATCH" };
@@ -140,4 +143,72 @@ test("the run capsule accepts a probe run", async () => {
     code: "VES_RUN_CAPSULE_INVALID",
     message: "Run kind is invalid"
   });
+});
+
+// why: a run the store holds, moved through the workflow as the commands move
+// it, one decided transition at a time.
+function persisted(store, runKind, runId) {
+  let current = { ...snapshot(runKind, "EXECUTION_READY"), runId, version: 0, approval: undefined };
+  store.createRun(current);
+  return (type, actorRole, evidence) => {
+    const decision = WorkflowMachine.decide(current, {
+      ...command(type, actorRole),
+      expectedVersion: current.version,
+      ...(evidence === undefined ? {} : { evidence })
+    });
+    assert.equal(decision.accepted, true, `${type} for a ${runKind} run: ${decision.code}`);
+    store.applyTransition(runId, decision, {
+      eventId: `event-${runId}-${decision.version}`,
+      payloadDigest: "a".repeat(64),
+      actor: { kind: actorRole, id: `actor:${actorRole}` },
+      occurredAt: "2026-07-13T12:00:00.000Z"
+    });
+    current = decision.snapshot;
+    return decision;
+  };
+}
+
+test("a probe run needs no terminal capsule", async () => {
+  for (const [type, actorRole, nextState] of [
+    ["COMPLETE_PROBE", "controller", "COMPLETED"],
+    ["FAIL", "controller", "FAILED"],
+    ["ABORT", "human", "ABORTED"]
+  ]) {
+    const decision = WorkflowMachine.decide(snapshot("probe", "EXECUTION_AUTHORIZED"), command(type, actorRole));
+    assert.equal(decision.nextState, nextState, type);
+    assert.equal(decision.snapshot.terminalCapsuleRequired, false, `${type} of a probe run`);
+    assert.deepEqual(
+      decision.events.map((event) => event.type),
+      [`${type}_ACCEPTED`],
+      `${type} of a probe run requests no capsule`
+    );
+  }
+  const featureFailed = WorkflowMachine.decide(
+    snapshot("feature", "EXECUTION_AUTHORIZED"),
+    command("FAIL", "controller")
+  );
+  assert.equal(featureFailed.snapshot.terminalCapsuleRequired, true, "FAIL of a feature run");
+  assert.deepEqual(
+    featureFailed.events.map((event) => event.type),
+    ["FAIL_ACCEPTED", "TERMINAL_CAPSULE_REQUESTED"]
+  );
+
+  const { store } = await opened();
+  const completed = persisted(store, "probe", "run_018f0b6d-7b1a-7abc-8def-00000000000a");
+  completed("REQUEST_EXECUTION_APPROVAL", "controller", ["execution-package"]);
+  completed("GRANT_EXECUTION_APPROVAL", "human");
+  completed("COMPLETE_PROBE", "controller");
+  const aborted = persisted(store, "probe", "run_018f0b6d-7b1a-7abc-8def-00000000000b");
+  aborted("REQUEST_EXECUTION_APPROVAL", "controller", ["execution-package"]);
+  aborted("ABORT", "human");
+  const failed = persisted(store, "feature", "run_018f0b6d-7b1a-7abc-8def-00000000000c");
+  failed("REQUEST_EXECUTION_APPROVAL", "controller", ["execution-package"]);
+  failed("FAIL", "controller");
+  assert.equal(store.getRun("run_018f0b6d-7b1a-7abc-8def-00000000000a").state, "COMPLETED");
+  assert.equal(store.getRun("run_018f0b6d-7b1a-7abc-8def-00000000000b").state, "ABORTED");
+  assert.deepEqual(
+    store.listUnsealedTerminalRuns().map((run) => [run.runId, run.runKind, run.status]),
+    [["run_018f0b6d-7b1a-7abc-8def-00000000000c", "feature", "FAILED"]],
+    "only the ended feature run owes a capsule"
+  );
 });

@@ -378,6 +378,10 @@ function transition(
   eventType = `${command.type}_ACCEPTED`
 ): WorkflowDecision {
   const terminal = (TERMINAL_WORKFLOW_STATES as readonly RunState[]).includes(nextState);
+  // invariant: AD-086. An ended task or recovery run owes a sealed Run
+  // Capsule; an ended probe run owes none: its record is the run, its approval
+  // and its grant in the authority store, and the result envelope it printed.
+  const capsuleRequired = terminal && current.runKind !== "probe";
   const approval = approvalAfter(current, command, eventType);
   const repairCycles = repairCyclesAfter(current, command, nextState);
   const implementationActorId =
@@ -395,7 +399,7 @@ function transition(
     approval,
     ...(implementationActorId === undefined ? {} : { implementationActorId }),
     ...(successorRunId === undefined ? {} : { successorRunId }),
-    terminalCapsuleRequired: terminal || current.terminalCapsuleRequired === true
+    terminalCapsuleRequired: capsuleRequired || current.terminalCapsuleRequired === true
   });
   const events: WorkflowEvent[] = [
     Object.freeze({
@@ -405,7 +409,7 @@ function transition(
       expectedVersion: command.expectedVersion
     })
   ];
-  if (terminal) {
+  if (capsuleRequired) {
     events.push(
       Object.freeze({
         type: "TERMINAL_CAPSULE_REQUESTED",
