@@ -27,10 +27,24 @@
 **Status:** Done. `threat-model.md`, `adr.md` (AD-037 in `.specs/STATE.md`),
 `validation.md`, and `docs/qualification/out-of-process-probe-host.md`.
 
-## T3 — Composition root wiring (not started)
+## T3 — Composition root wiring
 
-**Status:** Planned. AD-037 was ratified on 2026-10-28; the plan is
-`.specs/features/probe-host-composition/plan.md`, awaiting review. Compose
-`SpawnedProbeWorker` + `FramedProbeWorker` + the registry and grant issuance in
-`apps/vestra-cli`, and decide how a controller grant is issued and recorded
-(the authority store is the likely home).
+**Status:** Done. AD-037 was ratified on 2026-10-28, and the owner cut T3 into
+three slices, each planned, built and independently verified as its own
+feature:
+
+- Slice 1, `.specs/features/probe-host-composition/` (#681): the
+  `vestra extension add|approve|list|revoke|check` commands, and the CLI
+  composes `WorkspaceProbeAdmission`.
+- Slice 2a, `.specs/features/database-registration/` (#686): the
+  `vestra database add|list|remove` commands, which keep signed database
+  registrations and their access policy in the Workspace.
+- Slice 2b, `.specs/features/probe-run/` (#690): `vestra probe run` composes
+  `SpawnedProbeWorker`, `FramedProbeWorker` and the supervisor. A controller
+  grant is a `CapabilityGrant` in the authority store under a run of kind
+  `probe`, which the owner confirms per run.
+- The fix `.specs/features/probe-multi-parameter/` (#700): a probe statement
+  binds every parameter, on every engine.
+
+Delivering a database credential to the worker is not part of T3; it is its
+own feature, not planned (owner, 2026-10-29).

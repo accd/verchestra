@@ -2,20 +2,20 @@
 schema: verchestra-feature-handoff/v1
 feature: out-of-process-probe-host
 issue: 235
-status: in_progress
+status: complete
 branch: feat/235-out-of-process-probe-host
 baseRevision: cb563611da8b1ff80aa204536138f9440a0bff91
-lastCompletedTask: T2
-nextTask: "T3 slice 2b (`vestra probe run`) is complete and verified in .specs/features/probe-run/ and lands with its PR; after it, the owner decides what remains of T3 (the database credential is its own feature)."
+lastCompletedTask: T3
+nextTask: "None. T1-T3 are done; delivering a database credential to the worker is its own feature, not planned (owner, 2026-10-29)."
 lastGate: pnpm gate:security PASS (2026-09-29)
-updatedAt: 2026-10-29T17:26:51Z
+updatedAt: 2026-10-29T22:00:00Z
 ---
 
 # Handoff: out-of-process probe host
 
 ## State
 
-T1 and T2 are complete on this branch. `verchestra-probe/1` now runs end to end
+T1, T2 and T3 are complete. `verchestra-probe/1` now runs end to end
 against a spawned worker: `ProbeWorkerSupervisor` -> `FramedProbeWorker`
 (extension-host) -> `SpawnedProbeWorker` (platform-node) -> child process. A
 workspace worker is admitted only through
@@ -37,16 +37,16 @@ The gate adapter's process-group terminator was extracted unchanged into
 
 ## Next action
 
-T3 slice 1 is complete and verified (`.specs/features/probe-host-composition/`):
-the CLI composes `WorkspaceProbeAdmission` only, through the `./admission`
-export, and starts nothing. The owner cut slice 2 in two on 2026-10-28. Slice
-2a is complete and verified (`.specs/features/database-registration/`):
-`vestra database add|list|remove` keeps signed database registrations in the
-Workspace. Slice 2b is complete and verified (`.specs/features/probe-run/`):
-`vestra probe run` runs one approved read-only statement through an admitted
-worker under a grant the owner confirms per run, in a run of kind `probe`.
-Delivering a database credential to the worker is its own feature (owner,
-2026-10-29).
+None. T3 is done (`tasks.md`): slice 1 (#681), slice 2a (#686), slice 2b
+(#690) and the multi-parameter fix (#700) each landed with an independent
+verification. Slice 2b's C7 process spy gained the positive control its
+Verifier asked for: the test now requires a Git start before the review, so
+a spy that recorded nothing fails it. Delivering a database credential to the
+worker is its own feature, not planned (owner, 2026-10-29).
+`docs/qualification/out-of-process-probe-host.md` still lists "a CLI
+composition" among what the host's qualification does not cover; that is
+true of its qualified revision, and a qualification document changes only
+with a qualification report.
 
 ## Verification
 
