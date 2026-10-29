@@ -4,6 +4,9 @@
 // key: no module under apps/vestra-cli/src/probe/ imports the secret broker,
 // the credential reader or an OS credential backend, and none reads a
 // registration's logical credential name, which only the plan carries.
+// why: the scan names credential surfaces, so the spawn guard is installed as
+// for every test that could reach one (no-keychain-spawn-in-tests).
+import "../helpers/deny-keychain-spawn.mjs";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
