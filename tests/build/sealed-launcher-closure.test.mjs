@@ -294,8 +294,8 @@ test("the health report carries only honest observations of the staged closure",
     DEFAULT_RUNTIME_MIGRATIONS.map((entry) => entry.id)
   );
   assert.equal(migration.observation.count, DEFAULT_RUNTIME_MIGRATIONS.length);
-  assert.equal(migration.observation.count, 12);
-  assert.equal(migration.observation.registered.at(-1).id, "012_execution_checkpoints");
+  assert.equal(migration.observation.count, 13);
+  assert.equal(migration.observation.registered.at(-1).id, "013_probe_runs");
   const driver = report.checks.find((check) => check.name === "driver");
   assert.ok(driver.observation.drivers.length > 0);
   assert.equal(driver.observation.selfTestProfile.profileId, "drivers");

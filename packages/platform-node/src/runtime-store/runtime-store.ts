@@ -7,12 +7,14 @@ import { DatabaseSync, backup } from "node:sqlite";
 import {
   TERMINAL_WORKFLOW_STATES,
   canonicalizeJsonV2,
+  type RunKind,
   type RunSnapshot,
   type TerminalWorkflowState,
   type WorkflowDecision
 } from "@verchestra/domain";
 
 import { createSqliteEffectRepository, type EffectRepositoryHooks } from "./effect-repository.ts";
+import { applyRuntimeMigration, runtimeMigrationChecksum } from "./runtime-migration-runner.ts";
 // The migration registry lives in runtime-migrations.ts (which imports
 // nothing) so the sealed launcher's activation-health observation can project
 // it without loading node:sqlite; this module re-exports it so every existing
@@ -287,7 +289,7 @@ export class RuntimeStore {
     const existingById = new Map(existing.map((row) => [String(row.id), String(row.checksum)]));
     for (const migration of this.#migrations) {
       const appliedChecksum = existingById.get(migration.id);
-      if (appliedChecksum !== undefined && appliedChecksum !== sha256(migration.up)) {
+      if (appliedChecksum !== undefined && appliedChecksum !== runtimeMigrationChecksum(migration)) {
         throw runtimeError("VES_RUNTIME_MIGRATION_DRIFT", `Migration checksum drift: ${migration.id}`);
       }
     }
@@ -299,24 +301,11 @@ export class RuntimeStore {
 
     let applied = 0;
     for (const migration of this.#migrations) {
-      const checksum = sha256(migration.up);
       const row = db.prepare("SELECT checksum FROM ves_migrations WHERE id=?").get(migration.id) as
         UnknownRecord | undefined;
       if (row !== undefined) continue;
-      try {
-        db.exec("BEGIN IMMEDIATE");
-        db.exec(migration.up);
-        db.prepare("INSERT INTO ves_migrations(id, checksum, applied_at) VALUES (?, ?, ?)").run(
-          migration.id,
-          checksum,
-          this.#now()
-        );
-        db.exec("COMMIT");
-        applied += 1;
-      } catch (error) {
-        if (db.isTransaction) db.exec("ROLLBACK");
-        throw mapSqliteError(error);
-      }
+      applyRuntimeMigration(db, migration, this.#now());
+      applied += 1;
     }
     return applied;
   }
@@ -692,7 +681,7 @@ export class RuntimeStore {
 
   listUnsealedTerminalRuns(): readonly {
     readonly runId: string;
-    readonly runKind: "feature" | "recovery";
+    readonly runKind: RunKind;
     readonly status: TerminalWorkflowState;
     readonly stateVersion: number;
     readonly predecessorRunId?: string;
@@ -713,7 +702,7 @@ export class RuntimeStore {
     ).map((row) =>
       Object.freeze({
         runId: String(row["runId"]),
-        runKind: String(row["runKind"]) as "feature" | "recovery",
+        runKind: String(row["runKind"]) as RunKind,
         status: String(row["status"]) as TerminalWorkflowState,
         stateVersion: Number(row["stateVersion"]),
         ...(row["predecessorRunId"] === null ? {} : { predecessorRunId: storedText(row["predecessorRunId"]) }),

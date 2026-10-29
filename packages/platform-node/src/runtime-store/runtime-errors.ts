@@ -63,6 +63,12 @@ export const RUNTIME_PUBLIC_ERROR_DEFINITIONS = Object.freeze([
   define("VES_RUNTIME_LEASE_OWNER_MISMATCH", "security", "never", "Release the lease only through its current owner."),
   define("VES_RUNTIME_MIGRATION_DRIFT", "integrity", "never", "Restore the exact release migration set."),
   define(
+    "VES_RUNTIME_MIGRATION_FOREIGN_KEY",
+    "integrity",
+    "after-change",
+    "The migration was rolled back and changed nothing; restore a verified backup of the runtime database and retry."
+  ),
+  define(
     "VES_RUNTIME_MIGRATION_INCOMPATIBLE",
     "state",
     "after-change",
