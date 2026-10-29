@@ -138,6 +138,13 @@ async function executeDatabase(command: CliCommand): Promise<CommandResult> {
   return executeDatabaseCommand(command, familyProcess());
 }
 
+async function executeProbe(command: CliCommand): Promise<CommandResult> {
+  // why: a dynamic import, like database, so only `vestra probe` loads the
+  // probe planner and the probe host that starts a worker.
+  const { executeProbeCommand } = await import("./probe/probe-command.ts");
+  return executeProbeCommand(command, familyProcess());
+}
+
 export async function main(invokedAs: string, argv: readonly string[]): Promise<number> {
   const commandBus = createCommandBus(process.cwd());
   return runCli({
@@ -155,6 +162,7 @@ export async function main(invokedAs: string, argv: readonly string[]): Promise<
         if (command.name.startsWith("task ")) return executeTask(command);
         if (command.name.startsWith("extension ")) return executeExtension(command);
         if (command.name.startsWith("database ")) return executeDatabase(command);
+        if (command.name.startsWith("probe ")) return executeProbe(command);
         return commandBus.execute(command, context);
       }
     },
