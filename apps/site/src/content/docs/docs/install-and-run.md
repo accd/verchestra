@@ -3,18 +3,20 @@ title: Install and run
 description: Install the published Verchestra launcher with npx, run the portability demonstration, and remove its managed state.
 ---
 
-Verchestra is published as one npm package, `verchestra@0.0.0-qualification`.
-Installing it needs no clone, no build, no credential, and no configuration.
+Verchestra is published as one npm package, `verchestra`. The README's beta
+section names the exact current build. Installing it needs no clone, no build,
+no credential, and no configuration.
 
 ```bash
-npx verchestra --help
+npx verchestra@0.0.0-qualification.8 --help
 ```
 
 The package provides two equivalent binaries, `verchestra` and `vestra`.
 
 :::caution[This installs the qualification build]
 The published package installs `0.0.0-qualification`. It is not a production
-release and not 1.0. The 1.0 decision is T77.
+release and not 1.0. The signed 1.0 decision is a hold (T77); the candidate
+keeps operating as `0.0.0-qualification`.
 :::
 
 ## What the first run does

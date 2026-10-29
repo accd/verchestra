@@ -27,7 +27,7 @@ test("landing presents the honest delivery and qualification contract", async ({
   );
   await expect(page.getByLabel("Current public status")).toContainText("0.0.0-qualification");
   await expect(page.getByLabel("Current public status")).toContainText("T77 verified");
-  await expect(page.getByLabel("Current public status")).toContainText("1.0 decision pending");
+  await expect(page.getByLabel("Current public status")).toContainText("1.0 decision: signed hold");
   await expect(page.getByText("SAP ASE / Sybase", { exact: true })).toBeVisible();
   await expect(page.getByText("OpenCode / Qwen", { exact: true }).first()).toBeVisible();
   await expect(page.locator('a[href^="/"]:not([href^="/verchestra/"])')).toHaveCount(0);

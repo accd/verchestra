@@ -154,8 +154,11 @@ assert.match(homepage, new RegExp(`Inspect ${completedTask} evidence`, "u"));
 assert.match(homepage, /What works today/u);
 assert.match(homepage, /Workspace initialization \(init preview and apply\)/u);
 assert.match(homepage, /What Verchestra is not/u);
-assert.match(homepage, /Run the local alpha/u);
-assert.match(homepage, /1.0 decision pending/u);
+assert.match(homepage, /Install the beta build/u);
+// The 1.0 decision is a signed hold on disk; a homepage that calls it pending
+// or unmade contradicts the repository's own signed record.
+assert.match(homepage, /1\.0 decision: signed hold/u);
+assert.doesNotMatch(homepage, /1\.0 decision pending|has not been made/u);
 assert.doesNotMatch(homepage, /npm (?:install|add).{0,40}verchestra/iu);
 assert.doesNotMatch(homepage, /production[- ]ready/iu);
 

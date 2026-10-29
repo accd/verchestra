@@ -16,6 +16,33 @@ import ProductLayout from "../layouts/ProductLayout.astro";
 
 const base = import.meta.env.BASE_URL;
 const withBase = (path: string) => `${base}${path.replace(/^\/+/, "")}`;
+// Once the declared chain has no next task, what is still ahead is not a task
+// but the signed release decision. Its outcome comes from the typed status, so
+// a recorded hold reads as the decision it is, never as "pending".
+const decisionMade = productStatus.nextTask === null && productStatus.decision === "hold";
+const decisionLabel =
+  productStatus.nextTask !== null
+    ? `${productStatus.nextTask} next`
+    : decisionMade
+      ? "1.0 decision: signed hold"
+      : "1.0 decision pending";
+const qualificationHeadline =
+  productStatus.nextTask !== null
+    ? `${productStatus.nextTask} is work.`
+    : decisionMade
+      ? "The 1.0 decision is a signed hold."
+      : "The signed 1.0 decision is work.";
+const qualificationSummary =
+  productStatus.nextTask !== null
+    ? "Independent acceptance and the explicit 1.0 release decision remain ahead."
+    : decisionMade
+      ? `The declared qualification chain is fully verified. The signed promote-or-reject decision has been made: a reject, recorded as a hold. The candidate keeps operating as ${productStatus.version}; a promote round would decide on a fresh candidate with its own decision file.`
+      : "The declared qualification chain is fully verified. The signed promote-or-reject decision a 1.0 release requires has not been made.";
+const progressNextCell = productStatus.nextTask ?? (decisionMade ? "1.0: signed hold" : "1.0 decision");
+const progressLabel =
+  productStatus.nextTask !== null
+    ? `${productStatus.completedTask} complete, ${productStatus.nextTask} next`
+    : `${productStatus.completedTask} complete, ${decisionMade ? "1.0 decision a signed hold" : "1.0 decision next"}`;
 const sourceCodeMetadata = {
   "@context": "https://schema.org",
   "@type": "SoftwareSourceCode",
@@ -61,8 +88,8 @@ const sourceCodeMetadata = {
           <strong>In practice:</strong> {productScenario}
         </p>
         <div class="hero__actions">
-          <a class="button button--primary" href={withBase("docs/develop-from-source/")}>
-            Run the local alpha
+          <a class="button button--primary" href={withBase("docs/install-and-run/")}>
+            Install the beta build
           </a>
           <a class="button button--secondary" href="https://github.com/accd/verchestra">
             View on GitHub
@@ -75,10 +102,7 @@ const sourceCodeMetadata = {
           <span class="qualification-pill__signal"></span>
           <code>{productStatus.version}</code>
           <span>{productStatus.completedTask} verified</span>
-          {/* Once the declared chain has no next task, the thing still ahead
-          is not a task at all — it is the signed release decision, and saying
-          so is the difference between a verified chain and a shipped 1.0. */}
-          <span>{productStatus.nextTask === null ? "1.0 decision pending" : `${productStatus.nextTask} next`}</span>
+          <span>{decisionLabel}</span>
         </div>
         <p class="status-note">
           Public source development and a published qualification package are available. A production release is not.
@@ -225,7 +249,8 @@ const sourceCodeMetadata = {
         <h2 id="probes-title">Context from real systems. No hidden writer.</h2>
         <p>
           Database discovery runs through bounded plans, explicit capabilities, audit evidence, and read-only
-          credentials. SAP ASE / Sybase is a first-class adapter, not an afterthought.
+          credentials. SQLite is live-qualified in this repository; the other six engines are contract-verified here and
+          qualified at the edge.
         </p>
         <a class="text-link" href={withBase("docs/workflows/read-only-database-discovery/")}>
           Explore database discovery <span aria-hidden="true">→</span>
@@ -241,7 +266,7 @@ const sourceCodeMetadata = {
             <li class={index === 0 ? "database-panel__primary" : undefined}>
               <span class="database-panel__status" aria-hidden="true" />
               <strong>{database}</strong>
-              <small>{index === 0 ? "first-class adapter" : "qualified surface"}</small>
+              <small>{index === 0 ? "live-qualified" : "contract-verified"}</small>
             </li>
           ))}
         </ul>
@@ -275,24 +300,19 @@ const sourceCodeMetadata = {
     <section class="qualification section-frame" aria-labelledby="qualification-title">
       <div>
         <h2 id="qualification-title">
-          {productStatus.completedTask} is evidence. {productStatus.nextTask ?? "The signed 1.0 decision"} is work.
+          {productStatus.completedTask} is evidence. {qualificationHeadline}
         </h2>
         <p>
           Foundations through {productStatus.completedTask} are backed by public validation reports.{" "}
-          {productStatus.nextTask === null
-            ? "The declared qualification chain is fully verified. The signed promote-or-reject decision a 1.0 release requires has not been made."
-            : "Independent acceptance and the explicit 1.0 release decision remain ahead."}
+          {qualificationSummary}
         </p>
       </div>
-      <div
-        class="qualification-progress"
-        aria-label={`${productStatus.completedTask} complete, ${productStatus.nextTask ?? "1.0 decision"} next`}
-      >
+      <div class="qualification-progress" aria-label={progressLabel}>
         <div class="qualification-progress__complete">
           <span>T01</span>
           <span>{productStatus.completedTask}</span>
         </div>
-        <div class="qualification-progress__next">{productStatus.nextTask ?? "1.0 decision"}</div>
+        <div class="qualification-progress__next">{progressNextCell}</div>
         {/* The declared chain ends at T77, so once the derived next task IS
         T77 this cell would repeat it. Rendering it only while T77 is still
         ahead keeps the strip honest instead of showing one milestone twice.

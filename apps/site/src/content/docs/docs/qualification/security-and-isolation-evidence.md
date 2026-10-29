@@ -7,4 +7,4 @@ Security qualification covers path containment, secret handling, capability deni
 
 Negative tests matter: unsafe inputs must fail closed and produce no promoted evidence. Discrimination checks deliberately remove a control or inject a fault to prove the sensor detects the intended violation.
 
-T69–T72 will add an isolated Self-Test identity and signed diagnostics without weakening these production boundaries.
+T69–T72 added an isolated Self-Test identity and signed diagnostics without weakening these production boundaries; see [T72 validation](../t72-validation/).

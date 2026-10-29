@@ -1,0 +1,38 @@
+# Site Status Truth Validation
+
+Recorded on 2026-10-29 from the worktree branch `site/status-truth`, cut from
+`origin/main` at `d2f6de855089e1496a6d9a95c01c54975da1120e`, on Windows 11
+with Node 24.14.0 and pnpm 10.34.5 (`corepack pnpm`).
+
+## Requirement evidence
+
+| Id     | Evidence                                                                                                                                                                                                                                                                 |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| SST-01 | `apps/site/src/data/product.ts` `productStatus.decision: "hold"`; `apps/site/tests/unit/product-contract.test.mjs` "the typed decision mirrors the signed release-decision file" reads `docs/qualification/release-decision-1.0.0.md` and asserts `version: 1.0.0`, `decision: reject`. |
+| SST-02 | `apps/site/src/pages/index.astro` derives `decisionLabel`, `qualificationHeadline`, `qualificationSummary`, `progressNextCell`, `progressLabel` from the typed status; `apps/site/scripts/check-built-site.mjs` asserts `/1\.0 decision: signed hold/` and rejects `/1\.0 decision pending\|has not been made/`; `apps/site/tests/e2e/site.spec.ts` pill assertion amended to `1.0 decision: signed hold`. |
+| SST-03 | `index.astro` hero action: "Install the beta build" → `docs/install-and-run/`; `check-built-site.mjs` asserts `/Install the beta build/`.                                                                                                                               |
+| SST-04 | `product.ts` `maturityDefinitions.available`; `README.md` legend lines 86-87; the README matrix rows are unchanged, so the drift test stays satisfied.                                                                                                                      |
+| SST-05 | `index.astro` probes copy and panel labels (`live-qualified` / `contract-verified`); `workflows/read-only-database-discovery.md:17`; `README.md:77`.                                                                                                                      |
+| SST-06 | Edited guides: `index.mdx:18`, `qualification/index.md` (rewritten boundary list), `qualification/security-and-isolation-evidence.md:10`, `qualification/supply-chain-qualification.md:8-10`, `architecture/distribution.md:3`, `install-and-run.md:6-10,17`, `current-qualification-status.md:12-13`. |
+| SST-07 | `apps/site/tests/unit/documentation-contract.test.mjs` "the status-bearing guides follow the derived qualification status" pins `index.mdx` to `T01–${highestVerifiedTask} reports`, `qualification/index.md` to `T69–${highestVerifiedTask}` and `/signed (?:hold\|reject)/`, and `install-and-run.md` to `/signed 1\.0 decision is a hold/`. |
+| SST-08 | `apps/site/AGENTS.md:12-15`, `docs/AGENTS.md:9-11`; `tests/architecture/agent-instructions.test.mjs` still finds "Apply the root `AGENTS.md` first."                                                                                                                    |
+| SST-09 | Gate table below.                                                                                                                                                                                                                                                        |
+
+## Gates
+
+| Gate                                                                                                          | Result                                                                                                                                    |
+| ------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm --filter @verchestra/site test:unit`                                                                    | 66 pass, 0 fail (includes the two new tests)                                                                                              |
+| `node --test tests/agent-readiness/beta-tester-docs.test.mjs tests/agent-readiness/npx-package-name.test.mjs tests/architecture/agent-instructions.test.mjs tests/architecture/repository-boundaries.test.mjs` | 35 pass, 0 fail                                                                                                                           |
+| `node --test tests/architecture/*.test.mjs`                                                                   | 148 pass, 0 fail                                                                                                                          |
+| `pnpm gate:quick`                                                                                             | PASS (format, lint, complexity, typecheck, unit, agent-readiness, census)                                                                 |
+| `pnpm agent:check`                                                                                            | PASS, after correcting a relative link to `../t72-validation/` (non-index guides resolve `./` against their own route)                    |
+| `pnpm --filter @verchestra/site build` + `check:built`                                                        | build complete; `{"pages":135,"compressedJavaScript":1116,"compressedTransfer":247761,"internalLinks":"valid","metadata":"valid"}`        |
+| `pnpm --filter @verchestra/site check:astro`                                                                  | **Not runnable on this machine, on `main` too**: importing `@astrojs/check` crashes inside `@emnapi/runtime@2.0.0-alpha.3` (`this.bridge.setLastError is not a function`), the WASM fallback the lockfile resolves for `@astrojs/check@0.9.12`. CI runs it on Ubuntu. |
+| `pnpm --filter @verchestra/site test:e2e`                                                                     | **54 pass, 0 fail** on chromium, firefox and webkit (2.9 min), served from this worktree's build on port 4324 through a local-only config override (not committed). The first run reported 3 failures on `site.spec.ts:30` ("1.0 decision pending"): Playwright's `reuseExistingServer` had attached to a stale `astro preview` on port 4322 from another checkout, running since 2026-10-28 and serving an old build, which this session was not permitted to stop. |
+| `pnpm --filter @verchestra/site test:lighthouse`                                                              | **Gate not reproducible on this machine**: `chrome-launcher` fails with `EPERM` deleting its temporary profile after each audit (the transient Windows cleanup failure `scripts/lighthouse-retry.mjs` already retries once), with the default `%TEMP%` and with a session-local one. The two audits that completed before the cleanup error scored performance 0.99 and 1.0, accessibility 1, best-practices 1, SEO 1, LCP 618 ms and 433 ms, CLS 0.0004 and 0.0009 (`apps/site/.lighthouseci/lhr-1793294698589.json`, `lhr-1793294775833.json`), inside every budget in `lighthouserc.cjs`. CI runs the gate on Ubuntu. |
+
+## Negative checks
+
+- The new product-contract test fails if `decision: reject` is removed from the decision frontmatter or `decision: "hold"` from `product.ts` (verified by reasoning over the assertion; both inputs are tracked files).
+- `check-built-site.mjs` now rejects the former homepage strings, so a revert of `index.astro` alone fails `check:built`.
