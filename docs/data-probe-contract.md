@@ -51,7 +51,20 @@ the team's repository, under `.verchestra/probes/<engine>` (or the lowercase
 in `packages/workspace/src/init/probe-scaffold.ts` and is keyed by engine and
 contract version (`PROBE_CONTRACT_VERSION`, currently 1). It is deterministic:
 no clock, no product version, sorted files, LF endings. It uses no AI, makes no
-network call, and adds no dependency.
+network call, needs no configured Driver, and adds no dependency.
+
+`--probe-engine` is one of `postgresql`, `mysql`, `mariadb`, `sqlserver`,
+`sap-ase`, `oracle`, `sqlite`, or `mongodb`. `--probe-language` accepts only
+`typescript`. `--probe-dir` defaults to `.verchestra/probes/<engine>` and must
+be a lowercase path under `.verchestra/probes/`. The scaffold goes through the
+same preview and apply as the workspace files: `--dry-run` writes nothing, the
+ownership manifest records the files, and a file you have already edited is
+never overwritten. The output is byte-identical for a given engine and
+contract version, typechecks as generated, and its kit run fails with
+`VES_PROBE_DRIVER_TODO` until you implement the connection. From a source
+checkout, `node apps/vestra-cli/bin/vestra.mjs init --dry-run --workspace-id
+<workspaceId> --name "My workspace" --placement centralized --probe-engine
+postgresql --output json` previews the scaffold for PostgreSQL.
 
 | File | Content |
 | --- | --- |

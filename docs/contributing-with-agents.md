@@ -18,6 +18,13 @@ Unsupported tools should be told explicitly to read the root and closest scoped
 `AGENTS.md`. Provider memory, MCP, IDE rules, and installed skills are optional
 accelerators, not repository requirements.
 
+AI-readable documentation is available as the repository
+[`llms.txt`](../llms.txt), the published
+[LLM summary](https://accd.github.io/verchestra/llms.txt), the
+[full attributed context](https://accd.github.io/verchestra/llms-full.txt), and
+page-level Markdown alternates on the site. These are inference-time aids, not
+guarantees of indexing, SEO ranking, training inclusion, or crawler behavior.
+
 ## Size and specify work
 
 Before non-trivial work starts, follow the ownership policy in
