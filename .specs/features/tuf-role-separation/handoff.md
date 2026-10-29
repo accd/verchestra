@@ -125,10 +125,10 @@ from 2026-09-29 are history. What still blocks this feature:
   (`docs/release-custody.md` section 3.1).
 - **People separation needs custodian #2 (O1).** The owner named none on
   2026-10-02. Both role-separated keys sit with one operator (matrix L8).
-- **F2 is implemented, not operating.** No `role-refresh` entry exists in the
-  ledger; the only refresh run (36779932633, 2026-09-30) failed. The first
-  successful refresh is exit condition X2 in
-  `docs/qualification/qualification-line-exit-record.md`.
+- **F2 has run once, without a short window.** The first refresh (run
+  40963107506, 2026-10-29) is `role-refresh` entry 9 in the ledger and meets exit
+  condition X2 in `docs/qualification/qualification-line-exit-record.md`. It
+  kept the publication-horizon expiry, so a short online window is not in force.
 
 History, reconciled 2026-09-29 (#407):
 
