@@ -1,34 +1,11 @@
-import {
-  PublicErrorException,
-  PublicErrorRegistry,
-  type ErrorCategory,
-  type PublicErrorDefinition,
-  type Retryability,
-  type SafeDetailType
-} from "@verchestra/domain";
+import { PublicErrorException, PublicErrorRegistry, type PublicErrorDefinition } from "@verchestra/domain";
 
-import { publicError as taskPublicError } from "../task/task-public-error.ts";
+import { familyErrorDefinitions, familyPublicError, type PublicErrorFamily } from "../task/task-family-errors.ts";
 
 // why: every extension definition names the same component and documentation
 // version, and no safe detail unless it lists one; only what differs is
 // written per code, and each code stays a literal that `extensionError` takes.
-function extensionDefinition<const Code extends string>(
-  code: Code,
-  category: ErrorCategory,
-  retryability: Retryability,
-  recovery: string,
-  safeDetails: Readonly<Record<string, SafeDetailType>> = {}
-) {
-  return {
-    code,
-    category,
-    component: "extension",
-    retryability,
-    recovery,
-    documentationVersion: "1",
-    safeDetails
-  } as const;
-}
+const extensionDefinition = familyErrorDefinitions("extension");
 
 // invariant: every `vestra extension` refusal surfaces as one of these
 // envelopes, a task envelope it shares (confirmation, credentials), or the
@@ -132,29 +109,21 @@ export function extensionError(
   return new PublicErrorException(extensionPublicErrorRegistry.create(code, details), message, options);
 }
 
-function codeOf(error: unknown): string | undefined {
-  const code = (error as { readonly code?: unknown } | null | undefined)?.code;
-  return typeof code === "string" ? code : undefined;
-}
-
 // invariant: what any extension command shows for an error. A public refusal
 // stays as it is; an extension or probe host code becomes its own envelope; a
 // refusal of the skill registry names its code as the reason; anything else is
 // mapped as a task command maps it, with VES_EXTENSION_FAILED in place of
 // VES_TASK_FAILED.
+const EXTENSION_ERRORS: PublicErrorFamily = Object.freeze({
+  registry: extensionPublicErrorRegistry,
+  failed: "VES_EXTENSION_FAILED",
+  message: "Extension command failed",
+  refine: (code: string, error: unknown) =>
+    /^VES_SKILL_[A-Z0-9_]{1,80}$/u.test(code)
+      ? extensionError("VES_EXTENSION_LOCK_REFUSED", { reason: code }, "The skill lock was refused", { cause: error })
+      : undefined
+});
+
 export function extensionPublicError(error: unknown): PublicErrorException {
-  if (error instanceof PublicErrorException) return error;
-  const code = codeOf(error);
-  const definition = EXTENSION_PUBLIC_ERROR_DEFINITIONS.find((entry) => entry.code === code);
-  if (definition !== undefined && Object.keys(definition.safeDetails).length === 0)
-    return extensionError(definition.code, {}, "Extension command failed", { cause: error });
-  if (code !== undefined && /^VES_SKILL_[A-Z0-9_]{1,80}$/u.test(code))
-    return extensionError("VES_EXTENSION_LOCK_REFUSED", { reason: code }, "The skill lock was refused", {
-      cause: error
-    });
-  const mapped = taskPublicError(error);
-  if (mapped.envelope.code !== "VES_TASK_FAILED") return mapped;
-  return extensionError("VES_EXTENSION_FAILED", { ...mapped.envelope.safeDetails }, "Extension command failed", {
-    cause: error
-  });
+  return familyPublicError(EXTENSION_ERRORS, error);
 }
