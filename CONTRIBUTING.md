@@ -79,9 +79,10 @@ pnpm site:dev
 pnpm site:check
 pnpm site:test
 pnpm site:build
+pnpm site:preview
 ```
 
-Before the first browser run, install the pinned Playwright browsers with `pnpm --filter @verchestra/site exec playwright install chromium firefox webkit`. Do not commit `dist`, `.astro`, Pagefind output, browser reports, Lighthouse reports, or other generated site state.
+`pnpm site:test` runs content integrity, Astro diagnostics, the production build, link and metadata checks, Playwright across Chromium, Firefox, and WebKit, Axe, and Lighthouse. The site is the private `@verchestra/site` workspace package: static, served under the `/verchestra/` base path, loading canonical repository documents at build time. Before the first browser run, install the pinned Playwright browsers with `pnpm --filter @verchestra/site exec playwright install chromium firefox webkit`. Do not commit `dist`, `.astro`, Pagefind output, browser reports, Lighthouse reports, or other generated site state.
 
 ## Pull requests
 
