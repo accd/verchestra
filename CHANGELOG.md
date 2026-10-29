@@ -83,6 +83,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Security
 
+- The probe worker supervisor refuses, with `VES_PROBE_SECRET_LEAK`, a result
+  that carries the protected request as a JSON string holds it, escaped, as
+  well as as it is. A probe's protected request is itself JSON, so a worker
+  that echoed it into a string value was not caught before (#235).
 - A manual workflow, `npm-publish.yml`, can publish `verchestra` with npm
   provenance through trusted publishing, with no npm token anywhere. It
   rebuilds the package from the publication run's pinned inputs, requires it to
