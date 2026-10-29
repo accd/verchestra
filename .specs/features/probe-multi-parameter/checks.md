@@ -45,20 +45,20 @@ Proof: `node --test --test-name-pattern "a bind count that differs from its clas
 
 ### S2 - vestra probe run binds every parameter · ~4 files · ~45 KB · ~11k
 
-**C6** - On Linux and macOS, `vestra probe run` with `SELECT id, status FROM main.orders WHERE id = ? AND status = ?` and the first fixture row's `id` and `status` exits 0 with `result.status` `complete` and `result.rowCount` 1, and the run ends `COMPLETED`; with that `id` and another row's `status` it exits 0 with `result.rowCount` 0. On Windows the command refuses with `VES_PROBE_HOST_PLATFORM_UNSUPPORTED` and creates no run.
+**C6** - On Linux and macOS, `vestra probe run` with `SELECT id, status FROM main.orders WHERE id = ? AND status = ?` and the parameters [1, `paid`] (the first fixture row) exits 0 with `result.status` `complete` and `result.rowCount` 1, and the run ends `COMPLETED`; with [1, `pending`] (another row's status) it exits 0 with `result.rowCount` 0. On Windows the command refuses with `VES_PROBE_HOST_PLATFORM_UNSUPPORTED` and creates no run.
 Proof: `node --test --test-name-pattern "a probe run binds every parameter" tests/contract/probe-run-command.test.mjs`
 
-**C7** - The parameter values of C6 appear in none of stdout, stderr or the JSON envelope.
+**C7** - On Linux and macOS, the statement of C6 with the parameters [1, `PARAM-7f3a-SENTINEL`] exits 0 with `result.rowCount` 0, and `PARAM-7f3a-SENTINEL` appears in none of stdout, stderr or the JSON envelope.
 Proof: `node --test --test-name-pattern "a probe run binds every parameter" tests/contract/probe-run-command.test.mjs`
 
 ## Coverage
 
-| Set (size) | Member -> proof | Unproven |
-| --- | --- | --- |
-| engines (8) | `postgresql` C3 · `mysql` C3 · `mariadb` C3 · `sqlserver` C3 · `sybase` C3 · `oracle` C3 · `sqlite` C3, C4, C6 · `mongodb` C3 | - |
-| bind count (3 edges) | 0 C2 · 1 C2 · 2 C1, C3, C4, C6 | - |
-| classification mix (2) | one class repeated C1 · several classes, one repeated C1 | - |
-| count mismatch (2 places) | parser C5 · worker C5 | - |
+| Set (size)                | Member -> proof                                                                                                               | Unproven |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | -------- |
+| engines (8)               | `postgresql` C3 · `mysql` C3 · `mariadb` C3 · `sqlserver` C3 · `sybase` C3 · `oracle` C3 · `sqlite` C3, C4, C6 · `mongodb` C3 | -        |
+| bind count (3 edges)      | 0 C2 · 1 C2 · 2 C1, C3, C4, C6                                                                                                | -        |
+| classification mix (2)    | one class repeated C1 · several classes, one repeated C1                                                                      | -        |
+| count mismatch (2 places) | parser C5 · worker C5                                                                                                         | -        |
 
 - C3 is table-driven over all eight engines; C4 and C6 cross a real SQLite connection.
 - No other check claims more than the cases its proof exercises.
