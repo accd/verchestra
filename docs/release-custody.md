@@ -488,7 +488,11 @@ it covers release effects as well as merges.
 - **Evidence and release-decision keys.** Provision a new key and commit the new
   anchor through an independently approved pull request. Past signatures stay
   verifiable against the old anchor at their recorded revision. Do not rewrite
-  history.
+  history. A signed decision names the role's file in `publicKeyRef` and is
+  never edited, so `scripts/agent-readiness.mjs` also verifies it against each
+  retired anchor of the same purpose whose `validUntil` is after the decision's
+  `decidedAt`. The release-decision key was rotated on 2026-10-29 because the
+  2026-08-28 key could not be found: lost, not known to be compromised.
 - **Retiring an anchor (every role).** A rotation moves the old anchor to
   `docs/qualification/trust/retired/<keyId>.json`. It keeps its public key,
   key id, and purpose, and gains `validUntil`, the instant it stopped signing.
