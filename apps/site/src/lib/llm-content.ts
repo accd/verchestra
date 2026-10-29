@@ -50,7 +50,7 @@ function normalize(content: string) {
   return `${content.replaceAll("\r\n", "\n").trim()}\n`;
 }
 
-function parseFrontmatter(content: string) {
+export function parseFrontmatter(content: string) {
   const match = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/u.exec(content.replaceAll("\r\n", "\n"));
   if (!match) return null;
   const header = match[1] ?? "";

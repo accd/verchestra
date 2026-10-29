@@ -1,0 +1,61 @@
+---
+import DefaultMobileMenuFooter from "@astrojs/starlight/components/MobileMenuFooter.astro";
+
+import { productNavigation } from "../lib/site-chrome.ts";
+
+/*
+ * why: below Starlight's md breakpoint the header hides the product navigation,
+ * so the mobile menu lists the same links above Starlight's own preferences.
+ * It is a plain list: the menu already sits inside the sidebar's "Main"
+ * navigation landmark, so a nested nav would add nothing but a second
+ * landmark.
+ */
+const navigation = productNavigation(import.meta.env.BASE_URL, Astro.url.pathname);
+---
+
+<ul class="product-links">
+  {navigation.map((item) => (
+    <li>
+      <a href={item.href} aria-current={item.current ? "page" : undefined}>
+        {item.label}
+      </a>
+    </li>
+  ))}
+</ul>
+<DefaultMobileMenuFooter />
+
+<style>
+  .product-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.5rem;
+    margin: 0;
+    padding: 0.5rem 0;
+    border-top: 1px solid var(--sl-color-gray-6);
+    list-style: none;
+  }
+
+  .product-links a {
+    display: inline-flex;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    align-items: center;
+    padding-inline: 0.6rem;
+    color: var(--muted);
+    font-size: 0.88rem;
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .product-links a:hover {
+    color: var(--text);
+  }
+
+  .product-links a[aria-current="page"] {
+    color: var(--text);
+    text-decoration: underline;
+    text-decoration-color: var(--cyan);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 0.45rem;
+  }
+</style>

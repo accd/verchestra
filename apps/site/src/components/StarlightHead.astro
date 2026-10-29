@@ -37,13 +37,18 @@ const llmsFullUrl = new URL("llms-full.txt", siteUrl);
 <script>
   let mermaidRenderId = 0;
 
+  // why: the code block is the diagram's text equivalent, and it stays in the
+  // page until the SVG exists. Replacing it first showed an empty box while
+  // the Mermaid bundle loaded. A theme change re-renders the diagrams already
+  // in place; a block still waiting on its first render is left to that render.
   const renderMermaid = async () => {
-    [...document.querySelectorAll<HTMLElement>('pre[data-language="mermaid"]')].forEach((pre) => {
+    const pending = [...document.querySelectorAll<HTMLElement>('pre[data-language="mermaid"]')].flatMap((pre) => {
+      if (pre.dataset.mermaidPending !== undefined) return [];
       const source = [...pre.querySelectorAll<HTMLElement>(".ec-line .code")]
         .map((line) => line.textContent ?? "")
         .join("\n");
-      const renderedFrame = pre.closest("figure") ?? pre;
-      if (!source) return;
+      if (!source) return [];
+      pre.dataset.mermaidPending = "";
       const diagram = document.createElement("div");
       diagram.className = "mermaid-diagram";
       diagram.setAttribute("role", "img");
@@ -52,11 +57,11 @@ const llmsFullUrl = new URL("llms-full.txt", siteUrl);
         "Architecture diagram. The surrounding document provides the equivalent system description."
       );
       diagram.dataset.mermaidSource = source;
-      renderedFrame.replaceWith(diagram);
+      return [{ frame: pre.closest("figure") ?? pre, diagram }];
     });
 
-    const diagrams = [...document.querySelectorAll<HTMLElement>(".mermaid-diagram")];
-    if (diagrams.length === 0) return;
+    const rendered = [...document.querySelectorAll<HTMLElement>(".mermaid-diagram")];
+    if (pending.length === 0 && rendered.length === 0) return;
     const { default: mermaid } = await import("mermaid");
     const isLight = document.documentElement.dataset.theme === "light";
     const palette = isLight
@@ -85,16 +90,22 @@ const llmsFullUrl = new URL("llms-full.txt", siteUrl);
       themeVariables: palette
     });
 
-    await Promise.all(
-      diagrams.map(async (diagram) => {
-        const source = diagram.dataset.mermaidSource;
-        if (!source) return;
-        const id = `verchestra-mermaid-${mermaidRenderId++}`;
-        const { svg, bindFunctions } = await mermaid.render(id, source);
-        diagram.innerHTML = svg;
-        bindFunctions?.(diagram);
+    const paint = async (diagram: HTMLElement) => {
+      const source = diagram.dataset.mermaidSource;
+      if (!source) return;
+      const id = `verchestra-mermaid-${mermaidRenderId++}`;
+      const { svg, bindFunctions } = await mermaid.render(id, source);
+      diagram.innerHTML = svg;
+      bindFunctions?.(diagram);
+    };
+
+    await Promise.all([
+      ...rendered.map(paint),
+      ...pending.map(async ({ frame, diagram }) => {
+        await paint(diagram);
+        frame.replaceWith(diagram);
       })
-    );
+    ]);
   };
 
   document.addEventListener("DOMContentLoaded", () => {

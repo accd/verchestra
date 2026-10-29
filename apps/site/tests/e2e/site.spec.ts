@@ -54,6 +54,70 @@ test("theme selection persists across product and documentation surfaces", async
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
 });
 
+test("documentation pages share the product chrome and render one heading", async ({ page }) => {
+  await page.goto("docs/");
+  const productNav = page.getByRole("navigation", { name: "Product navigation" });
+  await expect(productNav.getByRole("link")).toHaveText(["Docs", "Roadmap", "Community"]);
+  await expect(productNav.getByRole("link", { name: "Docs" })).toHaveAttribute("aria-current", "page");
+  await expect(productNav.getByRole("link", { name: "Roadmap" })).not.toHaveAttribute("aria-current", "page");
+  const undersized = await productNav
+    .getByRole("link")
+    .evaluateAll((links) =>
+      links.map((link) => link.getBoundingClientRect()).filter((box) => box.width < 44 || box.height < 44)
+    );
+  expect(undersized).toEqual([]);
+
+  const footerNav = page.getByRole("navigation", { name: "Footer navigation" });
+  await expect(footerNav.getByRole("link")).toHaveText([
+    "Documentation",
+    "Agent guide",
+    "LLM summary",
+    "Discussions",
+    "Issues"
+  ]);
+  await expect(footerNav.getByRole("link", { name: "LLM summary" })).toHaveAttribute("href", "/verchestra/llms.txt");
+  await expect(page.locator(".product-footer__wordmark")).toHaveAttribute("href", "/verchestra/");
+
+  await page.goto("roadmap/");
+  await expect(productNav.getByRole("link", { name: "Roadmap" })).toHaveAttribute("aria-current", "page");
+  await expect(productNav.getByRole("link", { name: "Docs" })).not.toHaveAttribute("aria-current", "page");
+  await expect(page.locator("h1")).toHaveCount(1);
+
+  await page.goto("docs/architecture/system-overview/");
+  await expect(page.locator("h1")).toHaveCount(1);
+});
+
+test("the mobile documentation menu lists the product navigation", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("docs/");
+  await expect(page.getByRole("navigation", { name: "Product navigation" })).toBeHidden();
+  await page.getByRole("button", { name: "Menu" }).click();
+  const links = page.locator(".product-links a");
+  await expect(links).toHaveText(["Docs", "Roadmap", "Community"]);
+  await expect(links.first()).toHaveAttribute("aria-current", "page");
+  for (const link of await links.all()) {
+    await expect(link).toBeVisible();
+    const box = await link.boundingBox();
+    expect(box && box.height >= 44 && box.width >= 44, "menu link is at least 44 by 44").toBe(true);
+  }
+});
+
+// why: the dark page tokens are unlayered, so Starlight's layered light palette
+// never applied: a light documentation page kept the dark page background.
+test("light documentation pages have a white page and no Axe violations", async ({ page }) => {
+  for (const path of ["docs/", "roadmap/"]) {
+    await page.goto(path);
+    await page.evaluate(() => {
+      localStorage.setItem("starlight-theme", "light");
+    });
+    await page.reload();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    await expect(page.locator("body")).toHaveCSS("background-color", "rgb(255, 255, 255)");
+    const results = await new AxeBuilder({ page }).analyze();
+    expect(results.violations, `${path} in light: ${JSON.stringify(results.violations, null, 2)}`).toEqual([]);
+  }
+});
+
 test("keyboard users can skip to content and open documentation search", async ({ page }) => {
   await page.goto("");
   await page.keyboard.press("Tab");

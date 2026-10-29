@@ -46,6 +46,9 @@ export default defineConfig({
       customCss: ["./src/styles/global.css"],
       components: {
         Head: "./src/components/StarlightHead.astro",
+        Header: "./src/components/StarlightHeader.astro",
+        MobileMenuFooter: "./src/components/StarlightMobileMenuFooter.astro",
+        Footer: "./src/components/StarlightFooter.astro",
         Search: "./src/components/StarlightSearch.astro"
       },
       head: [

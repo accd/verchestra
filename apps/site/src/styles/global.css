@@ -81,6 +81,24 @@
   --shadow: var(--shadow-raised);
 }
 
+/* Starlight's own light palette lives in @layer starlight.base, which the
+   unlayered dark tokens above always beat; the light tokens must be unlayered
+   too, or a light documentation page keeps the dark page background. */
+:root[data-theme="light"] {
+  --sl-color-accent-low: #e3dffc;
+  --sl-color-accent: #5b4fd8;
+  --sl-color-accent-high: #2a2470;
+  --sl-color-white: #121525;
+  --sl-color-gray-1: #1f2335;
+  --sl-color-gray-2: #3a4056;
+  --sl-color-gray-3: #555d70;
+  --sl-color-gray-4: #8a91a3;
+  --sl-color-gray-5: #c9cdd8;
+  --sl-color-gray-6: #eeebf6;
+  --sl-color-gray-7: #f7f4ed;
+  --sl-color-black: #ffffff;
+}
+
 html {
   scroll-behavior: smooth;
 }
@@ -954,7 +972,6 @@ a.button--primary {
 
 .mermaid-diagram {
   display: grid;
-  min-height: 18rem;
   margin-block: 1.5rem;
   place-items: center;
   overflow-x: auto;
@@ -1002,9 +1019,19 @@ a.button--primary {
   backdrop-filter: blur(14px);
 }
 
+/* The site title is the product wordmark: product text color, product size,
+   and the product mark at its product size. */
 .site-title {
+  gap: 0.75rem;
+  color: var(--text);
+  font-size: 1.05rem;
   letter-spacing: -0.02em;
   font-weight: 750;
+}
+
+.site-title img {
+  width: 2.125rem;
+  height: 2.125rem;
 }
 
 .sl-markdown-content {
