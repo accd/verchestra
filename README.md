@@ -1,5 +1,7 @@
 # Verchestra
 
+**Verchestra is a verified AI software-delivery harness.** It turns discovery, planning, implementation, validation, and human approval into portable, signed, and reviewable delivery work.
+
 <p align="center">
   <a href="https://accd.github.io/verchestra/">
     <img src="https://accd.github.io/verchestra/social-card.png" alt="Verchestra — verified AI software delivery: portable, signed, reviewable" width="720" />
@@ -12,11 +14,40 @@
 [![Node 24.14.0](https://img.shields.io/badge/Node-24.14.0-339933?logo=node.js&logoColor=white)](package.json)
 [![Status: qualification](https://img.shields.io/badge/status-qualification-6f42c1)](ROADMAP.md)
 
-**Verchestra is a verified AI software-delivery harness.** It turns discovery, planning, implementation, validation, and human approval into portable, signed, and reviewable delivery work.
+> **Status:** `0.0.0-qualification`. T77 is complete and the declared qualification chain is fully verified. The signed 1.0.0 decision is a **reject, recorded as a hold** ([release-decision-1.0.0.md](docs/qualification/release-decision-1.0.0.md)). The npm package `verchestra@0.0.0-qualification.8` is the published beta build. It is not a production release and not 1.0.
 
-> **Current status:** `0.0.0-qualification` — pre-1.0 development. The source is public, the qualification suite is active, and `verchestra@0.0.0-qualification` is published on the public npm registry. That package installs the qualification build; it is not a production release and not 1.0.
+The [product site](https://accd.github.io/verchestra/) has the searchable docs. This page is the short version.
 
-Explore the [product website and searchable documentation](https://accd.github.io/verchestra/), or continue below for the repository overview.
+## The problem: a chat is not a delivery system
+
+AI-assisted work tends to evaporate into one machine, one model, and one unreviewable conversation. The next developer inherits a transcript, not a contract. Verchestra keeps the durable facts portable and makes every decision that matters explicit.
+
+| Promise                  | What it means                                                                                    |
+| ------------------------ | ------------------------------------------------------------------------------------------------ |
+| Portable execution       | A signed Execution Package can be resumed by a qualified Claude Code, Codex, or OpenCode/Qwen.    |
+| Policy before effects    | Capabilities, approvals, leases, and egress rules are checked before any external effect.        |
+| Read-only discovery      | Database probes use bounded, auditable, read-only plans. No hidden writer, ever.                 |
+| Evidence, not assertions | Packages, handoffs, reports, and release artifacts bind their source evidence by digest.          |
+| Human control            | Independent verification and human review are explicit workflow states, not a CI badge.          |
+| Safe repeats             | Effects, Git operations, initialization, recovery, and distribution converge when run twice.      |
+
+SQLite is live-qualified in this repository; the other six database engines are contract-verified here and qualified at the edge.
+
+## How the work flows
+
+Six stops, one contract. The same bounded Execution Package travels the whole way; only the driver changes.
+
+```mermaid
+flowchart LR
+  R["Request"] --> D["Discovery"]
+  D --> P["Execution Package<br/>sealed, signed, portable"]
+  P --> Q["Qualified driver<br/>Claude Code · Codex · OpenCode/Qwen"]
+  Q --> E["Evidence<br/>tests · digests · signed reports"]
+  E --> H["Human review<br/>accept or reject"]
+  S["Repositories · approved docs ·<br/>read-only database probes"] -.-> D
+```
+
+This is the target workflow. The table under *What works today* says which stops have a validation report and which are composed into the installed CLI.
 
 ## Beta testers
 
@@ -48,49 +79,94 @@ Report a problem with the
 [beta tester bug form](https://github.com/accd/verchestra/issues/new?template=tester_bug_report.yml)
 and attach what [SUPPORT.md lists](SUPPORT.md#what-to-attach).
 
-## Agent-ready contribution and AI-readable docs
+## Install and run: no clone, no build, no credential
 
-A clean clone is self-describing through the root and scoped `AGENTS.md` files.
-Run the dependency-free context command before installation:
+Verchestra is one npm package with two equivalent binaries, `verchestra` and `vestra`.
 
 ```bash
-corepack pnpm agent:context -- --json
+npx verchestra --help
 ```
 
-See [Contributing with Coding Agents](docs/contributing-with-agents.md) for the
-provider-neutral specification, handoff, safety, verification, and human-review
-workflow.
+The first run does the real work:
 
-AI-readable documentation is available as the repository
-[`llms.txt`](llms.txt), the published
-[LLM summary](https://accd.github.io/verchestra/llms.txt), the
-[full attributed context](https://accd.github.io/verchestra/llms-full.txt), and
-page-level Markdown alternates. These are inference-time aids, not guarantees
-of indexing, SEO ranking, training inclusion, or crawler behavior.
+- it reads the trust root pinned inside the package and resolves the pinned release through TUF;
+- it verifies every component byte, then activates the release transactionally behind a health gate;
+- it hands control to the activated release's own Node runtime. Your Node runs only the bootstrap, and an older Node than 24.14.0 is refused with `VES_VESTRA_HOST_UNSUPPORTED`.
 
-## Why Verchestra
+Expect a couple of minutes cold and a few seconds once a release is activated. `git` must be on `PATH`, because the Self-Test profiles provision their fixtures with it.
 
-AI-assisted delivery should not depend on one machine, one model, or an unreviewable conversation. Verchestra keeps the work portable and makes critical decisions explicit.
+```bash
+npx verchestra self-test --profile smoke
+```
 
-- **Portable execution:** a signed Execution Package can be resumed by a qualified Claude Code, Codex, or OpenCode/Qwen environment.
-- **Policy before effects:** capabilities, approvals, leases, and egress rules are checked before external effects.
-- **Read-only database discovery:** Probes use bounded, auditable, read-only plans. SAP ASE / Sybase is a first-class adapter.
-- **Evidence, not assertions:** packages, handoffs, reports, and release artifacts bind their source evidence by digest.
-- **Human control:** independent verification and human review are explicit workflow states.
-- **Safe repeats:** durable effects, Git operations, initialization, recovery, and distribution are designed to converge idempotently.
+`self_test.verdict: PASS` with an empty `self_test.failure_codes` means this machine resolved, verified, and activated a signed release and ran the packaged Self-Test inside a disposable trust domain, with no repository checkout anywhere in the journey. Where the managed state lives per OS, how recovery converges, and how to remove everything are on the [install page](https://accd.github.io/verchestra/docs/install-and-run/).
+
+## Run a governed task
+
+One change goes from a request file to a reviewed commit on a task branch. You approve the sealed plan, Claude Code implements it through a mediated tool bridge in an isolated worktree, your allowlisted gates run, Codex verifies read-only, and you review the result. Verchestra never merges; the branch is yours to inspect and merge.
+
+```mermaid
+sequenceDiagram
+  participant You
+  participant V as vestra task
+  participant C as Claude Code (implementer)
+  participant G as Your allowlisted gates
+  participant X as Codex (verifier)
+  You->>V: task check, then task plan
+  V-->>You: sealed plan and its bindingDigest
+  You->>V: task approve (type the digest back)
+  You->>V: task start
+  V->>C: implement in an isolated worktree, every write through the bridge
+  V->>G: run the gates, commit on the task branch
+  V->>X: verify read-only over that commit
+  V-->>You: HUMAN_REVIEW and the surface digest (exit 0)
+  You->>V: task review, accepted or rejected
+  Note over You,V: Accepted seals the run capsule. Rejected aborts the run and keeps the branch.
+```
+
+```bash
+npx verchestra task check   --request task-request.json
+npx verchestra task plan    --request task-request.json
+npx verchestra task approve --run-id <runId> --binding-digest <sha256:…>
+npx verchestra task start   --run-id <runId>
+npx verchestra task status  --run-id <runId>
+npx verchestra task review  --run-id <runId> --outcome accepted --surface-digest <sha256:…>
+```
+
+The full walkthrough, the one-time subscription setup, a complete request example, and the limits of this build are in [docs/quick-start.md](docs/quick-start.md).
+
+### Credentials
+
+Governed work reads provider credentials from your OS credential store (macOS keychain, Linux Secret Service, Windows Credential Manager), never from an ambient variable or from the session you are logged in to, and injects them only into the child process that needs them. `secret set` reads the value from standard input and never prints it. `doctor --deep` reports `blocked`, not `pass`, until the Workspace's Claude Code credential is bound. Setup, API-key mode, and the per-OS limits are in [quick start section 3](docs/quick-start.md#3-sign-in-the-two-providers-and-bind-the-signing-passphrase).
+
+### Limits of this build
+
+The single-session journey is qualified end to end on macOS only. On Linux it runs in pull-request CI with deterministic stand-ins, the Secret Service included; on Windows one journey runs on the hosted runner with stand-ins. One implementer and one verifier; token and cost ceilings checked when usage is reported; the live pilot is still pending in #406. The full list is in [quick start: limits](docs/quick-start.md#limits-of-this-qualification-build).
+
+### Coordinated runs
+
+A request with `"schemaVersion": 2` can replace the single implementer with several Claude Code and Codex nodes in one governed task: `agent`, `graph`, or `swarm`. Your approval, every write check, your gates, the independent verifier, and your review are unchanged, and only Claude Code nodes write, never two at once. Coordinated runs use your subscriptions and nothing else; they are qualified with stand-ins on all three platforms, and no run with a real subscription has been recorded yet. Examples per mode are in [docs/examples/](docs/examples/); the billing statement, the limits, and suspend and resume are in [quick start: coordinated runs](docs/quick-start.md#coordinated-runs-agent-graph-and-swarm), with the [Windows prerequisites](docs/quick-start.md#windows-prerequisites) beside them.
+
+### Exit codes
+
+Every refusal prints its code and a recovery line; `--output json` returns the
+same code in its envelope. This is the decoder ring.
+
+| Exit | Meaning                                                                                                                                                               |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | Success. For `task start` and `task resume`, the run reached human review.                                                                                            |
+| 1    | `doctor` found a failure (`FAIL`), or a `task start` or `task resume` run ended without reaching human review                                                         |
+| 2    | An argument is invalid (`VES_CLI_ARGUMENT_INVALID`)                                                                                                                   |
+| 3    | The installed release's command manifest is invalid or needs a newer release (`VES_CLI_RELEASE_INCOMPATIBLE`)                                                         |
+| 4    | `doctor` is `BLOCKED`, or `task check` found a prerequisite missing: something is not set up                                                                          |
+| 5    | Any other refusal, such as `VES_TASK_NOT_CONFIGURED` or a self-test whose verdict is not `PASS`                                                                       |
+| 64   | The launcher does not run on this Node, platform, or architecture (`VES_VESTRA_HOST_UNSUPPORTED`)                                                                     |
+| 70   | An unexpected failure (`VES_CLI_INTERNAL`), or the launcher could not activate or start the release (`VES_VESTRA_ACTIVATION_UNAVAILABLE`, `VES_VESTRA_LAUNCH_FAILED`) |
+| 78   | The launcher's pinned release configuration or trust root is missing or invalid (`VES_VESTRA_INPUTS_*`, `VES_VESTRA_TRUST_ROOT_INVALID`)                              |
 
 ## What works today
 
-One honest matrix, mirrored from the typed status the website renders
-(`apps/site/src/data/product.ts`) and checked by a drift test - the two
-surfaces cannot disagree silently. **available** means runnable today from a
-source checkout; **qualified** means backed by a public validation report but
-not yet composed into the CLI; **planned** means roadmap work with a declared
-task and no code claimed.
-
-Rather than take the matrix's word for it, inspect
-[a real, signed, fixture-generated Execution Package](docs/proof/execution-package.md) -
-regenerable byte-for-byte from any clean clone with `corepack pnpm proof:generate`.
+One honest matrix, mirrored from the typed status the website renders and checked by a drift test, so the two surfaces cannot disagree silently. **available** means runnable today from the published npm package; **qualified** means backed by a public validation report but not yet composed into the CLI; **experimental** means present for evaluation, with interfaces and evidence that may change.
 
 | Capability                                               | Status       | Reference            |
 | -------------------------------------------------------- | ------------ | -------------------- |
@@ -108,265 +184,57 @@ regenerable byte-for-byte from any clean clone with `corepack pnpm proof:generat
 | 1.0 release decision: a signed hold, not promoted        | qualified    | T77                  |
 | Governed task delivery (plan, approve, start, review)    | experimental | #405, #406           |
 
-Full reports live under [docs/qualification/](docs/qualification/) and on the
-[public evidence pages](https://accd.github.io/verchestra/docs/qualification/).
+Rather than take the matrix's word for it, inspect [a real, signed, fixture-generated Execution Package](docs/proof/execution-package.md), regenerable byte for byte from any clean clone with `corepack pnpm proof:generate`. The reports live under [docs/qualification/](docs/qualification/).
 
-## What Verchestra is not
+## What stays home, what travels
 
-- It is not a public production release - the published npm package installs `0.0.0-qualification`, not 1.0.
-- It is not a hosted service - everything runs on your own machine.
-- It does not transfer provider credentials - a handoff carries evidence and next actions, never sessions or secrets.
-- It does not make unapproved paid model calls - a missing provider reports `not configured`, never a silent pass.
-- It does not treat CI as human review - acceptance is an explicit human decision recorded as evidence.
-- It does not call same-author checks independent verification - that distinction is stated, not blurred.
-- It does not expose unqualified commands - the installed CLI advertises `init`, `self-test`, `doctor`, `secret`, and `task` and nothing else, and `secret` and `task` report `not configured` on any platform without a qualified credential store.
-
-## How it fits together
+Secrets have a home. They stay in it. The receiver earns its own.
 
 ```mermaid
 flowchart LR
-  A["Developer request"] --> B["Discovery and specification"]
-  B --> C["Policy and approvals"]
-  C --> D["Signed Execution Package"]
-  D --> E["Qualified driver"]
-  E --> F["Claude Code · Codex · OpenCode/Qwen"]
-  D --> G["Read-only context and database probes"]
-  E --> H["Gates, evidence, and verification"]
-  H --> I["Portable Handoff"]
-  I --> J["Human review and acceptance"]
+  subgraph HOME["Stays on this machine"]
+    K["OS credential store"]
+    W["Workspace state root"]
+    S["Provider sessions and tokens"]
+    L["Raw local paths and profiles"]
+  end
+  subgraph PKG["Travels in the signed Execution Package"]
+    Q["Requirements · decisions · tasks"]
+    E["Source-bound evidence by digest"]
+    A["Approvals · budgets · completion gates"]
+  end
+  PKG -- "Ed25519 over RFC 8785 canonical JSON" --> RX["Receiving environment"]
+  RX --> B["Rebuilds its own local authority<br/>before it continues"]
 ```
 
-The sequence below is the target workflow the chain above qualifies toward;
-the pieces marked `qualified` in the matrix exist and are evidence-backed, and
-`init` is the part composed into the CLI today.
+### Not today
+
+- It is not a public production release: the published npm package installs `0.0.0-qualification`, not 1.0.
+- It is not a hosted service: everything runs on your own machine.
+- It does not transfer provider credentials: a handoff carries evidence and next actions, never sessions or secrets.
+- It does not make unapproved paid model calls: a missing provider reports `not configured`, never a silent pass.
+- It does not treat CI as human review: acceptance is an explicit human decision recorded as evidence.
+- It does not call same-author checks independent verification: that distinction is stated, not blurred.
+- It does not expose unqualified commands: the installed CLI advertises `init`, `self-test`, `doctor`, `secret`, and `task` and nothing else.
+
+## Under the hood
+
+Arrows point at what a package may import. Adapters never import each other.
 
 ```mermaid
-sequenceDiagram
-  participant S as Source environment
-  participant V as Verchestra
-  participant R as Receiving environment
-  participant H as Human reviewer
-  S->>V: Capture requirements, evidence, and decisions
-  V->>V: Seal a portable Execution Package
-  V->>R: Publish signed Handoff
-  R->>V: Rebuild local authority and run declared gates
-  V->>H: Present independent verification evidence
-  H->>V: Accept or reject
+flowchart BT
+  CON["packages/contracts<br/>versioned schemas and generated types"]
+  DOM["packages/domain"] --> CON
+  APP["packages/application"] --> DOM
+  ADP["Adapters, 13 packages:<br/>workspace · agent-runtime · data-probe · memory · effects · evidence · policy ·<br/>platform-node · drivers · connectors · extension-host · distribution · self-test"] --> APP
+  CLI["apps/vestra-cli<br/>private composition root"] --> ADP
+  LAU["apps/vestra-launcher<br/>public composition root: imports no workspace package"]
+  SITE["apps/site<br/>build-time docs projection, no product dependency"]
 ```
 
-## Supported qualification surface
+The full map, including the dependency rules a test enforces, is in [docs/repository-map.md](docs/repository-map.md); the runtime boundaries and the trust model are in [docs/architecture.md](docs/architecture.md).
 
-| Area                  | Current surface                                                                                                  |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| AI drivers            | Claude Code, Codex, OpenCode / Qwen                                                                              |
-| Read-only data probes | SQLite (live-qualified), MongoDB, MySQL / MariaDB, Oracle, PostgreSQL, SAP ASE / Sybase, SQL Server              |
-| Workspaces            | Single repositories, colocated projects, centralized monorepo control, and nested projects                       |
-| Evidence              | Signed packages, run capsules, recovery bundles, support bundles, provenance, and TUF-backed distribution inputs |
-| Governance            | Cedar policy, approvals, claims, leases, egress control, independent verification, human review                  |
-
-## Install and run
-
-Verchestra is published as one npm package. Installing it needs no clone, no
-build, no credential, and no configuration.
-
-```bash
-npx verchestra --help
-```
-
-The package provides two equivalent binaries, `verchestra` and `vestra`.
-
-The first run does the real work: it reads the trust root pinned inside the
-package, resolves the pinned release through TUF, verifies every component byte,
-activates the release transactionally behind a health gate, and hands control to
-the activated release's own launcher. Your ambient Node runs the bootstrap and
-nothing else — the activated release carries its own Node runtime — and `npx`
-needs Node 24.14.0 or later to run that bootstrap; an older Node is refused with
-`VES_VESTRA_HOST_UNSUPPORTED`. Expect a couple of minutes on a cold first run
-and a few seconds once a release is activated.
-
-One prerequisite is not bundled: a `git` binary must be on `PATH`, because the
-Self-Test profiles provision their fixtures by invoking `git`
-(`packages/self-test/src/git-fixtures.ts`).
-
-### Portability demonstration
-
-```bash
-npx verchestra self-test --profile smoke
-```
-
-A `self_test.verdict: PASS` with an empty `self_test.failure_codes` means this
-machine resolved and verified a signed release, activated it, and ran the
-packaged Self-Test profile inside a disposable, isolated trust domain — with no
-repository checkout anywhere in the journey.
-
-> **Fixed limitation ([issue #370](https://github.com/accd/verchestra/issues/370)).**
-> The first published release, `0.0.0-qualification`, refused `self-test` when
-> the working directory was an ancestor of the operating system's temporary
-> directory. On Windows the default home directory is such an ancestor, so a
-> shell opened at its default location failed with `VES_CLI_COMMAND_FAILED`.
-> Every published release from `0.0.0-qualification.3` on carries the fix. A
-> deterministic test reproduces that layout on every platform; no recorded live
-> run has yet started from a default Windows home directory.
-
-### Bind a provider credential
-
-Governed work that calls a provider reads its credential from the operating
-system's credential store, never from an ambient environment variable or from
-the session you are logged in to, and injects it only into the child process
-that needs it. The store is your macOS keychain, your Linux Secret Service
-keyring (for example gnome-keyring), or your Windows Credential Manager. Run
-these from the root of an initialized Workspace (`init`):
-
-```bash
-npx verchestra secret set --name claude-code-oauth-token
-npx verchestra secret status --name claude-code-oauth-token
-npx verchestra secret delete --name claude-code-oauth-token
-```
-
-By default a Workspace authenticates through subscriptions:
-`claude-code-oauth-token` is the long-lived token `claude setup-token` prints,
-and Codex signs in once into the Workspace's own identity directory with
-`CODEX_HOME=<directory> codex login`, so its credential never enters the
-credential store. A machine-local setting switches either provider to an API
-key (`anthropic-api-key`, `openai-api-key`). The steps are in
-[docs/quick-start.md](docs/quick-start.md).
-
-`secret set` reads the value from standard input. In a terminal it prompts
-without echoing. From a pipe it takes the whole input and strips one trailing
-newline. It accepts printable ASCII without whitespace, up to the documented
-size limit, and never prints the value. `secret status` reports presence only.
-Each credential is bound to its Workspace under `verchestra/<workspaceId>`.
-`doctor --deep` checks that the Claude Code credential of the Workspace's mode
-is bound (`claude-code-oauth-token` by default), and reports `blocked`, not
-`pass`, until it is.
-
-- **macOS:** `--keychain <path>` selects a keychain file you own instead of
-  your default keychain.
-- **Linux:** needs `secret-tool` (package `libsecret-tools`) and a Secret
-  Service provider on your D-Bus session bus. A locked keyring is reported as
-  needing you to unlock it; no session bus or provider is reported as
-  `VES_SECRET_STORE_UNAVAILABLE`.
-- **Windows:** uses Windows PowerShell and stores a generic, machine-local
-  credential. On a machine that enforces PowerShell script block logging or
-  transcription, `secret set` refuses with `VES_SECRET_STORE_LOGGED` rather
-  than let the policy record the value.
-
-`--keychain` is refused on Linux and Windows. On any other platform every
-`secret` command reports `VES_SECRET_STORE_UNQUALIFIED`. Each store's
-qualification and its limits are in
-[docs/qualification/os-secret-backend-darwin.md](docs/qualification/os-secret-backend-darwin.md),
-[docs/qualification/os-secret-backend-linux.md](docs/qualification/os-secret-backend-linux.md), and
-[docs/qualification/os-secret-backend-windows.md](docs/qualification/os-secret-backend-windows.md).
-
-### Deliver a governed task
-
-`vestra task` takes one change from a request file to a reviewed commit on a
-task branch: you approve the sealed plan, Claude Code implements it through a
-mediated tool bridge in an isolated worktree, your allowlisted gates run,
-Codex verifies read-only, and you review the result. Verchestra never merges;
-you inspect and merge the branch yourself.
-
-```bash
-npx verchestra task check   --request task-request.json
-npx verchestra task plan    --request task-request.json
-npx verchestra task approve --run-id <runId> --binding-digest <sha256:…>
-npx verchestra task start   --run-id <runId>
-npx verchestra task status  --run-id <runId>
-npx verchestra task review  --run-id <runId> --outcome accepted --surface-digest <sha256:…>
-```
-
-The full walkthrough, the one-time subscription setup, a complete request
-example, and the limits of this qualification build are in
-[docs/quick-start.md](docs/quick-start.md). The single-session journey is
-qualified end to end on macOS only. On Linux every single-session journey runs
-in pull-request CI with deterministic stand-ins, the Secret Service included.
-On Windows one journey, from plan to accepted review, runs on the hosted
-runner with deterministic stand-ins. Other limits: one implementer and
-one verifier, token and cost ceilings checked when usage is reported,
-subscription isolation not yet observed live, local human authority, and the
-live pilot still pending in #406.
-
-### Coordinated runs: agent, graph, and swarm
-
-A Task Request with `"schemaVersion": 2` can replace the single implementer
-with several Claude Code and Codex sessions, called nodes, inside the same
-governed task: one node (`agent`), nodes ordered by edges (`graph`), or nodes
-that hand the work to each other (`swarm`). Your approval, the executor's
-checks on every write, your gates, the independent Codex verifier, and your
-review are unchanged. Mode `agent` runs on Verchestra's own engine and never
-loads the Strands Agents SDK; `graph` and `swarm` load the pinned SDK only to
-order the nodes, and every node stays a governed Claude Code or Codex session.
-Only Claude Code nodes write, never two at once.
-
-Coordinated runs use your subscriptions and nothing else. Before the first
-one, turn off paid usage beyond your plan in each provider account, then state
-that you did in a machine-local `task-billing.json` you write by hand beside
-`task-providers.json`. Per provider it holds the authentication method,
-`"extraUsage": "disabled"`, the time you checked, and, for Codex, your plan
-type; nothing else, so no token, account, e-mail address, or path. When a
-provider reports that your allowance is used up, the run is suspended with its
-completed work and its worktree kept, and it continues only when you run
-`vestra task resume`; a node that may already have changed the worktree runs
-again only when you type back its digest with `--reconcile`. Seven limits,
-each with a default and a hard ceiling, bound a run (for example at most 4
-nodes at once and 128 swarm handoffs), and the task's token and duration
-budgets bound all nodes together.
-
-One example request per mode is in [docs/examples/](docs/examples/). The
-statement's exact format, the limits, and suspension and resume are in
-[docs/quick-start.md](docs/quick-start.md#coordinated-runs-agent-graph-and-swarm).
-Coordinated runs are qualified with deterministic stand-ins on macOS, Linux,
-and Windows, and they ship in the published `0.0.0-qualification.7`; no run
-with a real subscription has been recorded yet. The Windows prerequisites (PowerShell
-7, native `claude.exe` and `codex.exe`, and a state directory short enough for
-Git) are in [docs/quick-start.md](docs/quick-start.md#windows-prerequisites).
-
-### Managed state, recovery, and cleanup
-
-The launcher keeps its staged releases, its activated install, its trust anchor,
-and the active-release pointer under one machine-local state root. Nothing of
-yours is stored there.
-
-| Platform | Managed state root                               |
-| -------- | ------------------------------------------------ |
-| Windows  | `%LOCALAPPDATA%\Verchestra\state`                |
-| macOS    | `~/Library/Application Support/Verchestra/state` |
-| Linux    | `~/.local/state/verchestra`                      |
-
-The launcher derives that location from your home directory and the platform
-alone; it deliberately reads no environment variable, so redirecting
-`LOCALAPPDATA` or `XDG_STATE_HOME` does not move it and cannot be used to
-redirect a trust root or a release.
-
-To recover from a failed run, run the command again: activation is transactional
-and converges. If activation keeps failing, delete the managed state root and run
-the command again — the next run resolves and activates from scratch.
-
-To remove Verchestra completely, delete the managed state root and clear the
-downloaded package with `npm cache clean --force`. The two are independent, and
-neither touches your own workspace data.
-
-### Exit codes
-
-Every refusal prints its code and a recovery line; `--output json` returns the
-same code in its envelope.
-
-| Exit | Meaning                                                                                                                                                               |
-| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0    | Success. For `task start` and `task resume`, the run reached human review.                                                                                            |
-| 1    | `doctor` found a failure (`FAIL`), or a `task start` or `task resume` run ended without reaching human review                                                         |
-| 2    | An argument is invalid (`VES_CLI_ARGUMENT_INVALID`)                                                                                                                   |
-| 3    | The installed release's command manifest is invalid or needs a newer release (`VES_CLI_RELEASE_INCOMPATIBLE`)                                                         |
-| 4    | `doctor` is `BLOCKED`, or `task check` found a prerequisite missing: something is not set up                                                                          |
-| 5    | Any other refusal, such as `VES_TASK_NOT_CONFIGURED` or a self-test whose verdict is not `PASS`                                                                       |
-| 64   | The launcher does not run on this Node, platform, or architecture (`VES_VESTRA_HOST_UNSUPPORTED`)                                                                     |
-| 70   | An unexpected failure (`VES_CLI_INTERNAL`), or the launcher could not activate or start the release (`VES_VESTRA_ACTIVATION_UNAVAILABLE`, `VES_VESTRA_LAUNCH_FAILED`) |
-| 78   | The launcher's pinned release configuration or trust root is missing or invalid (`VES_VESTRA_INPUTS_*`, `VES_VESTRA_TRUST_ROOT_INVALID`)                              |
-
-## Developer quick start
-
-Use this only to work on the source tree. To run Verchestra, use `npx verchestra`
-above.
+### Work on the source
 
 ```bash
 git clone https://github.com/accd/verchestra.git
@@ -376,94 +244,18 @@ pnpm install --frozen-lockfile
 pnpm gate:quick
 ```
 
-Requirements are Node `24.14.0` and pnpm `10.34.5`.
+Node `24.14.0` and pnpm `10.34.5` are the pinned versions. A clean clone is self-describing through the root and scoped `AGENTS.md` files, and `corepack pnpm agent:context -- --json` prints the status, required reads, and gates before anything is installed. [CONTRIBUTING.md](CONTRIBUTING.md) covers setup, Windows notes, the website, and pull requests; [docs/contributing-with-agents.md](docs/contributing-with-agents.md) covers the provider-neutral workflow for coding agents and the AI-readable [llms.txt](llms.txt). The workspace scaffold, including the database-probe scaffold, is in [docs/data-probe-contract.md](docs/data-probe-contract.md).
 
-## Qualified local alpha: initialize a workspace
+## Where to next
 
-`init` is the qualified workspace command. Run it through `npx verchestra init`,
-or, when you are working on the source tree, invoke the checked-out CLI
-directly. From the root of a disposable Git repository, pass an explicit,
-portable workspace identity:
-
-```bash
-node /path/to/verchestra/apps/vestra-cli/bin/vestra.mjs init --dry-run \
-  --workspace-id workspace_018f0b6d-7b1a-7abc-8def-0123456789ab \
-  --name "My workspace" \
-  --placement centralized \
-  --output json
-```
-
-`--dry-run` is read-only and returns the canonical ordered plan. Review it,
-then repeat the command without `--dry-run` to apply the qualified workspace
-files. Repeating the identical apply is a no-op. `bootstrap`, `sync`, and
-`workspace reconcile` are intentionally not advertised yet.
-
-### Scaffold a database probe
-
-`init` can also emit a probe scaffold for one engine of the
-[published probe contract](docs/data-probe-contract.md). Add the probe options
-to the same command:
-
-```bash
-node /path/to/verchestra/apps/vestra-cli/bin/vestra.mjs init --dry-run \
-  --workspace-id workspace_018f0b6d-7b1a-7abc-8def-0123456789ab \
-  --name "My workspace" \
-  --placement centralized \
-  --probe-engine postgresql \
-  --output json
-```
-
-`--probe-engine` is one of `postgresql`, `mysql`, `mariadb`, `sqlserver`,
-`sap-ase`, `oracle`, `sqlite`, or `mongodb`. `--probe-language` accepts only
-`typescript`. `--probe-dir` defaults to `.verchestra/probes/<engine>` and must
-be a lowercase path under `.verchestra/probes/`. The scaffold goes through the
-same preview and apply as the workspace files, so `--dry-run` writes nothing,
-the ownership manifest records the files, and a file you have already edited
-is never overwritten.
-
-The scaffold holds a copy of the engine's connection port, a connection class
-whose methods throw `VES_PROBE_DRIVER_TODO`, a port-level conformance kit, and
-a `node --test` file that runs the kit. The output is byte-identical for a
-given engine and contract version. It typechecks as generated, and its kit run
-fails with `VES_PROBE_DRIVER_TODO` until you implement the connection. The
-generator uses no AI, makes no network call, needs no configured Driver, and
-adds no dependency. The driver package appears only in `TODO(driver)` comments.
-
-### Website development
-
-The website is the private `@verchestra/site` workspace package. It remains static, uses the `/verchestra/` base path, and loads canonical repository documents at build time.
-
-```bash
-pnpm site:dev
-pnpm site:check
-pnpm site:test
-pnpm site:build
-pnpm site:preview
-```
-
-`pnpm site:test` runs content integrity, Astro diagnostics, the production build, link and metadata checks, Playwright across Chromium, Firefox, and WebKit, Axe, and Lighthouse. Install the Playwright browsers once with:
-
-```bash
-pnpm --filter @verchestra/site exec playwright install chromium firefox webkit
-```
-
-## Repository guide
-
-- [Product website and documentation](https://accd.github.io/verchestra/) provides the public, searchable portal.
-- [Agent contribution guide](docs/contributing-with-agents.md) explains clean-clone context, portable handoff, safety, and review.
-- [LLM-readable summary](llms.txt) links the deterministic public AI-readable resources.
-- [Architecture](docs/architecture.md) explains the system boundaries and trust model.
-- [Roadmap](ROADMAP.md) shows what is complete and what must happen before 1.0.
-- [Contributing](CONTRIBUTING.md) explains how to propose changes and run checks.
-- [Security](SECURITY.md) explains responsible vulnerability reporting.
-- [Support](SUPPORT.md) directs questions, ideas, bugs, and security reports to the right place.
-- [Versioning](VERSIONING.md) explains the pre-1.0 release policy.
-
-## Community
-
-Use [GitHub Discussions](https://github.com/accd/verchestra/discussions) for questions and design conversations. Beta testers can share what they tried and what confused them in the [Beta feedback thread](https://github.com/accd/verchestra/discussions/670). Use GitHub Issues for reproducible bugs and scoped feature proposals.
-
-Please read the [Code of Conduct](CODE_OF_CONDUCT.md) before participating.
+- [Product website and documentation](https://accd.github.io/verchestra/)
+- [Quick start](docs/quick-start.md): the governed task, end to end
+- [Roadmap](ROADMAP.md): what is complete and what must happen before 1.0
+- [Security](SECURITY.md) and [Support](SUPPORT.md)
+- [Versioning](VERSIONING.md): the pre-1.0 release policy
+- [GitHub Discussions](https://github.com/accd/verchestra/discussions) for questions and design conversations; beta testers share what they tried in the [Beta feedback thread](https://github.com/accd/verchestra/discussions/670)
+- [GitHub Issues](https://github.com/accd/verchestra/issues) for reproducible bugs and scoped proposals
+- [Code of Conduct](CODE_OF_CONDUCT.md)
 
 ## License
 

@@ -84,7 +84,10 @@ npx verchestra init --workspace-id "workspace_$(node -e 'console.log(crypto.rand
 
 `init` writes `.verchestra/` metadata into the repository. It changes nothing
 else. The Workspace ID you chose is in `.verchestra/workspace.yaml`; the steps
-below write it as `<workspaceId>`.
+below write it as `<workspaceId>`. Add `--dry-run` to print the canonical
+ordered plan without writing anything; repeating an identical `init` is a
+no-op. `bootstrap`, `sync`, and `workspace reconcile` exist in the source tree
+but are intentionally not advertised yet.
 
 ### Where the Workspace state lives
 
@@ -173,7 +176,26 @@ run capsule. Choose a long random value and keep it; without it the key
 cannot be unlocked.
 
 Add `--keychain <path>` to any `secret` or `task` command to use a keychain
-file you own instead of your default keychain.
+file you own instead of your default keychain. `--keychain` is refused on
+Linux and Windows, and on any other platform every `secret` command reports
+`VES_SECRET_STORE_UNQUALIFIED`.
+
+`secret set` accepts printable ASCII without whitespace, up to the documented
+size limit, and never prints the value; `secret status` reports presence only;
+`secret delete` removes one credential. `doctor --deep` checks that the Claude
+Code credential of the Workspace's mode is bound (`claude-code-oauth-token` by
+default) and reports `blocked`, not `pass`, until it is. On Linux the store
+needs `secret-tool` (package `libsecret-tools`) and a Secret Service provider
+on your D-Bus session bus: a locked keyring is reported as needing you to
+unlock it, and no session bus or provider is reported as
+`VES_SECRET_STORE_UNAVAILABLE`. On Windows the store is a generic,
+machine-local credential written through Windows PowerShell; on a machine that
+enforces PowerShell script block logging or transcription, `secret set` refuses
+with `VES_SECRET_STORE_LOGGED` rather than let the policy record the value.
+Each store's qualification and its limits are in
+[os-secret-backend-darwin.md](qualification/os-secret-backend-darwin.md),
+[os-secret-backend-linux.md](qualification/os-secret-backend-linux.md), and
+[os-secret-backend-windows.md](qualification/os-secret-backend-windows.md).
 
 ### Use API keys instead (optional)
 
