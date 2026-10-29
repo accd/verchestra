@@ -1,4 +1,6 @@
 ---
+import ArchitectureDiagram from "../components/ArchitectureDiagram.astro";
+import DeliveryFlowDiagram from "../components/DeliveryFlowDiagram.astro";
 import {
   capabilityMatrix,
   maturityDefinitions,
@@ -13,9 +15,28 @@ import {
   productStatus
 } from "../data/product.ts";
 import ProductLayout from "../layouts/ProductLayout.astro";
+import { compileQualificationStatus, publishedLauncherVersion } from "../lib/repository-content.ts";
+import { repositoryRoot } from "../lib/repository-root.ts";
 
 const base = import.meta.env.BASE_URL;
 const withBase = (path: string) => `${base}${path.replace(/^\/+/, "")}`;
+// Every number on this page is derived at build time from the repository the
+// site projects: the install command names the build the TUF publication
+// ledger recorded last, and the report count is the number of validation
+// reports that exist. Nothing here is typed in by hand.
+const launcherVersion = publishedLauncherVersion(repositoryRoot);
+const { reportCount } = await compileQualificationStatus(repositoryRoot);
+const installCommands = [
+  `npx verchestra@${launcherVersion} --version`,
+  `npx verchestra@${launcherVersion} self-test --profile smoke`
+].join("\n");
+const numberWords = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
+const asWord = (count: number) => numberWords[count] ?? String(count);
+const engineCount = asWord(databases.length);
+const engineHeadline = `${engineCount.charAt(0).toUpperCase()}${engineCount.slice(1)} engines, one no-writer contract.`;
+// The legend explains only the states the matrix uses, in the order they
+// first appear, so a state the matrix drops does not linger as a definition.
+const maturitiesShown = [...new Set(capabilityMatrix.map((entry) => entry.maturity))];
 // Once the declared chain has no next task, what is still ahead is not a task
 // but the signed release decision. Its outcome comes from the typed status, so
 // a recorded hold reads as the decision it is, never as "pending".
@@ -43,6 +64,10 @@ const progressLabel =
   productStatus.nextTask !== null
     ? `${productStatus.completedTask} complete, ${productStatus.nextTask} next`
     : `${productStatus.completedTask} complete, ${decisionMade ? "1.0 decision a signed hold" : "1.0 decision next"}`;
+// The trust model, in the words of docs/architecture.md: portable artifacts
+// carry what reproduces and verifies delivery work; authority stays local.
+const travels = ["Requirements", "Decisions", "Tasks", "Evidence digests", "Next action"];
+const stays = ["Credentials", "Provider sessions", "Tokens", "Machine paths"];
 const sourceCodeMetadata = {
   "@context": "https://schema.org",
   "@type": "SoftwareSourceCode",
@@ -84,9 +109,19 @@ const sourceCodeMetadata = {
         </p>
         <h1 id="hero-title">{productHeadline}</h1>
         <p class="hero__definition">{productDefinition}</p>
-        <p class="hero__scenario">
-          <strong>In practice:</strong> {productScenario}
-        </p>
+        <div class="qualification-pill" aria-label="Current public status">
+          <span class="qualification-pill__signal"></span>
+          <code>{productStatus.version}</code>
+          <span>{productStatus.completedTask} verified</span>
+          <span>{decisionLabel}</span>
+        </div>
+        <div class="install-block">
+          <pre class="install" tabindex="0"><code>{installCommands}</code></pre>
+          <p class="install__caption">
+            The first run verifies and activates the signed release; <code>self_test.verdict: PASS</code> proves it on
+            your machine.
+          </p>
+        </div>
         <div class="hero__actions">
           <a class="button button--primary" href={withBase("docs/install-and-run/")}>
             Install the beta build
@@ -94,30 +129,24 @@ const sourceCodeMetadata = {
           <a class="button button--secondary" href="https://github.com/accd/verchestra">
             View on GitHub
           </a>
-          <a class="text-link" href={withBase("roadmap/")}>
-            Follow the road to 1.0 <span aria-hidden="true">→</span>
+          <a
+            class="text-link"
+            href="https://github.com/accd/verchestra/blob/main/docs/qualification/release-decision-1.0.0.md"
+          >
+            Read the signed 1.0 hold <span aria-hidden="true">→</span>
           </a>
-        </div>
-        <div class="qualification-pill" aria-label="Current public status">
-          <span class="qualification-pill__signal"></span>
-          <code>{productStatus.version}</code>
-          <span>{productStatus.completedTask} verified</span>
-          <span>{decisionLabel}</span>
         </div>
         <p class="status-note">
           Public source development and a published qualification package are available. A production release is not.
         </p>
       </div>
 
-      <div class="execution-score" aria-label="Portable delivery workflow diagram">
-        <div class="execution-score__head">
-          <span>Delivery path</span>
-          <code>portable / signed / reviewable</code>
-        </div>
-        <ol>
+      <div class="hero__visual">
+        <DeliveryFlowDiagram />
+        <ol class="delivery-list">
           {deliveryStages.map((stage, index) => (
             <li>
-              <span class="execution-score__number">{String(index + 1).padStart(2, "0")}</span>
+              <span class="delivery-list__number">{String(index + 1).padStart(2, "0")}</span>
               <div>
                 <strong>{stage.name}</strong>
                 <span>{stage.description}</span>
@@ -125,41 +154,50 @@ const sourceCodeMetadata = {
             </li>
           ))}
         </ol>
-        <div class="execution-score__seal">
-          <span aria-hidden="true">✓</span>
-          <div>
-            <strong>Human accountable</strong>
-            <small>Evidence before acceptance</small>
-          </div>
-        </div>
       </div>
     </section>
 
-    <section class="problem statement-grid" aria-labelledby="problem-title">
+    <section class="travels statement-grid" aria-labelledby="travels-title">
       <div>
-        <p class="section-label">The problem</p>
-        <h2 id="problem-title">A chat is not a delivery system.</h2>
+        <p class="section-label">Trust model</p>
+        <h2 id="travels-title">What travels. What stays.</h2>
+        <p class="statement-lead">{productScenario}</p>
       </div>
-      <div class="statement">
-        <p>
-          AI-assisted work disappears into provider sessions, local machines, and undocumented decisions. The next
-          developer inherits a conversation, not an executable contract.
-        </p>
-        <p>
-          Verchestra makes the durable facts portable while credentials, sessions, and machine authority remain local.
-        </p>
+      <div class="travels-grid">
+        <div class="travels-column travels-column--travels">
+          <h3>Travels, signed</h3>
+          <ul>
+            {travels.map((item) => (
+              <li>{item}</li>
+            ))}
+          </ul>
+          <p>Closed under content digests and signatures inside the Execution Package and the Handoff.</p>
+        </div>
+        <div class="travels-column travels-column--stays">
+          <h3>Stays local</h3>
+          <ul>
+            {stays.map((item) => (
+              <li>{item}</li>
+            ))}
+          </ul>
+          <p>Never enters a shared artifact. A receiving environment rebuilds its own authority before it continues.</p>
+        </div>
       </div>
     </section>
 
     <section class="works-today section-frame" aria-labelledby="works-today-title">
       <div class="section-heading">
         <p class="section-label">What works today</p>
-        <h2 id="works-today-title">One honest matrix, straight from the evidence.</h2>
+        <h2 id="works-today-title">
+          {capabilityMatrix.length} capabilities, {reportCount} public reports, one maturity each.
+        </h2>
         <p>
           Human-readable status first, internal task ids second. Each state has one meaning:
-          <strong>available</strong> — {maturityDefinitions.available.toLowerCase()}
-          <strong> qualified</strong> — {maturityDefinitions.qualified.toLowerCase()}
-          <strong> planned</strong> — {maturityDefinitions.planned.toLowerCase()}
+          {maturitiesShown.map((maturity) => (
+            <>
+              <strong> {maturity}</strong> — {maturityDefinitions[maturity].toLowerCase()}
+            </>
+          ))}
         </p>
       </div>
       <div class="works-today__table-wrap">
@@ -175,10 +213,10 @@ const sourceCodeMetadata = {
             {capabilityMatrix.map((entry) => (
               <tr>
                 <th scope="row">{entry.capability}</th>
-                <td>
+                <td data-label="Status">
                   <span class={`works-today__state works-today__state--${entry.maturity}`}>{entry.maturity}</span>
                 </td>
-                <td>
+                <td data-label="Evidence">
                   <a href={withBase(`${entry.evidenceRoute}/`)}>{entry.reference}</a>
                 </td>
               </tr>
@@ -188,28 +226,13 @@ const sourceCodeMetadata = {
       </div>
     </section>
 
-    <section class="guarantees section-frame" aria-labelledby="guarantees-title">
-      <div class="section-heading">
-        <h2 id="guarantees-title">Control where it matters. Freedom where it helps.</h2>
-        <p>Models can change. The delivery contract, evidence, and accountability do not.</p>
-      </div>
-      <div class="guarantee-grid">
-        {guarantees.map((guarantee, index) => (
-          <article class={`guarantee-card guarantee-card--${guarantee.tone}`}>
-            <span class="guarantee-card__index">{String(index + 1).padStart(2, "0")}</span>
-            <h3>{guarantee.title}</h3>
-            <p>{guarantee.description}</p>
-          </article>
-        ))}
-      </div>
-    </section>
-
     <section class="handoff section-frame" aria-labelledby="handoff-title">
       <div class="section-heading">
-        <h2 id="handoff-title">Start with one environment. Continue with another.</h2>
+        <p class="section-label">Handoff and contract</p>
+        <h2 id="handoff-title">Start in Claude Code. Continue in OpenCode / Qwen.</h2>
         <p>
-          <strong>Example handoff.</strong> The receiving developer rebuilds local authority while preserving the signed
-          execution contract.
+          The receiving developer rebuilds local authority while the signed execution contract stays the same:
+          requirements, evidence, gates, and the exact next action.
         </p>
       </div>
       <div
@@ -241,12 +264,22 @@ const sourceCodeMetadata = {
           <li>{driver}</li>
         ))}
       </ul>
+      <div class="guarantee-grid">
+        {guarantees.map((guarantee, index) => (
+          <article class={`guarantee-card guarantee-card--${guarantee.tone}`}>
+            <span class="guarantee-card__index">{String(index + 1).padStart(2, "0")}</span>
+            <h3>{guarantee.title}</h3>
+            <p>{guarantee.description}</p>
+            <code class="guarantee-card__clause">{guarantee.clause}</code>
+          </article>
+        ))}
+      </div>
     </section>
 
     <section class="probes section-frame" aria-labelledby="probes-title">
       <div class="probes__copy">
         <p class="section-label">Read-only data probes</p>
-        <h2 id="probes-title">Context from real systems. No hidden writer.</h2>
+        <h2 id="probes-title">{engineHeadline}</h2>
         <p>
           Database discovery runs through bounded plans, explicit capabilities, audit evidence, and read-only
           credentials. SQLite is live-qualified in this repository; the other six engines are contract-verified here and
@@ -275,37 +308,40 @@ const sourceCodeMetadata = {
 
     <section class="architecture section-frame" aria-labelledby="architecture-title">
       <div class="section-heading">
+        <p class="section-label">Architecture</p>
         <h2 id="architecture-title">A delivery control plane, not a model wrapper.</h2>
+        <p>
+          Portable delivery facts are separated from machine-local credentials, sessions, and provider state. The
+          drawing mirrors the system overview in the repository, node for node.
+        </p>
       </div>
-      <div class="architecture-map">
-        <div class="architecture-map__core">
-          <span>vestra CLI</span>
-          <strong>Application workflows</strong>
-          <small>Policy-bound orchestration</small>
-        </div>
-        <div class="architecture-map__satellites">
-          <span>Workspace</span>
-          <span>Drivers</span>
-          <span>Probes</span>
-          <span>Memory</span>
-          <span>Evidence</span>
-          <span>Distribution</span>
-        </div>
-      </div>
+      <ArchitectureDiagram />
       <a class="button button--secondary" href={withBase("docs/architecture/system-overview/")}>
         Read the architecture
       </a>
     </section>
 
     <section class="qualification section-frame" aria-labelledby="qualification-title">
-      <div>
+      <div class="qualification__status">
+        <p class="section-label">Status and evidence</p>
         <h2 id="qualification-title">
           {productStatus.completedTask} is evidence. {qualificationHeadline}
         </h2>
         <p>
-          Foundations through {productStatus.completedTask} are backed by public validation reports.{" "}
+          Foundations through {productStatus.completedTask} are backed by {reportCount} public validation reports.{" "}
           {qualificationSummary}
         </p>
+        <div class="qualification__actions">
+          <a class="button button--primary" href={withBase("roadmap/")}>
+            View the verified roadmap
+          </a>
+          <a
+            class="text-link"
+            href={withBase(`docs/qualification/${productStatus.completedTask.toLowerCase()}-validation/`)}
+          >
+            Inspect {productStatus.completedTask} evidence →
+          </a>
+        </div>
       </div>
       <div class="qualification-progress" aria-label={progressLabel}>
         <div class="qualification-progress__complete">
@@ -322,42 +358,26 @@ const sourceCodeMetadata = {
           <div class="qualification-progress__future">T77</div>
         )}
       </div>
-      <div class="qualification__actions">
-        <a class="button button--primary" href={withBase("roadmap/")}>
-          View the verified roadmap
-        </a>
-        <a
-          class="text-link"
-          href={withBase(`docs/qualification/${productStatus.completedTask.toLowerCase()}-validation/`)}
-        >
-          Inspect {productStatus.completedTask} evidence →
-        </a>
+      <div class="not-today">
+        <h3 id="not-today-title">What Verchestra is not</h3>
+        <ul class="not-today__list">
+          {notToday.map((statement) => (
+            <li>{statement}</li>
+          ))}
+        </ul>
       </div>
-    </section>
-
-    <section class="not-today section-frame" aria-labelledby="not-today-title">
-      <div class="section-heading">
-        <p class="section-label">What Verchestra is not</p>
-        <h2 id="not-today-title">Ruled out, in the present tense.</h2>
-      </div>
-      <ul class="not-today__list">
-        {notToday.map((statement) => (
-          <li>{statement}</li>
-        ))}
-      </ul>
-    </section>
-
-    <section class="community-cta" aria-labelledby="community-title">
-      <p class="section-label">Build the standard with us</p>
-      <h2 id="community-title">AI delivery deserves better evidence.</h2>
-      <p>Explore the architecture, challenge the design, and help qualify the path to 1.0.</p>
-      <div>
-        <a class="button button--primary" href="https://github.com/accd/verchestra/discussions">
-          Join the discussion
-        </a>
-        <a class="button button--secondary" href={withBase("docs/community/contributing/")}>
-          Contribute
-        </a>
+      <div class="community-cta">
+        <p class="section-label">Build the standard with us</p>
+        <h3 id="community-title">AI delivery deserves better evidence.</h3>
+        <p>Explore the architecture, challenge the design, and help qualify the path to 1.0.</p>
+        <div>
+          <a class="button button--primary" href="https://github.com/accd/verchestra/discussions">
+            Join the discussion
+          </a>
+          <a class="button button--secondary" href={withBase("docs/community/contributing/")}>
+            Contribute
+          </a>
+        </div>
       </div>
     </section>
   </main>

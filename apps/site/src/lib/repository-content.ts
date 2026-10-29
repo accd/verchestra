@@ -1,4 +1,4 @@
-import { readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import { isAbsolute, posix, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -153,6 +153,31 @@ export function qualificationSidebarItems(repositoryRoot: URL | string): { label
       label: `${slug.replace(/-validation$/u, "").toUpperCase()} validation`,
       slug: `docs/qualification/${slug}`
     }));
+}
+
+// The install command the landing page shows names the build a visitor would
+// get, which is whatever the TUF publication ledger recorded last. Reading it
+// at build time is what keeps the page from pinning a version by hand, as the
+// README's beta section is pinned by tests/agent-readiness/beta-tester-docs.
+interface LedgerEntry {
+  sequence?: unknown;
+  kind?: unknown;
+  semanticVersion?: unknown;
+}
+
+export function publishedLauncherVersion(repositoryRoot: URL | string): string {
+  const ledgerPath = resolveRepositoryPath(repositoryRoot, "docs/qualification/tuf-publication-ledger.json");
+  const ledger = JSON.parse(readFileSync(ledgerPath, "utf8")) as { entries?: unknown };
+  const entries = Array.isArray(ledger.entries) ? (ledger.entries as LedgerEntry[]) : [];
+  let latest: LedgerEntry | undefined;
+  for (const entry of entries) {
+    if (entry.kind !== "release" || typeof entry.sequence !== "number") continue;
+    if (latest === undefined || entry.sequence > (latest.sequence as number)) latest = entry;
+  }
+  if (latest === undefined || typeof latest.semanticVersion !== "string" || latest.semanticVersion === "") {
+    throw new Error("the TUF publication ledger records no release entry with a semantic version");
+  }
+  return latest.semanticVersion;
 }
 
 export function resolveRepositoryPath(repositoryRoot: URL | string, sourcePath: string): string {

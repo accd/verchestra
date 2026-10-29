@@ -164,6 +164,29 @@ assert.match(homepage, /1\.0 decision: signed hold/u);
 assert.doesNotMatch(homepage, /1\.0 decision pending|has not been made/u);
 assert.doesNotMatch(homepage, /npm (?:install|add).{0,40}verchestra/iu);
 assert.doesNotMatch(homepage, /production[- ]ready/iu);
+// The install block names the build the TUF publication ledger recorded last;
+// a homepage that pins any other version advertises a build nobody would get.
+const ledger = JSON.parse(
+  await readFile(resolve(siteRoot, "../../docs/qualification/tuf-publication-ledger.json"), "utf8")
+);
+const ledgerLatest = ledger.entries
+  .filter((entry) => entry.kind === "release")
+  .reduce((best, entry) => (entry.sequence > best.sequence ? entry : best)).semanticVersion;
+assert.ok(ledgerLatest, "the publication ledger must record a release");
+assert.ok(homepage.includes(`npx verchestra@${ledgerLatest} --version`), `homepage must install ${ledgerLatest}`);
+for (const pinned of homepage.matchAll(/npx verchestra@(\S+?)(?=[\s<])/gu)) {
+  assert.equal(pinned[1], ledgerLatest, `homepage pins ${pinned[1]} instead of the ledger's ${ledgerLatest}`);
+}
+// Both diagrams are real drawings with a text equivalent, and the hero shows
+// the delivery stages twice on purpose: as the drawing and as the list the
+// narrow layout shows instead.
+assert.equal((homepage.match(/class="diagram diagram--[a-z]+" role="img"/gu) ?? []).length, 2);
+assert.match(homepage, /<title id="delivery-flow-diagram-title">/u);
+assert.match(homepage, /<title id="architecture-diagram-title">/u);
+assert.match(homepage, /Independent verification/u);
+assert.match(homepage, /What travels\. What stays\./u);
+assert.match(homepage, /public reports, one maturity each\./u);
+assert.match(homepage, /Read the signed 1\.0 hold/u);
 
 // The evidence sidebar group is labelled with the first and the last report that
 // exist, so its range cannot fall behind an inserted or appended report.
