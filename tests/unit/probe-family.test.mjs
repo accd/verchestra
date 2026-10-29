@@ -95,9 +95,9 @@ test("the SQLite engine adapter admits only the statement's own operation in mai
     "VES_SQLITE_PLAN_MISMATCH"
   ]);
 
-  // why: a worker re-reads the statement with the plan's classifications,
-  // which the planner keeps once each; two binds of one class would fail
-  // there after the grant, so the plan refuses them before any run exists.
+  // why: a worker re-reads the statement with the plan's classifications, so
+  // the plan keeps one per bind; two binds of one class plan, and the engine
+  // adapter admits them (.specs/features/probe-multi-parameter/checks.md).
   const registry = new DatabaseRegistry({ store: new MemoryDatabaseRegistrationStore() });
   await registry.register(
     registration({ engine: "sqlite", databaseId: "orders", approvedSchemas: ["main"], policyRef: "orders" })
@@ -119,9 +119,8 @@ test("the SQLite engine adapter admits only the statement's own operation in mai
     );
   };
   assert.equal((await plan(SQL, [1])).engine, "sqlite");
-  await assert.rejects(plan("SELECT id FROM main.orders WHERE id = ? OR id = ?", [1, 2]), {
-    code: "VES_PROBE_ENGINE_POLICY_DENIED"
-  });
+  const twoBinds = await plan("SELECT id FROM main.orders WHERE id = ? OR id = ?", [1, 2]);
+  assert.deepEqual(twoBinds.operation.parameterClassifications, [sqlite.classification, sqlite.classification]);
 });
 
 test("the review names the run and never the statement or its parameters", () => {

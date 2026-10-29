@@ -83,3 +83,9 @@ Proof: `node --test --test-name-pattern "a probe run binds every parameter" test
 ## Handoff
 
 - S1 = ~24k (data-probe's normalizer, the eight engine fixtures, two test files); S2 enters the CLI at ~35k total, under the 150k budget - one builder
+- **Boundary:** C1-C7 closed at `<pending>`
+- **Settled mid-build:**
+  - C6 names its parameters ([1, `paid`] and [1, `pending`]), and C7 runs with [1, `PARAM-7f3a-SENTINEL`]: a fixture id or status can appear in the output for reasons of its own, so only a sentinel shows that no parameter reaches it. Changed before any proof ran.
+  - `tests/unit/probe-family.test.mjs` asserted slice 2b's plan-time refusal of two binds of one class (`VES_PROBE_ENGINE_POLICY_DENIED`), the defect this change removes. It now asserts that the plan keeps one classification per bind; slice 2b's `checks.md` note points here.
+  - C4 reads the rows the supervisor appends by wrapping the in-memory sink's `append` in the test, since the sink keeps only a digest once it commits.
+- **Abandoned:** none
