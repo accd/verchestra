@@ -256,7 +256,7 @@ export class DatabaseRegistrationFiles {
     const trust = await this.#trust();
     const entries: DatabaseRegistrationEntry[] = [];
     for (const name of await readdir(this.#directory)) entries.push(await this.#entry(name, trust));
-    return Object.freeze(entries.sort((left, right) => codeUnitCompare(left.databaseId, right.databaseId)));
+    return Object.freeze(entries.toSorted((left, right) => codeUnitCompare(left.databaseId, right.databaseId)));
   }
 
   // invariant: AC 6 and AC 7. The record for a document's id answers an add of
