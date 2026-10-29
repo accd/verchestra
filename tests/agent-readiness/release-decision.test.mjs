@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash, generateKeyPairSync, sign as signBytes } from "node:crypto";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -13,6 +13,7 @@ import {
   canonicalJson,
   readReleaseDecisions,
   releaseDecisionFileName,
+  retiredDecisionAnchors,
   validateReleaseDecision
 } from "../../scripts/agent-readiness.mjs";
 
@@ -581,7 +582,15 @@ test("the committed 1.0.0 hold stays round 1 and still verifies byte for byte", 
   const reference = /^publicKeyRef: (.*)$/mu.exec(source)?.[1] ?? "";
   assert.match(reference, /^docs\/qualification\/trust\/[\w.-]+\.json$/u);
   const anchor = await readFile(join(root, reference), "utf8");
-  const resolveKeyRef = (candidate) => (candidate === reference ? anchor : null);
+  // why: the release-decision key was rotated on 2026-10-29, so the hold signed on
+  // 2026-08-28 verifies through the retired anchor whose window covers it, as the
+  // committed resolver reads it (docs/release-custody.md 7.4).
+  const retiredDirectory = join(root, "docs", "qualification", "trust", "retired");
+  const retired = await Promise.all(
+    (await readdir(retiredDirectory)).map((name) => readFile(join(retiredDirectory, name), "utf8"))
+  );
+  const resolveKeyRef = (candidate, decidedAt) =>
+    candidate === reference ? [anchor, ...retiredDecisionAnchors(anchor, retired, decidedAt)] : null;
 
   assert.equal(/^(?:round|supersedes|supersedesDigest):/mu.test(source), false, "round 1 carries no round fields");
   assert.deepEqual(validateReleaseDecision(source, VERSION, { resolveKeyRef }), []);
