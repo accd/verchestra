@@ -166,7 +166,8 @@ type ProbeWorkerTrust =
 
 // invariant: exactly one trust root per supervisor. The product root pins a
 // product-hardcoded component; the workspace root exists only as a value minted
-// by WorkspaceProbeAdmission, so it cannot be forged by shape.
+// by WorkspaceProbeAdmission, so it cannot be forged by shape, and it serves
+// only the plan made under the grant it was admitted with (AD-086).
 function resolveTrust(options: {
   readonly plan: ProbePlanView;
   readonly expectedComponent?: { readonly id: string; readonly digest: string };
@@ -179,6 +180,8 @@ function resolveTrust(options: {
     fail("VES_PROBE_WORKSPACE_TRUST_DENIED", "Workspace Probe worker was not admitted");
   if (options.workspaceTrust.workspaceId !== options.plan.workspaceId)
     fail("VES_PROBE_WORKSPACE_TRUST_WORKSPACE", "Workspace Probe worker admission belongs to another Workspace");
+  if (options.workspaceTrust.grantRef !== options.plan.grantRef)
+    fail("VES_PROBE_WORKSPACE_TRUST_GRANT", "Workspace Probe worker admission names another grant than the plan");
   return options.workspaceTrust;
 }
 
