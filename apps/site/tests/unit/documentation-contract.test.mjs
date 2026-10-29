@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import test from "node:test";
 
+import { compileQualificationStatus } from "../../src/lib/repository-content.ts";
+
 const siteRoot = resolve(import.meta.dirname, "../..");
 const docsRoot = resolve(siteRoot, "src/content/docs/docs");
 
@@ -58,6 +60,21 @@ test("publishes every approved site-specific guide with searchable metadata", as
     assert.match(source, /^---\r?\n[\s\S]*?title:\s*.+\r?\n[\s\S]*?description:\s*.+\r?\n---/u, relativePath);
     assert.doesNotMatch(source, /pagefind:\s*false/u, relativePath);
   }
+});
+
+// The hand-written guides once froze at "T68a next" while the derived status
+// moved on to T77. Pinning the two status-bearing guides to the derived chain
+// stops that drift from recurring silently.
+test("the status-bearing guides follow the derived qualification status", async () => {
+  const status = await compileQualificationStatus(new URL("../../../../", import.meta.url));
+  const index = await readFile(resolve(docsRoot, "index.mdx"), "utf8");
+  assert.match(index, new RegExp(`T01–${status.highestVerifiedTask} reports`, "u"));
+  const overview = await readFile(resolve(docsRoot, "qualification/index.md"), "utf8");
+  assert.match(overview, new RegExp(`T69–${status.highestVerifiedTask}`, "u"));
+  assert.match(overview, /signed (?:hold|reject)/u);
+  assert.doesNotMatch(overview, /planned verification|: next,/u);
+  const install = await readFile(resolve(docsRoot, "install-and-run.md"), "utf8");
+  assert.match(install, /signed 1\.0 decision is a hold/u);
 });
 
 test("keeps canonical repository documents out of the site-specific content tree", async () => {

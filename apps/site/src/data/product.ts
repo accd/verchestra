@@ -10,7 +10,13 @@ export const productStatus = {
   version: "0.0.0-qualification",
   completedTask: "T77",
   nextTask: null,
-  installable: true
+  installable: true,
+  // The signed 1.0.0 decision (docs/qualification/release-decision-1.0.0.md)
+  // is a reject, recorded as a hold. "hold" here means that file exists and
+  // says reject; a promote would replace it, and the product-contract test
+  // cross-checks the two so the site can never report a decision the
+  // repository does not carry.
+  decision: "hold"
 } as const;
 
 export const deliveryStages = [
@@ -95,7 +101,7 @@ export const databases = [
 export type CapabilityMaturity = "available" | "qualified" | "implemented" | "experimental" | "planned";
 
 export const maturityDefinitions: Readonly<Record<CapabilityMaturity, string>> = {
-  available: "Runnable today from a source checkout of the local alpha.",
+  available: "Runnable today from the published npm package (npx verchestra).",
   qualified: "Backed by a public validation report; not yet composed into the CLI surface.",
   implemented: "Merged on main with tests, but its qualification report is not published yet.",
   experimental: "Present in the tree for evaluation; interfaces and evidence may change.",
@@ -115,7 +121,7 @@ export const capabilityMatrix: readonly CapabilityEntry[] = [
     capability: "Workspace initialization (init preview and apply)",
     maturity: "available",
     reference: "issue #64 slice A/B",
-    evidenceRoute: "docs/develop-from-source"
+    evidenceRoute: "docs/install-and-run"
   },
   {
     capability: "Evidence signing-key lifecycle (persist, rotate, revoke)",

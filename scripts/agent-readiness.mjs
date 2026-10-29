@@ -823,6 +823,214 @@ export async function readReleaseDecisions(root, { trustedRevision, validatedTas
   return { decisions, errors };
 }
 
+// The qualification line's exit record says under which conditions a public
+// `0.x` line or a 1.0.0 round 2 opens while the signed hold stands. It is an
+// owner-signable record over the same §4.1 bytes as a decision, verified with
+// the same key. An empty signature is a state this validator names, `unsigned`;
+// it is reported as a warning, never as a pass.
+export const VERSION_LINE_SCHEMA = "verchestra-version-line/v1";
+export const VERSION_LINE_RECORD = "docs/qualification/qualification-line-exit-record.md";
+export const PUBLICATION_LEDGER = "docs/qualification/tuf-publication-ledger.json";
+// Each section is a table whose rows are the conditions: one id, the gap ids the
+// repository tracks (`#<issue>`, a matrix `L<n>`, a review `F<n>`, a custody
+// `RR<n>`), what must be true, and the evidence a clean clone can open.
+export const EXIT_CONDITION_SECTIONS = Object.freeze([
+  "## Exit conditions for a public 0.x line",
+  "## Condition for a 1.0.0 round 2"
+]);
+const SEMANTIC_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$/u;
+const CONDITION_ID = /^[A-Z]\d+$/u;
+const GAP_ID = /^(?:#\d+|[A-Z]{1,2}\d+)$/u;
+const EVIDENCE_PATH = /`([^`]+)`/gu;
+const LINE_SUFFIX = /:\d+(?:-\d+)?$/u;
+const QUALIFICATION_DIRECTORY = "docs/qualification/";
+
+// The ledger's latest release is the highest-sequence `release` entry, so a
+// `role-refresh` appended after it never reads as a newer version.
+export function latestLedgerRelease(ledger) {
+  const entries = Array.isArray(ledger?.entries) ? ledger.entries : [];
+  let latest = null;
+  for (const entry of entries) {
+    if (entry?.kind !== "release" || typeof entry.semanticVersion !== "string") continue;
+    if (latest === null || entry.sequence > latest.sequence) latest = entry;
+  }
+  return latest === null ? null : latest.semanticVersion;
+}
+
+function checkVersionLineIdentity(fields, report) {
+  if (fields.schema !== VERSION_LINE_SCHEMA) report("unsupported version-line schema");
+  if (!SEMANTIC_VERSION.test(fields.line ?? "")) report("line must be a semantic version");
+  if (unfilled(fields.decidedBy)) report("decidedBy must name a GitHub identity");
+}
+
+// `latestRelease` is a claim about the ledger, so it is compared with the ledger
+// rather than trusted; a record that names no release, or one from another
+// line, cannot stand for this line.
+function checkVersionLineRelease(fields, ledgerRelease, report) {
+  const release = fields.latestRelease ?? "";
+  if (unfilled(release)) return report("latestRelease must name the ledger's latest release");
+  const line = fields.line ?? "";
+  if (release !== line && !release.startsWith(`${line}.`))
+    report(`latestRelease ${release} is not a build of line ${line}`);
+  if (ledgerRelease === undefined) return;
+  if (ledgerRelease === null) report("the publication ledger records no release to compare latestRelease with");
+  else if (release !== ledgerRelease)
+    report(`latestRelease ${release} is not the ledger's latest release ${ledgerRelease}`);
+}
+
+function decisionReference(fields) {
+  const reference = fields.decisionInEffect ?? "";
+  if (!reference.startsWith(QUALIFICATION_DIRECTORY)) return null;
+  return RELEASE_DECISION_FILE.test(reference.slice(QUALIFICATION_DIRECTORY.length)) ? reference : null;
+}
+
+// The decision in effect is bound by digest, as a later round binds to the round
+// before it: the record speaks for the hold's exact bytes, and an edited hold
+// breaks the record that relied on it.
+function checkVersionLineDecision(fields, report, readDecision) {
+  const reference = decisionReference(fields);
+  if (reference === null)
+    return report("decisionInEffect must name a docs/qualification/release-decision-<version>[.round-<n>].md file");
+  const declared = RELEASE_DIGEST.test(fields.decisionDigest ?? "");
+  if (!declared) report("decisionDigest must read sha256:<64 hex>");
+  if (readDecision === undefined) return;
+  const bytes = readDecision(reference);
+  if (bytes === null) return report(`${reference} could not be read`);
+  const digest = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+  if (declared && digest !== fields.decisionDigest)
+    report(
+      `decisionDigest does not match the current bytes of ${reference}; the decision in effect was edited or replaced`
+    );
+}
+
+// Returns the table rows under `heading`, without the header and separator, or
+// null when the section is missing. A row is a condition; prose in the section
+// is not read.
+function conditionRows(source, heading) {
+  const lines = source.split(/\r?\n/u);
+  const start = lines.indexOf(heading);
+  if (start === -1) return null;
+  const rows = [];
+  for (const line of lines.slice(start + 1)) {
+    if (line.startsWith("## ")) break;
+    if (line.startsWith("|"))
+      rows.push(
+        line
+          .split("|")
+          .slice(1, -1)
+          .map((cell) => cell.trim())
+      );
+  }
+  return rows.filter((row) => CONDITION_ID.test(row[0] ?? ""));
+}
+
+function checkEvidencePaths(id, evidence, report, pathExists) {
+  const paths = [...evidence.matchAll(EVIDENCE_PATH)].map((match) => match[1].replace(LINE_SUFFIX, ""));
+  if (paths.length === 0) return report(`${id} names no evidence path`);
+  if (pathExists === undefined) return;
+  for (const path of paths) if (!pathExists(path)) report(`${id} evidence path ${path} does not resolve`);
+}
+
+function checkCondition(row, report, pathExists) {
+  const [id, gaps, , evidence] = row;
+  if (row.length !== 4) return report(`${id} is not a four-column row (condition, gap, what must be true, evidence)`);
+  const gapIds = splitList(gaps);
+  if (gapIds.length === 0 || !gapIds.every((gap) => GAP_ID.test(gap)))
+    report(`${id} must name the gap ids it closes (#<issue>, L<n>, F<n>, or RR<n>), found ${gaps || "nothing"}`);
+  checkEvidencePaths(id, evidence, report, pathExists);
+}
+
+function checkExitConditions(source, report, pathExists) {
+  const seen = new Set();
+  for (const heading of EXIT_CONDITION_SECTIONS) {
+    const rows = conditionRows(source, heading);
+    if (rows === null) {
+      report(`missing the "${heading}" section`);
+      continue;
+    }
+    if (rows.length === 0) report(`the "${heading}" table names no condition`);
+    for (const row of rows) {
+      if (seen.has(row[0])) report(`${row[0]} is named twice`);
+      seen.add(row[0]);
+      checkCondition(row, report, pathExists);
+    }
+  }
+}
+
+// why: the owner signs the record with the decision key, so a present signature
+// is verified exactly as a decision's is, and an unresolvable key fails closed.
+// An empty signature is not a failure of the record: it is the owner's pending
+// act, returned as `unsigned` so the caller can warn rather than pass.
+function checkVersionLineSignature(source, fields, report, resolveKeyRef) {
+  if (unfilled(fields.publicKeyRef)) {
+    report("publicKeyRef must be present");
+    return "unsigned";
+  }
+  if (unfilled(fields.signature)) return "unsigned";
+  if (!RFC3339_UTC.test(fields.decidedAt ?? "")) report("a signed record needs decidedAt as an RFC 3339 UTC timestamp");
+  const problems = [];
+  checkDecisionSignature(source, fields, (message) => problems.push(message), resolveKeyRef);
+  for (const problem of problems) report(problem);
+  return problems.length === 0 ? "verified" : "invalid";
+}
+
+// Validates one record. `signature` is `unsigned`, `verified`, or `invalid`;
+// only `verified` means the owner's signature was checked against the key, and
+// a direct call without `resolveKeyRef` fails a present signature closed.
+export function validateVersionLineRecord(source, options = {}) {
+  const errors = [];
+  const report = (message) => errors.push(`${VERSION_LINE_RECORD}: ${message}`);
+  const { fields } = decisionFrontmatter(source);
+  if (fields === null) {
+    report("missing or malformed version-line frontmatter");
+    return { errors, signature: "unsigned", fields: null };
+  }
+  checkVersionLineIdentity(fields, report);
+  checkVersionLineRelease(fields, options.ledgerRelease, report);
+  checkVersionLineDecision(fields, report, options.readDecision);
+  checkExitConditions(source, report, options.pathExists);
+  const signature = checkVersionLineSignature(source, fields, report, options.resolveKeyRef ?? (() => null));
+  return { errors, signature, fields };
+}
+
+function repositoryPathExists(root, reference) {
+  const absolute = resolve(root, reference);
+  return absolute.startsWith(`${resolve(root)}${sep}`) && existsSync(absolute);
+}
+
+function repositoryBytes(root, reference) {
+  return repositoryPathExists(root, reference) ? readFileSync(join(root, reference)) : null;
+}
+
+async function ledgerRelease(root) {
+  const path = join(root, PUBLICATION_LEDGER);
+  if (!existsSync(path)) return null;
+  try {
+    return latestLedgerRelease(JSON.parse(await readFile(path, "utf8")));
+  } catch {
+    return null;
+  }
+}
+
+// Reads the repository's record. Absence is not a failure: a repository without
+// one has recorded nothing, and `signature` says so as `absent`. `warnings`
+// carries the unsigned state, which `agent:check` prints without failing.
+export async function readVersionLineRecord(root) {
+  const path = join(root, VERSION_LINE_RECORD);
+  if (!existsSync(path)) return { errors: [], warnings: [], signature: "absent", fields: null };
+  const result = validateVersionLineRecord(await readFile(path, "utf8"), {
+    ledgerRelease: await ledgerRelease(root),
+    readDecision: (reference) => repositoryBytes(root, reference),
+    pathExists: (reference) => repositoryPathExists(root, reference),
+    resolveKeyRef: decisionKeyResolver(root)
+  });
+  const warnings =
+    result.signature === "unsigned"
+      ? [`${VERSION_LINE_RECORD}: signature is empty; the record is unsigned until the owner signs it`]
+      : [];
+  return { ...result, warnings };
+}
+
 function git(root, args) {
   try {
     return execFileSync(gitExecutable(), ["-C", root, ...args], {
@@ -1222,6 +1430,20 @@ async function checkReleaseDecisions(root, tasks, errors) {
   for (const problem of decisions.errors) errors.push(`docs/qualification: ${problem}`);
 }
 
+// The exit record is checked beside the decisions it refers to. Its errors
+// already name the record; its unsigned state is a warning, read separately by
+// `repositoryWarnings`, so an unsigned record neither fails nor passes silently.
+async function checkVersionLineRecord(root, errors) {
+  const record = await readVersionLineRecord(root);
+  for (const problem of record.errors) errors.push(problem);
+}
+
+// What `agent:check` prints without failing: today, only the exit record's
+// unsigned state. A warning is never a pass; it names what a human still owes.
+export async function repositoryWarnings(root = ROOT) {
+  return (await readVersionLineRecord(root)).warnings;
+}
+
 async function checkFeatureHandoffs(root, errors) {
   const handoffDirectory = join(root, ".specs", "features");
   if (!existsSync(handoffDirectory)) return;
@@ -1252,6 +1474,7 @@ export async function checkRepository(root = ROOT) {
   const context = await compileAgentContext(root);
   await checkStatusLineAgreement(root, context, errors);
   await checkReleaseDecisions(root, await checkQualificationChain(root, errors), errors);
+  await checkVersionLineRecord(root, errors);
   await checkFeatureHandoffs(root, errors);
   await checkMarkdownLinks(root, files, errors);
   return [...new Set(errors)].sort(codeUnitCompare);

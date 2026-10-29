@@ -848,6 +848,16 @@ and named the `.3` republication as the condition
 This update does not move L5 out of the Qualifying group; whether the
 republication clears it is for the reviewers who escalated it.
 
+**Update (2026-10-29, reported evidence, not re-performed):** on 2026-10-14
+the operational reviewer reported on PR #523 a `self-test --profile smoke` PASS
+on `0.0.0-qualification.7` from a non-elevated Windows home directory (verdict
+`PASS`, 6 checks, 0 failure codes), the #370 case. No tracked file records that
+run: it exists only as a pull-request comment, which is not reviewable
+evidence by this matrix's own rule. The run stays "reported, not re-performed"
+until a J08 run from a Windows home directory on `.9` or later is recorded in a
+tracked file (`qualification-line-exit-record.md`, X4). This update does not
+move L5 between groups.
+
 **L6. Resolved: the source modes are proven by cross-adapter equivalence over
 the emitted tree.** `docs/qualification/t76-validation.md:102-135` recorded that
 the four-mode loops used `MapDistributionSource`, whose `mode` is "a cosmetic

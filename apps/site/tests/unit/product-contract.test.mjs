@@ -30,8 +30,24 @@ test("publishes the approved first-viewport product contract", () => {
     version: "0.0.0-qualification",
     completedTask: "T77",
     nextTask: null,
-    installable: true
+    installable: true,
+    decision: "hold"
   });
+});
+
+test("the typed decision mirrors the signed release-decision file", async () => {
+  // "hold" is only honest while docs/qualification/release-decision-1.0.0.md
+  // exists and records a reject. A promote there must fail this test until the
+  // site stops describing a hold.
+  const decisionFile = await readFile(
+    new URL("../../../../docs/qualification/release-decision-1.0.0.md", import.meta.url),
+    "utf8"
+  );
+  const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---/u.exec(decisionFile)?.[1] ?? "";
+  assert.match(frontmatter, /^version: 1\.0\.0$/mu);
+  const decision = /^decision: (\w+)$/mu.exec(frontmatter)?.[1];
+  assert.equal(decision, "reject");
+  assert.equal(productStatus.decision === "hold", decision === "reject");
 });
 
 test("publishes the complete delivery sequence", () => {
