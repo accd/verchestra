@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: database-registration
 issue: 235
-status: in_progress
+status: complete
 branch: feat/235-database-registration
 baseRevision: d713137387cb1f7b7ea882cd01227cb0a8ad22ee
 lastCompletedTask: T1
-nextTask: "dispatch the independent Verifier over d7131373..HEAD"
-lastGate: "Every C1-C27 proof PASS on Windows (28 runs; C26's sealed proof with .claude/ excluded from the replica copy); gate:quick, test:contract, test:architecture, the database, launcher and extension e2e suites, and the sealed closure suite PASS on Windows"
-updatedAt: 2026-10-29T09:15:00Z
+nextTask: "Owner review of the slice 2a PR; after it lands, plan slice 2b (`vestra probe run`) as its own feature."
+lastGate: "Independent Verifier round 1 PASS at 4f7bffcc (27/27; Windows proofs 28/28; Linux proofs 29/29, gate:quick, test:contract 1009, test:architecture 148, test:e2e 362, test:build 186); validate_verification exit 0"
+updatedAt: 2026-10-29T09:33:45Z
 ---
 
 # Evidence
@@ -20,8 +20,9 @@ check existed: no `vestra database` command starts a probe worker or a
 database client, and the only child processes are Git and the OS credential
 store's tool. `checks.md` holds 27 checks at profile `light`.
 
-S1 is built (task T1), C1-C27 closed at `7f8a381a`; nothing is verified
-independently yet. The commits after the plan:
+S1 is built (task T1), C1-C27 closed at `7f8a381a`, and verified
+independently at `4f7bffcc` (`verification.md`, round 1, PASS). The commits
+after the plan:
 
 - `e7cfffe3` exports `normalizeDatabaseAccessPolicy` from data-probe, which
   `ProbePlanner.plan` keeps using, and declares the predicate type
@@ -53,8 +54,13 @@ Evidence, all on Windows:
 - In process, the unit and contract files cover the database family at
   99.7-100 % of lines and 95-100 % of branches.
 
-Linux and macOS are not run before the Verifier; the nightly matrix runs
-`test:contract` on macOS after merge (checks.md, Coverage).
+The independent Verifier re-ran every proof at `4f7bffcc` on Windows (28/28)
+and Linux (29/29), and on Linux `gate:quick`, `test:contract` (1009),
+`test:architecture` (148), `test:e2e` (362) and `test:build` (186), all
+passing. Its non-failing notes: C11 races the store, not two `vestra database
+add` processes; on Windows a link entry is a junction, so only Linux proves
+"not followed". macOS is not run before merge; the nightly matrix runs
+`test:contract` there after merge (checks.md, Coverage).
 
 On this machine, the sealed replica copies untracked files, and the
 untracked `.claude/worktrees/` checkouts of other sessions make its copy fail
@@ -93,6 +99,6 @@ planning 2a. It is not a reviewed plan.
 
 # Next exact action
 
-Dispatch an independent Verifier over `d7131373..HEAD` with every check of
-`checks.md`, including a Linux run of `test:contract`, the database e2e file
-and the sealed closure test.
+The owner reviews the slice 2a PR. After it lands, plan slice 2b
+(`vestra probe run`, a per-run confirmed grant) as its own feature, starting
+from the sketch and open items above.
