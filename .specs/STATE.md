@@ -3290,6 +3290,45 @@ note. -->
   account does not offer is refused at `start`, not at `plan`, since `plan` makes
   no provider call.
 
+### AD-086 — A probe run is a third run kind, approved per run, under a single-use `database-read` grant, and Verchestra delivers no database credential
+
+- **Status:** proposed, **human review required**
+  (`.specs/features/probe-run/plan.md`, T3 slice 2b of #235). Doors 1-3 of that
+  plan reach past the feature, so they are recorded here.
+- **Context:** slice 1 (#681) lets the owner register and approve a probe
+  worker, and slice 2a (#686) lets the owner register a database, but nothing
+  issues the probe host's grant, `CapabilityBroker` has never issued
+  `database-read`, and `runs` admits only `feature` and `recovery` while an
+  authority approval needs a run row. No product path delivers a database
+  credential to an out-of-process worker
+  (`.specs/features/out-of-process-probe-host/spec.md`, Out of scope).
+- **Decision:**
+  1. A probe run is a run of kind `probe` (owner, 2026-10-29). Migration
+     `013_probe_runs` rebuilds `runs` to admit it, the repository's first table
+     rebuild; the workflow gains `COMPLETE_PROBE` (`EXECUTION_AUTHORIZED` ->
+     `COMPLETED`) for a probe run only, and a probe run accepts no
+     implementation, verification or review event.
+  2. Each probe run is approved by the owner, who types its binding digest back
+     (AD-040; owner, 2026-10-28). The approval's action is `probe-execution`.
+  3. The approval lets the existing `CapabilityBroker` issue one `database-read`
+     grant under the run, under a built-in probe policy view; the command
+     revokes it when the run ends, so a grant serves one run.
+  4. Verchestra delivers no database credential to a probe worker (owner,
+     2026-10-29). The worker reaches the database with what its approved launch
+     gives it; the path qualified first is a SQLite file. Credential delivery is
+     its own decision, amending AD-037.
+- **Alternatives rejected:** reusing the `feature` kind (task commands would act
+  on a probe run, and a feature run completes only through implementation,
+  verification and review); a separate `probe_runs` table (approvals and grants
+  reference `runs`); reusing the `execution` action (a probe approval would
+  satisfy checks keyed on a task approval); one grant across runs (the owner
+  confirms each run); designing credential delivery first (owner, 2026-10-29).
+- **Consequence:** an older binary refuses a store migrated by `013`, as with
+  every migration. Six code unions over the run kind widen. Until credential
+  delivery exists, a probe reads only what the worker can reach on its own,
+  which under `process-contained` includes the host user's own authority
+  (AD-037).
+
 ## Handoff
 
 - **Feature:** `strands-subscription-integration` (T1–T10) on `main` through

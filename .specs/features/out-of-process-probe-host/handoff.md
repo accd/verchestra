@@ -6,7 +6,7 @@ status: in_progress
 branch: feat/235-out-of-process-probe-host
 baseRevision: cb563611da8b1ff80aa204536138f9440a0bff91
 lastCompletedTask: T2
-nextTask: "T3 slice 2b: plan `vestra probe run` and its per-run confirmed grant as its own feature; slice 2a (`vestra database add|list|remove`) is complete in .specs/features/database-registration/ and lands with its PR."
+nextTask: "T3 slice 2b: the plan for `vestra probe run` is in .specs/features/probe-run/ and awaits the owner's review; slices 1 and 2a are on main."
 lastGate: pnpm gate:security PASS (2026-09-29)
 updatedAt: 2026-10-29T09:33:45Z
 ---
@@ -42,8 +42,8 @@ the CLI composes `WorkspaceProbeAdmission` only, through the `./admission`
 export, and starts nothing. The owner cut slice 2 in two on 2026-10-28. Slice
 2a is complete and verified (`.specs/features/database-registration/`):
 `vestra database add|list|remove` keeps signed database registrations in the
-Workspace. Plan slice 2b, `vestra probe run` with a grant the owner confirms
-per run, as its own feature.
+Workspace. Slice 2b, `vestra probe run` with a grant the owner confirms per run, is
+planned in `.specs/features/probe-run/` and awaits the owner's review.
 
 ## Verification
 
