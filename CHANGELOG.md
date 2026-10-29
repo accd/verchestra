@@ -8,6 +8,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- `vestra probe run --database <id> --approval-ref <ref> --request <file>` runs
+  one read-only statement against a registered SQLite database through an
+  approved probe worker (#235). The request file, at most 64 KiB, names the
+  purpose, the SQL, its parameters and the bounds; the statement is read by
+  SQLite's own parser and planned under the registration's access policy, and
+  the worker is judged as `vestra extension check` judges it, all before
+  anything is recorded. The command then shows a review of the database, the
+  objects read, the bounds and the worker, and waits for its binding digest to
+  be typed back; it records the signed approval and a single-use
+  `database-read` grant under a run of the new kind `probe`, runs the statement
+  in the admitted worker, prints the result envelope without its rows, and
+  revokes the grant when the run ends. A digest that is not typed back aborts
+  the run. Verchestra delivers no database credential: the worker reaches the
+  database with what its approved launch gives it. `vestra task` commands
+  refuse a probe run. `probe run` runs on Linux and macOS only.
 - `vestra database add|list|remove` record which database a probe may read
   and under which access policy, without contacting it (#235). `add` reads a
   definition file of at most 64 KiB, validates its database and policy as a
