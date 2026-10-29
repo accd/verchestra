@@ -64,10 +64,18 @@ const COMMANDS = [
   "ABORT",
   "INTERRUPT",
   "COMPLETE_RECOVERY",
-  "EXPAND_REPAIR_SCOPE"
+  "EXPAND_REPAIR_SCOPE",
+  "COMPLETE_PROBE"
 ];
 
 const bindingDigest = `sha256:${"a".repeat(64)}`;
+
+// why: a declared edge is exercised with the one run kind it is accepted for.
+function runKindFor(type) {
+  if (type === "COMPLETE_RECOVERY") return "recovery";
+  if (type === "COMPLETE_PROBE") return "probe";
+  return "feature";
+}
 
 function snapshot(state, overrides = {}) {
   return {
@@ -110,7 +118,8 @@ function command(type, overrides = {}) {
       "handoff-publication-approval",
       "handoff-publication-receipt",
       "terminal-error-evidence",
-      "recovery-evidence"
+      "recovery-evidence",
+      "probe-result"
     ],
     currentBindingDigest: bindingDigest,
     approvalBindingDigest: bindingDigest,
@@ -319,12 +328,22 @@ test("verifier identity must be distinct even when it claims the verifier role",
   );
 });
 
-test("human review is the only path to COMPLETED", () => {
+test("human review is the only path to COMPLETED but a probe run's COMPLETE_PROBE", () => {
   const incoming = WORKFLOW_DEFINITION.filter((edge) => edge.to === "COMPLETED");
   assert.deepEqual(
     incoming.map(({ from, command: type }) => [from, type]),
-    [["HUMAN_REVIEW", "APPROVE_HUMAN_REVIEW"]]
+    [
+      ["HUMAN_REVIEW", "APPROVE_HUMAN_REVIEW"],
+      ["EXECUTION_AUTHORIZED", "COMPLETE_PROBE"]
+    ]
   );
+  for (const runKind of ["feature", "recovery"]) {
+    assert.deepEqual(
+      WorkflowMachine.decide(snapshot("EXECUTION_AUTHORIZED", { runKind }), command("COMPLETE_PROBE")),
+      { accepted: false, code: "VES_WORKFLOW_RUN_KIND_MISMATCH" },
+      runKind
+    );
+  }
 });
 
 test("every terminal transition emits capsule-sealing intent", () => {
@@ -500,7 +519,7 @@ for (const transition of WORKFLOW_DEFINITION) {
   test(`declared edge accepts: ${transition.from} × ${transition.command} → ${transition.to}`, () => {
     const actorRole = transition.actorRole ?? "controller";
     const current = snapshot(transition.from, {
-      runKind: transition.command === "COMPLETE_RECOVERY" ? "recovery" : "feature"
+      runKind: runKindFor(transition.command)
     });
     const decision = WorkflowMachine.decide(
       current,
@@ -521,7 +540,7 @@ for (const transition of WORKFLOW_DEFINITION) {
       const full = command(transition.command).evidence;
       const decision = WorkflowMachine.decide(
         snapshot(transition.from, {
-          runKind: transition.command === "COMPLETE_RECOVERY" ? "recovery" : "feature"
+          runKind: runKindFor(transition.command)
         }),
         command(transition.command, {
           actorRole,
@@ -538,7 +557,7 @@ for (const transition of WORKFLOW_DEFINITION) {
       const wrongRole = transition.actorRole === "human" ? "controller" : "human";
       const decision = WorkflowMachine.decide(
         snapshot(transition.from, {
-          runKind: transition.command === "COMPLETE_RECOVERY" ? "recovery" : "feature"
+          runKind: runKindFor(transition.command)
         }),
         command(transition.command, { actorRole: wrongRole, actorId: `actor:${wrongRole}` })
       );
