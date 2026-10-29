@@ -3305,7 +3305,9 @@ note. -->
 - **Decision:**
   1. A probe run is a run of kind `probe` (owner, 2026-10-29). Migration
      `013_probe_runs` rebuilds `runs` to admit it, the repository's first table
-     rebuild; the workflow gains `COMPLETE_PROBE` (`EXECUTION_AUTHORIZED` ->
+     rebuild, with foreign keys off around its transaction and an empty
+     `foreign_key_check` required before it commits (SQLite's documented
+     procedure; deferred foreign keys cannot commit a rebuild); the workflow gains `COMPLETE_PROBE` (`EXECUTION_AUTHORIZED` ->
      `COMPLETED`) for a probe run only, and a probe run accepts no
      implementation, verification or review event.
   2. Each probe run is approved by the owner, who types its binding digest back
