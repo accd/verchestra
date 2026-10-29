@@ -2,20 +2,23 @@
 schema: verchestra-feature-handoff/v1
 feature: database-registration
 issue: 235
-status: planned
-branch: plan/235-database-registration
-baseRevision: 73f3ae24dc3f5a40ef8ce14084b5c98072d0284d
+status: in_progress
+branch: feat/235-database-registration
+baseRevision: d713137387cb1f7b7ea882cd01227cb0a8ad22ee
 lastCompletedTask: null
-nextTask: "Owner review of plan.md (slice 2a); then derive checks.md from the approved plan and build."
-lastGate: "validate_plan.py 0 errors, 0 warnings"
-updatedAt: 2026-10-28T22:35:00Z
+nextTask: "Build C1-C27 of checks.md; then dispatch an independent Verifier over d7131373..HEAD."
+lastGate: "validate_plan.py and validate_checks.py 0 errors, 0 warnings"
+updatedAt: 2026-10-29T10:00:00Z
 ---
 
 # Evidence
 
 The owner split T3's slice 2 on 2026-10-28. Slice 2a, this plan, persists
 database registrations as signed Workspace documents. Slice 2b runs a probe.
-`plan.md` awaits the owner's review. No check or code exists.
+The owner approved `plan.md` on 2026-10-29 (#683), then narrowed AC 15 before any
+check existed: no `vestra database` command starts a probe worker or a
+database client, and the only child processes are Git and the OS credential
+store's tool. `checks.md` holds 27 checks at profile `light`. No code exists.
 
 ## Slice 2b, sketched for the next plan
 
@@ -40,11 +43,15 @@ planning 2a. It is not a reviewed plan.
   - The supervisor does not compare the plan's `grantRef` with the trust's.
   - `ProbeProtocolError.revokeGrant` has no consumer.
   - Probe results live only in memory.
+  - `DatabaseRegistrationStorePort` carries no policy, but `ProbePlanner.plan`
+    takes one, so 2b reads the policy from door 1's document beside the
+    registration.
   - The composition guard (slice 1, door 4) must admit the supervisor and
     the spawned transport.
 
 # Next exact action
 
-The owner reviews `plan.md`. On approval, derive `checks.md` from it (profile
-`light` unless the owner raises it), build, and dispatch an independent
-Verifier.
+Build C1-C27 of `checks.md` on `feat/235-database-registration` (one builder,
+~80k), run the gates the checks name plus `pnpm gate:quick`, `test:contract`,
+`test:e2e`, `test:architecture` and the sealed-closure test (lesson L-019), then
+dispatch an independent Verifier over `d7131373..HEAD` with every check.

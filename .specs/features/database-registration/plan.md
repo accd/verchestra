@@ -101,7 +101,9 @@ whether each record still verifies; nothing connects to a database.
 12. WHEN `vestra database remove --database <id>` names a registered database THEN the system SHALL delete its file and print `databaseId` and `removed: true`
 13. IF `vestra database remove` names a database with no registration file THEN the system SHALL refuse with exit 5 and `VES_DATABASE_NOT_FOUND`
 14. The system SHALL return from `WorkspaceDatabaseRegistrationStore.load` and `list` only registrations that `vestra database list` would report `valid`
-15. The system SHALL contact no database and start no process during any `vestra database` command
+15. The system SHALL contact no database and start no probe worker or database client during any `vestra database` command; the only child processes it starts are Git, to locate the Workspace, and, for `add`, the OS credential store's tool, to read the signing passphrase
+
+AC 15 was amended by the owner on 2026-10-29, before any check existed. It first read "start no process"; every command locates the Workspace through Git and `add` reads the signing passphrase through the OS credential store's tool, so no command can meet it.
 
 **Independent test:** in a disposable Workspace, `add` a PostgreSQL definition (exit 0, `created: true`), `add` it again (exit 0, `created: false`), `add` a changed policy for the same id (exit 5, conflict), `list` (one `valid` entry), edit the file's `maxRows` and `list` again (`invalid`), `remove` it and `list` (empty).
 
@@ -123,7 +125,7 @@ whether each record still verifies; nothing connects to a database.
 | Slice 2 is cut in two | 2a registers databases; 2b runs a probe under a per-run confirmed grant | owner decision, 2026-10-28 | y |
 | Where registrations live | in the repository, `.verchestra/databases/`, beside the skill lock | Workspace configuration a team reviews; the same place and trust model as slice 1's lock | n |
 | `remove` leaves no record | the file is deleted; version control keeps its history | no reader needs a tombstone until a probe run references a registration (2b) | n |
-| Platforms | `vestra database` runs on Linux, macOS and Windows | it starts no process; only the probe host is POSIX-only | n |
+| Platforms | `vestra database` runs on Linux, macOS and Windows | it starts no probe worker (AC 15); only the probe host is POSIX-only | n |
 
 **Open questions:** none - all resolved or logged above.
 
