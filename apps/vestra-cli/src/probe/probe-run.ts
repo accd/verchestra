@@ -112,9 +112,11 @@ interface ProbeRunContext {
   readonly runId: string;
 }
 
-// invariant: AC 8 to AC 11. The registration is read once, verified, and must
-// be SQLite's; the statement is read by SQLite's parser and the request planned
-// under the registration's own policy, all before any run exists.
+// invariant: AC 8 to AC 11. The registration must verify and be SQLite's; the
+// statement is read by SQLite's parser and the request planned under the
+// registration's own policy, all before any run exists. The planner resolves
+// the registration again through the Workspace store, so a plan made later is
+// held to the approved one (assertPlanApproved).
 async function probeTarget(workspace: TaskWorkspace, databaseId: string, file: ProbeRequestFile): Promise<ProbeTarget> {
   const options = registrationOptions(workspace);
   const evaluation = await new DatabaseRegistrationFiles(options).evaluate(databaseId);
