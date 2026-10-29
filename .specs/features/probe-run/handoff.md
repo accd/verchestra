@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: probe-run
 issue: 235
-status: verification
+status: complete
 branch: feat/235-probe-run
 baseRevision: 02b50ba88bea5d8917f9cdcfd03a2d82df9ba878
 lastCompletedTask: null
-nextTask: "Dispatch the independent Verifier over 02b50ba8..HEAD with every check (C1-C32); the owner rules on the three deviations batch B recorded under checks.md `## Handoff` (the fixture statement names `main.orders`, the supervisor leak fix, C7 admitting the credential store's tool)."
-lastGate: "Batch B closed at a5c5310e. Every Proof: line passes on Linux (WSL, real worker) and on Windows (the real-worker cases assert the platform refusal), batch A's six included. Linux at 8f65c2cb: gate:quick exit 0 (unit 3664/3664, agent-readiness 428/428, census 14/14); test:contract 1028/1028; test:e2e 363/363; test:build 186/186; test:integration 1285/1285; test:architecture 148/149, the failure the keychain guard on the new probe composition test, fixed in a5c5310e and 149/149 at a5c5310e. Windows at a5c5310e: gate:quick exit 0 (3664/3664, 428/428, 14/14); test:architecture 149/149; at 8f65c2cb test:contract 1028/1028, e2e probe-cli, cli-launchers, database-cli and extension-cli 40/40, sealed-launcher-closure 14/14 with the process-scoped exclude."
-updatedAt: 2026-10-29T16:52:20Z
+nextTask: "Owner review of the slice 2b PR; after it lands, the owner decides what remains of T3 (the database credential is its own feature, owner decision 2026-10-29)."
+lastGate: "Independent Verifier round 1 PASS at b22b8068 (32/32; Windows proofs 35/35, gate:quick, test:architecture 149, sealed closure; Linux proofs 36/36, gate:quick, test:contract 1028, test:architecture 149, test:e2e 363, test:build 186, test:integration 1285); validate_verification exit 0"
+updatedAt: 2026-10-29T17:26:51Z
 ---
 
 # Evidence
@@ -39,10 +39,23 @@ admitting the probe family and a new one pinning that it reads no credential
 but the signing passphrase, a SQLite worker fixture over data-probe's real read
 connection, the probe run's terminal decisions owing no capsule (C32), and a
 supervisor fix: it now refuses a result echoing the JSON protected request
-escaped. Three proofs depart from the letter of checks.md and need the owner's
-ruling; they and everything else batch B settled are under `## Handoff` in
+escaped. Three proofs departed from the letter of checks.md; the owner ruled on
+2026-10-29 (b22b8068): the fixture statement names `main.orders`, the leak fix
+stays and the plan's Impact row names it, and C7 admits the credential store's
+tool beside Git. Everything else batch B settled is under `## Handoff` in
 `checks.md`. New-code coverage on Linux from the unit and contract tests:
 every module under `apps/vestra-cli/src/probe/` at 99-100%.
+
+The independent Verifier proved C1-C32 at `b22b8068` (`verification.md`,
+round 1, PASS, profile `light`). It re-ran every proof on Windows (35/35; the
+real-worker cases assert the platform refusal) and on Linux (36/36, real
+worker), and on Linux `gate:quick`, `test:contract` (1028),
+`test:architecture` (149), `test:e2e` (363), `test:build` (186) and
+`test:integration` (1285), all passing. Its non-failing notes: C7's process
+spy is only asserted empty, with no positive control; the run module's own
+pre-launch grant comparison is unreachable by construction, so C16 holds at
+the supervisor; C17 drops two runtime-added environment names; on Windows
+C13's `VES_DATABASE_NOT_FOUND` case is skipped; macOS is not run.
 
 Facts found while planning, with their places:
 
@@ -63,11 +76,6 @@ Facts found while planning, with their places:
 
 # Next exact action
 
-Dispatch an independent Verifier over `02b50ba8..HEAD` with every check
-(C1-C32) and `checks.md`'s `## Handoff`. The real-worker proofs run on Linux
-or macOS; on Windows the command refuses (AC 15). The owner rules on the three
-deviations recorded there: the fixture statement reads `main.orders` (SQLite's
-parser refuses the unqualified name), the supervisor's leak guard now also
-refuses the escaped form (a change to `packages/extension-host`), and C7's
-proof admits the credential store's own tool for the passphrase read before
-the run exists.
+The owner reviews the slice 2b PR. After it lands, the owner decides what
+remains of T3; delivering a database credential to the worker is its own
+feature, amending the probe host's spec and AD-037 (owner, 2026-10-29).
