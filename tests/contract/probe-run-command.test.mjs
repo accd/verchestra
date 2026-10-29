@@ -462,6 +462,26 @@ test("the request's parameters never reach the output", TIMEOUT, async () => {
   }
 });
 
+// invariant: every parameter takes the registration's classification, so a
+// statement with several parameters plans one classification per bind and the
+// worker binds them all (.specs/features/probe-multi-parameter/checks.md C6, C7).
+test("a probe run binds every parameter", TIMEOUT, async () => {
+  const { fixture } = await probeWorkspace();
+  const sql = "SELECT id, status FROM main.orders WHERE id = ? AND status = ?";
+  if (WIN32) return refusedOnWindows(fixture, probeRequest({ sql, parameters: [1, "paid"] }));
+  const matched = succeeded(await probe(fixture, probeRequest({ sql, parameters: [1, "paid"] })), "a matching row");
+  assert.equal(matched.result.status, "complete");
+  assert.equal(matched.result.rowCount, 1);
+  assert.equal(runOf(fixture, matched.runId).state, "COMPLETED");
+  const other = succeeded(await probe(fixture, probeRequest({ sql, parameters: [1, "pending"] })), "another status");
+  assert.equal(other.result.rowCount, 0);
+  const sentinel = await probe(fixture, probeRequest({ sql, parameters: [1, SENTINEL] }));
+  assert.equal(succeeded(sentinel, "a sentinel status").result.rowCount, 0);
+  assert.equal(sentinel.stdout.includes(SENTINEL), false, "stdout");
+  assert.equal(sentinel.stderr.includes(SENTINEL), false, "stderr");
+  assert.equal(JSON.stringify(sentinel.json).includes(SENTINEL), false, "envelope");
+});
+
 test("a confirmed probe run records its approval and grant and prints the envelope", TIMEOUT, async () => {
   const { fixture } = await probeWorkspace();
   if (WIN32) return refusedOnWindows(fixture);
