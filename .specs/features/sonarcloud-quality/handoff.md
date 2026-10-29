@@ -3,8 +3,8 @@ schema: verchestra-feature-handoff/v1
 feature: sonarcloud-quality
 issue: null
 status: in_progress
-branch: docs/sonar-t8-s3776-round
-baseRevision: 8a6e7c62b5b54d1d771b356e9bbb6a53899e18d1
+branch: docs/sonar-t8-quality-profile
+baseRevision: d713137387cb1f7b7ea882cd01227cb0a8ad22ee
 lastCompletedTask: T8
 nextTask: T8
 lastGate: pnpm gate:quick plus pnpm test:architecture
@@ -500,23 +500,23 @@ issues; 179 bugs, 32 vulnerabilities, 924 code smells; quality gate ERROR.
 
 # Next Exact Action
 
-Every mechanical family is done. What remains needs an owner decision
+Every mechanical family is done. What remains is owner work in SonarCloud
 (counts from the `main` analysis of `8a6e7c62`):
 
-- S9382 (124 TypeScript + 60 JavaScript, sequential await in a loop) and
-  S7503 (212, async without await): mostly ordered by design or
-  interface-conforming. The owner chooses between per-issue acceptance and
-  disabling both rules in a custom quality profile (plan, Phase C).
+- S7503 (212) and S9382 (124 TypeScript + 60 JavaScript): the owner chose,
+  2026-10-29, to turn both off in a custom quality profile; the reason is in
+  `validation.md`. The owner creates the profile (extending Sonar way) for
+  TypeScript and for JavaScript, deactivates the rule in each, and assigns
+  both to `accd_verchestra`. Then confirm on the next `main` analysis that
+  both rules read 0 and open issues drop from 409 to the 11 in
+  `validation.md`.
 - The owner marks the 8 S3735 and 3 long-tail issues in `validation.md` as
   Accepted.
-- S4323 (`apps/vestra-cli/src/cli.ts`) and S6582
-  (`apps/vestra-cli/src/extension/skill-lock-file.ts`) arrived with probe-host
-  slice 1 (`bd53aa98`); the Beta session was told and owns the follow-up in
-  those files.
+- S4323 and S6582 from probe-host slice 1 were fixed by the Beta session in
+  #682 (`937d1fe6`); confirm both read 0 on the same analysis.
 
-Once the owner decides, apply it: either list each S9382 and S7503 issue
-in `validation.md` and accept it in SonarCloud, or record the quality-profile
-change and confirm both counts read 0 on the next `main` analysis.
+When those read as expected, T8 is complete: set `status` and `nextTask`
+accordingly and close the feature.
 
 # Blockers
 
@@ -527,6 +527,10 @@ None. `SONAR_TOKEN` is set and Automatic Analysis is off (owner, 2026-10-26).
 - No coverage dependency: tests import `.ts` sources, so Node's coverage maps
   to source directly (owner-approved plan, 2026-10-26).
 - `SonarSource/sonarqube-scan-action` added with owner approval, 2026-10-26.
+- S7503 and S9382 are turned off in a custom quality profile, not accepted
+  per issue (owner, 2026-10-29): a sample of about 40 of 396 sites found no
+  true positive, and the rules would keep flagging every new port double and
+  ordered loop.
 - The token is scoped to the presence check and the scan step only, never to
   the test steps that execute the change under review.
 - Coverage scopes are unit, contract and security (security added by #625,
