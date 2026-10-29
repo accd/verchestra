@@ -74,7 +74,7 @@ AI-assisted delivery should not depend on one machine, one model, or an unreview
 
 - **Portable execution:** a signed Execution Package can be resumed by a qualified Claude Code, Codex, or OpenCode/Qwen environment.
 - **Policy before effects:** capabilities, approvals, leases, and egress rules are checked before external effects.
-- **Read-only database discovery:** Probes use bounded, auditable, read-only plans. SAP ASE / Sybase is a first-class adapter.
+- **Read-only database discovery:** Probes use bounded, auditable, read-only plans. SQLite is live-qualified here; the other six engines are contract-verified and qualified at the edge.
 - **Evidence, not assertions:** packages, handoffs, reports, and release artifacts bind their source evidence by digest.
 - **Human control:** independent verification and human review are explicit workflow states.
 - **Safe repeats:** durable effects, Git operations, initialization, recovery, and distribution are designed to converge idempotently.
@@ -83,8 +83,8 @@ AI-assisted delivery should not depend on one machine, one model, or an unreview
 
 One honest matrix, mirrored from the typed status the website renders
 (`apps/site/src/data/product.ts`) and checked by a drift test - the two
-surfaces cannot disagree silently. **available** means runnable today from a
-source checkout; **qualified** means backed by a public validation report but
+surfaces cannot disagree silently. **available** means runnable today from the
+published npm package; **qualified** means backed by a public validation report but
 not yet composed into the CLI; **planned** means roadmap work with a declared
 task and no code claimed.
 

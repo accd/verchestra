@@ -14,6 +14,6 @@ The workflow:
 5. emit redacted evidence with query digests;
 6. close connections and preserve no credential material.
 
-SAP ASE / Sybase is a first-class adapter. The same no-writer contract applies to PostgreSQL, MySQL/MariaDB, SQL Server, Oracle, SQLite, and MongoDB.
+SQLite is live-qualified in this repository; PostgreSQL, MySQL/MariaDB, SQL Server, Oracle, SAP ASE / Sybase, and MongoDB are contract-verified here and qualified at the edge. The same no-writer contract applies to every engine.
 
 An ER model can improve discovery and should be registered as a source when available. It does not replace live, bounded metadata evidence.

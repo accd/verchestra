@@ -1,6 +1,6 @@
 ---
 title: Distribution
-description: The planned verified path from source tree to reproducible release.
+description: The verified path from source tree to the published, signed qualification release.
 ---
 
 Distribution foundations include hermetic bundle identities, SBOM inputs, provenance, signature verification, TUF metadata, staged activation, health gates, rollback, and uninstall contracts.
