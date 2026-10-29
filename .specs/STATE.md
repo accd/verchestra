@@ -390,6 +390,13 @@ note. -->
   closed (`tests/agent-readiness/release-decision.test.mjs`). Which bytes are
   signed is still the owner's call; this records the definition the validator
   enforces so a promote's signature is accountable rather than decorative.
+- **Note (2026-10-29):** the signed decision file
+  `docs/qualification/release-decision-1.0.0.md` ("Provenance of this record")
+  states that §4.1 was "ratified as AD-033" when it was signed on 2026-08-28,
+  while the status line above still reads proposed. The decision file is
+  signed and is not edited. The owner is asked to confirm the status here
+  (`.specs/features/qualification-line-exit/handoff.md`, owner checklist);
+  the status line is left for the owner.
 
 ### AD-034 — Readable provider credentials get their own qualified contract; key material keeps non-exportable (#379)
 

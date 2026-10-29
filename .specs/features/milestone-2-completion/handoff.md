@@ -6,9 +6,9 @@ status: blocked
 branch: fix/gate-census-and-handoff-drift
 baseRevision: 20071a78eb5b96b9de63e5e9c863b6997643c767
 lastCompletedTask: null
-nextTask: "Blocked: M2C-04 (an owner-designated independent verifier) is unmet and the signed 1.0.0 decision is a hold. On 2026-10-02 the owner named no second accountable human, so #408 is closed as not planned and no promote round can open (docs/release-custody.md). If the owner later names one, a fresh promotion round (new candidate, T77 rerun, own decision file, with #382/#387/#379/#405/#406) decides 1.0; P7 (#234, #235, #236) stays post-1.0."
+nextTask: "Blocked: M2C-04 (an owner-designated independent verifier) is unmet and the signed 1.0.0 decision is a hold. On 2026-10-02 the owner named no second accountable human, so #408 is closed as not planned; a 1.0.0 round 2 opens only under the conditions in docs/qualification/qualification-line-exit-record.md (R1, R2), on a fresh candidate with its own T77 run and decision file. P7's issues #234, #235, and #236 are closed (2026-09-30); their work landed as features that are not part of the qualification chain."
 lastGate: "agent:context at 20071a7 derives T77 complete and the chain fully verified; agent:check PASS"
-updatedAt: 2026-10-02T11:00:00Z
+updatedAt: 2026-10-29T12:00:00Z
 ---
 # Current state (reconciled 2026-09-29, #407)
 
@@ -27,7 +27,7 @@ merged evidence:
 | P4 (#16, T75) | Done; #16 closed | `docs/qualification/t75-validation.md` (`3365a47`, reviewed in PR #354). |
 | P5 (#17, #36, T76) | Done; #17 and #36 closed | `docs/qualification/t76-validation.md` (`aa59ba7`, `5514322`, reviewed in PR #369); npm `verchestra@0.0.0-qualification`. |
 | P6 (#18, T77) | Decided: signed reject, a recorded hold; #18 closed | `docs/qualification/t77-validation.md` (`bee42fa`, `9722d03`); `docs/qualification/release-decision-1.0.0.md` (`62ccde4`, PR #397). |
-| P7 (#234, #235, #236) | Not started; all three open | Depends on "P6 PASS". The decision was a hold, so these stay post-1.0. |
+| P7 (#234, #235, #236) | Issues closed on 2026-09-30 (reconciled 2026-10-29) | #234 landed as `init-probe-scaffold`, #235 as `out-of-process-probe-host` (composition-root wiring in progress under `probe-run`), #236 as `single-binary-distribution` (signing steps pending). The decision was a hold; none of this advances the chain. |
 
 Two requirements of `spec.md` are **not** met, and this handoff does not claim
 them:
@@ -37,8 +37,11 @@ them:
   `t76-validation.md:33-44`. Acceptance-matrix L1 records that no configuration
   can produce one. Reports already merged cannot become independent after the
   fact. A fresh promotion round needs #408.
-- **M2C-07.** #234, #235, and #236 are open, so the open-issue list is not
-  empty.
+- **M2C-07.** Reconciled 2026-10-29: #234, #235, and #236 are closed, so the
+  P7 issues no longer keep the open-issue list non-empty. M2C-07 is still not
+  claimed, because the feature handoffs those issues produced are not
+  `complete` (`init-probe-scaffold` and `single-binary-distribution` are in
+  `verification`, `out-of-process-probe-host` in `in_progress`).
 
 # Next exact action
 
@@ -50,14 +53,18 @@ the owner later names one, the custody work resumes from O1, and a promotion
 round then starts from a fresh candidate. The prerequisites for that round
 are:
 
-- #382: TUF timestamp/snapshot refresh.
-- #387 and #393: the live update and rollback legs.
-- #379: doctor reaching `PASS`.
-- #405: the governed task path through the installed CLI.
-- #406: the supervised real-task pilot.
+- #382: TUF timestamp/snapshot refresh (closed 2026-09-30; implemented, not
+  operating: no `role-refresh` ledger entry yet).
+- #387 and #393: the live update and rollback legs (closed; the leg passes
+  inside the line, `.7` to `.8` on 2026-10-25).
+- #379: doctor reaching `PASS` (closed; six deep-doctor checks still `blocked`
+  for a user of the published package, matrix L2).
+- #405: the governed task path through the installed CLI (closed 2026-09-30).
+- #406: the supervised real-task pilot (open; P1 attempt 3 on `.8` is next).
 
-The round records its own T77 run and its own decision file. P7 starts only
-after a promote.
+The exit conditions for a public `0.x` line and for a 1.0.0 round 2 are
+recorded in `docs/qualification/qualification-line-exit-record.md` (2026-10-29).
+The round records its own T77 run and its own decision file.
 
 # Blockers
 

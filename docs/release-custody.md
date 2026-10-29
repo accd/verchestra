@@ -847,3 +847,7 @@ Expected: the output matches the decision.
 **O10. Ratify.** The owner and the independent reviewer approve the pull request
 that marks this document ratified, citing the O1-O9 evidence. Only after that
 may L8 be updated, in a separate reviewed change, and #408 be closed.
+
+The owner-signable record of what must hold before a public `0.x` line or a
+1.0.0 round 2 opens, including O6 and section 6a, is
+`docs/qualification/qualification-line-exit-record.md`.
