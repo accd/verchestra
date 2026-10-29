@@ -29,6 +29,7 @@
   --space-12: 3rem;
   --space-16: 4rem;
   --space-24: 6rem;
+  --section-pad: clamp(4rem, 8vw, 6rem);
   --radius-control: 0.7rem;
   --radius-panel: 1rem;
   --radius-feature: 1.4rem;
@@ -349,18 +350,53 @@ a.skip-link {
   line-height: 1.65;
 }
 
-.hero__scenario {
-  max-width: 64ch;
-  margin: 1.25rem 0 0;
-  padding-left: 1rem;
-  border-left: 2px solid var(--cyan);
-  color: var(--muted);
-  font-size: 0.95rem;
-  line-height: 1.65;
+/* The install block is the hero's one concrete artefact: two commands a
+   visitor can run, named after the build the publication ledger recorded last.
+   A command wider than a phone scrolls, so the block is focusable. */
+.hero__copy,
+.hero__visual {
+  min-width: 0;
 }
 
-.hero__scenario strong {
+.install-block {
+  max-width: 42rem;
+  margin-top: 1.5rem;
+}
+
+.install {
+  margin: 0;
+  padding: 1rem 1.15rem;
+  overflow-x: auto;
+  border: 1px solid color-mix(in srgb, var(--violet) 45%, var(--line));
+  border-radius: var(--radius-control);
+  background: var(--surface);
   color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.7;
+}
+
+.install:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: 4px;
+}
+
+.install code {
+  font-family: inherit;
+}
+
+.install__caption {
+  max-width: 60ch;
+  margin: 0.7rem 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+
+.install__caption code {
+  color: var(--cyan);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
 }
 
 .hero__actions,
@@ -469,13 +505,146 @@ a.button--primary {
   font-size: 0.78rem;
 }
 
-.execution-score {
-  position: relative;
-  padding: 0.5rem 0 0.5rem 1.25rem;
-  border-left: 1px solid color-mix(in srgb, var(--violet) 68%, var(--line));
+/* Inline SVG diagrams. The wrapper reserves the drawing's aspect ratio so the
+   page never shifts, and every colour is a page token, so both themes and the
+   forced-colors mode style the drawing. */
+.diagram {
+  width: 100%;
 }
 
-.execution-score__head,
+.diagram svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.diagram--delivery {
+  aspect-ratio: 960 / 420;
+}
+
+.diagram--architecture {
+  aspect-ratio: 1200 / 640;
+}
+
+.diagram__node rect {
+  fill: var(--surface);
+  stroke: var(--line);
+  stroke-width: 1.5;
+}
+
+.diagram__node--violet rect {
+  stroke: color-mix(in srgb, var(--violet) 70%, var(--line));
+}
+
+.diagram__node--cyan rect {
+  stroke: color-mix(in srgb, var(--cyan) 70%, var(--line));
+}
+
+.diagram__node--amber rect {
+  stroke: color-mix(in srgb, var(--amber) 70%, var(--line));
+}
+
+.diagram__node--violet .diagram__accent {
+  fill: var(--violet);
+  stroke: none;
+}
+
+.diagram__node--cyan .diagram__accent {
+  fill: var(--cyan);
+  stroke: none;
+}
+
+.diagram__node--amber .diagram__accent {
+  fill: var(--amber);
+  stroke: none;
+}
+
+.diagram__label {
+  fill: currentColor;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.diagram__label--large {
+  font-size: 26px;
+  letter-spacing: -0.02em;
+}
+
+.diagram__index,
+.diagram__hint {
+  fill: var(--violet);
+  font-family: var(--font-mono);
+  font-size: 16px;
+}
+
+.diagram__hint {
+  fill: var(--muted);
+  font-size: 15px;
+}
+
+.diagram__edge {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.5;
+}
+
+.diagram__edge--cyan {
+  stroke: var(--cyan);
+}
+
+.diagram__edge--amber {
+  stroke: var(--amber);
+}
+
+.diagram__arrow path {
+  fill: var(--muted);
+}
+
+.diagram__arrow--cyan path {
+  fill: var(--cyan);
+}
+
+.diagram__arrow--amber path {
+  fill: var(--amber);
+}
+
+.diagram__seal {
+  fill: var(--amber);
+}
+
+.diagram__seal-mark {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* The text equivalent of the architecture drawing: hidden visually beside the
+   drawing, shown in its place on narrow screens. */
+.diagram-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The delivery stages as a list, shown in place of the drawing on narrow
+   screens. */
+.delivery-list {
+  display: none;
+  margin: 0;
+  padding: 0.5rem 0 0.5rem 1.25rem;
+  border-left: 1px solid color-mix(in srgb, var(--violet) 68%, var(--line));
+  list-style: none;
+}
+
 .database-panel__header {
   display: flex;
   align-items: center;
@@ -487,20 +656,13 @@ a.button--primary {
   text-transform: uppercase;
 }
 
-.execution-score__head code,
 .database-panel__header code {
   color: var(--cyan);
   font-size: 0.75rem;
   text-transform: none;
 }
 
-.execution-score ol {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.execution-score li {
+.delivery-list li {
   display: grid;
   min-height: 3.55rem;
   grid-template-columns: 2rem 1fr;
@@ -510,63 +672,33 @@ a.button--primary {
   border-top: 1px solid var(--line);
 }
 
-.execution-score__number,
+.delivery-list__number,
 .guarantee-card__index {
   color: var(--violet);
   font-family: "JetBrains Mono Variable", monospace;
   font-size: 0.75rem;
 }
 
-.execution-score li div {
+.delivery-list li div {
   display: grid;
   gap: 0.12rem;
 }
 
-.execution-score li strong {
+.delivery-list li strong {
   font-size: 0.87rem;
 }
 
-.execution-score li span:last-child {
+.delivery-list li span:last-child {
   color: var(--muted);
   font-size: 0.75rem;
   line-height: 1.45;
-}
-
-.execution-score__seal {
-  display: flex;
-  align-items: center;
-  gap: 0.8rem;
-  margin-top: 0.9rem;
-  padding: 0.85rem;
-  border: 1px solid color-mix(in srgb, var(--amber) 35%, transparent);
-  border-radius: var(--radius-control);
-  background: color-mix(in srgb, var(--amber) 7%, transparent);
-}
-
-.execution-score__seal > span {
-  display: grid;
-  width: 2rem;
-  height: 2rem;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--amber);
-  color: var(--ink);
-  font-weight: 900;
-}
-
-.execution-score__seal div {
-  display: grid;
-}
-
-.execution-score__seal small {
-  color: var(--muted);
 }
 
 .statement-grid {
   display: grid;
   grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
   gap: 4rem;
-  padding-block: 7rem;
+  padding-block: var(--section-pad);
   border-top: 1px solid var(--line);
 }
 
@@ -577,35 +709,93 @@ a.button--primary {
 .statement-grid h2,
 .section-heading h2,
 .probes h2,
-.qualification h2,
-.community-cta h2 {
+.qualification h2 {
   margin: 0.75rem 0 1rem;
-  font-size: clamp(2.1rem, 4.5vw, 4.25rem);
-  letter-spacing: -0.04em;
-  line-height: 1.02;
+  font-size: clamp(1.9rem, 3.4vw, 3rem);
+  letter-spacing: -0.035em;
+  line-height: 1.05;
   text-wrap: balance;
 }
 
-.statement {
+.statement-lead {
+  max-width: 44ch;
+  margin: 0;
   color: var(--muted);
-  font-size: clamp(1.25rem, 2.5vw, 1.8rem);
-  line-height: 1.55;
+  font-size: 1.05rem;
+  line-height: 1.7;
 }
 
-.statement p {
-  margin-top: 0;
-  max-width: 38ch;
+/* What travels, what stays: the trust model as two bordered columns, violet
+   for the signed portable facts and amber for the authority that stays local. */
+.travels-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.travels-column {
+  padding: 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+}
+
+.travels-column--travels {
+  box-shadow: inset 0 3px var(--violet);
+}
+
+.travels-column--stays {
+  box-shadow: inset 0 3px var(--amber);
+}
+
+.travels-column h3 {
+  margin: 0.25rem 0 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.travels-column--travels h3 {
+  color: var(--violet);
+}
+
+.travels-column--stays h3 {
+  color: var(--amber);
+}
+
+.travels-column ul {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.travels-column li {
+  padding: 0.55rem 0;
+  border-top: 1px solid var(--line);
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.travels-column p {
+  margin: 1.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.6;
 }
 
 .section-frame {
-  padding-block: 7rem;
+  padding-block: var(--section-pad);
   border-top: 1px solid var(--line);
 }
 
 .section-heading > p:last-child,
 .probes__copy > p,
-.qualification > div:first-child > p:last-child,
-.community-cta > p {
+.qualification__status > p:not(.section-label),
+.community-cta > p:not(.section-label) {
   max-width: 64ch;
   color: var(--muted);
   font-size: 1.05rem;
@@ -622,7 +812,9 @@ a.button--primary {
 }
 
 .guarantee-card {
-  min-height: 15rem;
+  display: grid;
+  min-height: 13rem;
+  align-content: start;
   padding: 1.5rem;
   border-right: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
@@ -641,7 +833,7 @@ a.button--primary {
 }
 
 .guarantee-card h3 {
-  margin: 4rem 0 0.7rem;
+  margin: 2rem 0 0.7rem;
   font-size: 1.2rem;
   letter-spacing: -0.025em;
 }
@@ -651,6 +843,14 @@ a.button--primary {
   color: var(--muted);
   font-size: 0.9rem;
   line-height: 1.65;
+}
+
+.guarantee-card__clause {
+  margin-top: 1rem;
+  color: var(--cyan);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.5;
 }
 
 .handoff-path {
@@ -775,55 +975,17 @@ a.button--primary {
 
 .architecture {
   display: grid;
-  grid-template-columns: 0.8fr 1.2fr;
-  align-items: end;
-  gap: 3rem;
+  gap: 2.5rem;
 }
 
-.architecture-map {
-  grid-row: span 2;
-  padding: 1.5rem;
+.architecture .diagram {
+  padding: 1.25rem;
   border: 1px solid var(--line);
-  border-radius: 1rem;
+  border-radius: var(--radius-panel);
   background:
     linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px),
     color-mix(in srgb, var(--surface) 88%, transparent);
   background-size: 2.5rem 2.5rem;
-}
-
-.architecture-map__core {
-  display: grid;
-  width: min(20rem, 80%);
-  gap: 0.3rem;
-  margin: 1.5rem auto 2.5rem;
-  padding: 1.2rem;
-  border: 1px solid var(--violet);
-  border-radius: 0.85rem;
-  background: var(--ink);
-  text-align: center;
-}
-
-.architecture-map__core span,
-.architecture-map__core small {
-  color: var(--muted);
-  font-family: "JetBrains Mono Variable", monospace;
-  font-size: 0.75rem;
-}
-
-.architecture-map__satellites {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.55rem;
-}
-
-.architecture-map__satellites span {
-  padding: 0.75rem 0.5rem;
-  border: 1px solid var(--line);
-  border-radius: 0.6rem;
-  background: var(--surface);
-  color: var(--muted);
-  font-size: 0.75rem;
-  text-align: center;
 }
 
 .architecture > .button {
@@ -835,6 +997,25 @@ a.button--primary {
   grid-template-columns: 1fr 1fr;
   gap: 3rem 5rem;
   align-items: center;
+}
+
+.not-today,
+.qualification > .community-cta {
+  grid-column: 1 / -1;
+}
+
+.not-today {
+  padding-top: 2.5rem;
+  border-top: 1px solid var(--line);
+}
+
+.not-today h3,
+.community-cta h3 {
+  margin: 0 0 1rem;
+  font-size: clamp(1.4rem, 2.4vw, 1.9rem);
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  text-wrap: balance;
 }
 
 .qualification-progress {
@@ -869,14 +1050,9 @@ a.button--primary {
   color: var(--muted);
 }
 
-.qualification__actions {
-  grid-column: 1 / -1;
-  margin-top: 0;
-}
-
 .community-cta {
-  margin-block: 7rem;
-  padding: clamp(2rem, 6vw, 5rem);
+  margin-top: 1rem;
+  padding: clamp(2rem, 6vw, 4rem);
   border: 1px solid color-mix(in srgb, var(--violet) 45%, var(--line));
   border-radius: 1.5rem;
   background:
@@ -886,7 +1062,7 @@ a.button--primary {
 }
 
 .community-cta > p,
-.community-cta h2 {
+.community-cta h3 {
   max-width: 46rem;
   margin-inline: auto;
 }
@@ -1058,12 +1234,14 @@ a.button--primary {
 }
 
 @media (max-width: 900px) {
+  /* minmax(0, 1fr), not 1fr: a bare 1fr track has an automatic minimum, and
+     the install block's longest command would widen the hero column past the
+     viewport. */
   .hero,
   .statement-grid,
   .probes,
-  .architecture,
   .qualification {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .hero {
@@ -1086,10 +1264,6 @@ a.button--primary {
   .handoff-bridge__line {
     width: 1px;
     height: 100%;
-  }
-
-  .architecture-map {
-    grid-row: auto;
   }
 
   .community-grid {
@@ -1129,7 +1303,7 @@ a.button--primary {
     order: 3;
   }
 
-  .hero__scenario {
+  .install-block {
     order: 4;
   }
 
@@ -1147,14 +1321,99 @@ a.button--primary {
     order: 6;
   }
 
+  /* Narrow screens get the same data as text: the delivery stages as the
+     list, the architecture as its edge list. */
+  .diagram {
+    display: none;
+  }
+
+  .delivery-list {
+    display: block;
+  }
+
+  .diagram-text {
+    position: static;
+    display: grid;
+    width: auto;
+    height: auto;
+    gap: 0.5rem;
+    padding-left: 1.1rem;
+    overflow: visible;
+    clip-path: none;
+    color: var(--muted);
+    font-size: 0.9rem;
+    line-height: 1.5;
+    white-space: normal;
+  }
+
   .guarantee-grid,
-  .architecture-map__satellites,
+  .travels-grid,
   .community-grid {
     grid-template-columns: 1fr;
   }
 
   .community-grid p {
     min-height: auto;
+  }
+
+  /* The capability matrix stacks into cards: the column headers leave the
+     screen (visually only) and each cell names its column itself. */
+  .works-today__table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .works-today__table,
+  .works-today__table tbody,
+  .works-today__table tr,
+  .works-today__table th,
+  .works-today__table td {
+    display: block;
+  }
+
+  .works-today__table tr {
+    padding: 0.9rem 1rem;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .works-today__table tr:last-child {
+    border-bottom: none;
+  }
+
+  .works-today__table th,
+  .works-today__table td {
+    padding: 0.3rem 0;
+    border-bottom: none;
+  }
+
+  .works-today__table tbody th[scope="row"] {
+    padding-bottom: 0.6rem;
+    font-size: 1rem;
+  }
+
+  .works-today__table td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 0.3rem;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .works-today__table a {
+    display: flex;
+    width: 100%;
+    min-height: 44px;
+    margin-block: 0;
+    padding: 0.55rem 0.8rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
   }
 
   .database-panel li {
@@ -1186,7 +1445,7 @@ a.button--primary {
   .theme-toggle,
   .mobile-nav summary,
   .qualification-pill,
-  .execution-score__seal {
+  .install {
     border: 1px solid ButtonText;
   }
 

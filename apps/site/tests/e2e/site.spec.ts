@@ -33,11 +33,61 @@ test("landing presents the honest delivery and qualification contract", async ({
   await expect(page.locator('a[href^="/"]:not([href^="/verchestra/"])')).toHaveCount(0);
 });
 
+// why: the redesigned landing page carries one concrete artefact per section.
+// The two drawings are inline SVG with a role, a title, and a description, and
+// the install block names a real build; a page that lost either would still
+// pass the status assertions above.
+test("landing renders the install block, both diagrams, and the derived numbers", async ({ page }) => {
+  await page.goto("");
+  await expect(page.getByLabel("Current public status")).toHaveCount(1);
+  await expect(page.locator("h1")).toHaveCount(1);
+  const install = page.locator("pre.install");
+  await expect(install).toBeVisible();
+  await expect(install).toHaveAttribute("tabindex", "0");
+  await expect(install).toContainText(/npx verchestra@0\.0\.0-qualification(?:\.\d+)? --version/u);
+  await expect(install).toContainText("self-test --profile smoke");
+  await expect(page.locator(".diagram[role=img]")).toHaveCount(2);
+  await expect(page.getByRole("img", { name: /delivery path/u })).toBeVisible();
+  await expect(page.getByRole("img", { name: /architecture/u })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: /capabilities, \d+ public reports/u })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: "What travels. What stays." })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Read the signed 1\.0 hold/u })).toHaveAttribute(
+    "href",
+    "https://github.com/accd/verchestra/blob/main/docs/qualification/release-decision-1.0.0.md"
+  );
+  await expect(page.getByRole("table")).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Evidence" })).toBeVisible();
+});
+
 test("mobile navigation and the status remain usable in the first viewport", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("");
   const status = page.getByLabel("Current public status");
   await expect(status).toBeInViewport();
+  // The install block follows the status on a phone, and the drawings give
+  // way to the same data as text: the stage list and the architecture edges.
+  await expect(page.locator("pre.install")).toBeVisible();
+  // The page clips its own overflow, so the viewport-width check elsewhere
+  // cannot see a hero column the install block has pushed past the screen;
+  // the block itself must end inside the viewport and scroll its content.
+  const installBox = await page.locator("pre.install").boundingBox();
+  expect(installBox && installBox.x + installBox.width <= 390, "the install block fits the viewport").toBe(true);
+  await expect(page.locator("pre.install")).toHaveCSS("overflow-x", "auto");
+  await expect(page.locator(".diagram")).toHaveCount(2);
+  for (const diagram of await page.locator(".diagram").all()) await expect(diagram).toBeHidden();
+  await expect(page.locator("ol.delivery-list")).toBeVisible();
+  await expect(page.locator("ol.delivery-list > li")).toHaveCount(6);
+  await expect(page.locator("ul.diagram-text")).toBeVisible();
+  await expect(page.locator("ul.diagram-text > li").first()).toContainText("vestra CLI → Application workflows");
+  // The capability matrix stacks into cards: no column header on screen, and
+  // every cell names its column.
+  const headerHeight = await page
+    .locator(".works-today__table thead")
+    .evaluate((element) => element.getBoundingClientRect().height);
+  expect(headerHeight).toBeLessThanOrEqual(1);
+  const evidenceCell = page.locator(".works-today__table td[data-label=Evidence]").first();
+  await expect(evidenceCell).toBeVisible();
+  await expect(evidenceCell).toHaveCSS("display", "block");
   const menu = page.locator("details.mobile-nav > summary");
   await menu.click();
   await expect(page.getByRole("navigation", { name: "Mobile navigation" })).toBeVisible();

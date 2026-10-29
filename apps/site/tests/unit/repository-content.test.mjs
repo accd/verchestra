@@ -13,6 +13,7 @@ import {
   QUALIFICATION_REPORT_FILE,
   qualificationSidebarItems,
   isCanonicalSourcePath,
+  publishedLauncherVersion,
   resolveQualification,
   validateRoadmapChain,
   rewriteCanonicalLinks,
@@ -89,6 +90,47 @@ test("rejects a missing report inside the completed qualification sequence", asy
     compileQualificationStatus(new URL(`file:///${fixture.replaceAll("\\", "/")}/`)),
     /missing qualification report T02/
   );
+});
+
+// The landing page's install command names whatever build the TUF publication
+// ledger recorded last, read at build time, so the page can never pin a
+// version by hand that the ledger has since moved past.
+test("the published launcher version is the ledger's latest release", async () => {
+  const repositoryRoot = new URL("../../../../", import.meta.url);
+  const ledger = JSON.parse(
+    await readFile(new URL("docs/qualification/tuf-publication-ledger.json", repositoryRoot), "utf8")
+  );
+  const releases = ledger.entries.filter((entry) => entry.kind === "release");
+  const latest = releases.reduce((best, entry) => (entry.sequence > best.sequence ? entry : best));
+
+  const version = publishedLauncherVersion(repositoryRoot);
+  assert.equal(version, latest.semanticVersion);
+  assert.match(version, /^0\.0\.0-qualification(?:\.\d+)?$/u, "the published build is a qualification build, not 1.0");
+});
+
+test("the published launcher version ignores role refreshes and fails without a release", async (t) => {
+  const fixture = join(tmpdir(), `verchestra-ledger-${crypto.randomUUID()}`);
+  t.after(() => rm(fixture, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
+  const ledgerPath = join(fixture, "docs", "qualification", "tuf-publication-ledger.json");
+  await mkdir(join(fixture, "docs", "qualification"), { recursive: true });
+
+  // The fixtures are literal JSON text: the canonical-JSON census counts every
+  // JSON.stringify under apps/, so a test must not add one.
+  await writeFile(
+    ledgerPath,
+    [
+      '{"entries": [',
+      '{"sequence": 1, "kind": "release", "semanticVersion": "0.0.0-qualification"},',
+      '{"sequence": 3, "kind": "release", "semanticVersion": "0.0.0-qualification.3"},',
+      '{"sequence": 2, "kind": "release", "semanticVersion": "0.0.0-qualification.2"},',
+      '{"sequence": 4, "kind": "role-refresh", "semanticVersion": "0.0.0-qualification.9"}',
+      "]}"
+    ].join("\n")
+  );
+  assert.equal(publishedLauncherVersion(fixture), "0.0.0-qualification.3");
+
+  await writeFile(ledgerPath, '{"entries": [{"sequence": 1, "kind": "role-refresh"}]}');
+  assert.throws(() => publishedLauncherVersion(fixture), /no release entry/u);
 });
 
 test("rejects repository sources that escape the repository root", () => {

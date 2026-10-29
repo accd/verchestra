@@ -1,0 +1,101 @@
+---
+// A hand-authored inline SVG of the Mermaid block in docs/architecture.md.
+// Every label and edge comes from src/lib/architecture-diagram.ts, which
+// tests/unit/architecture-diagram-labels.test.mjs pins to the Mermaid source.
+import {
+  ARCHITECTURE_VIEWBOX,
+  architectureEdgePath,
+  architectureEdges,
+  architectureNode,
+  architectureNodes
+} from "../lib/architecture-diagram.ts";
+
+const LINE_HEIGHT = 20;
+// The evidence chain reads in cyan; policy enters in amber; the rest is muted.
+const edgeTone = (from: string) => {
+  if (from === "EVIDENCE" || from === "VERIFY") return "cyan";
+  if (from === "POLICY") return "amber";
+  return "plain";
+};
+const edges = architectureEdges.map(([from, to]) => ({
+  from,
+  to,
+  tone: edgeTone(from),
+  path: architectureEdgePath(architectureNode(from), architectureNode(to))
+}));
+const label = (id: string) => architectureNode(id).label;
+const description = [
+  `${label("CLI")} drives ${label("APP")}, which coordinate seven subsystems: `,
+  architectureEdges
+    .filter(([from]) => from === "APP")
+    .map(([, to]) => label(to))
+    .join(", "),
+  `. ${label("POLICY")} are evaluated before the workflows act. ${label("EVIDENCE")} feed ${label("VERIFY")}, which ends in ${label("HUMAN")}.`
+].join("");
+---
+
+<div
+  class="diagram diagram--architecture"
+  role="img"
+  aria-labelledby="architecture-diagram-title architecture-diagram-desc"
+>
+  <svg
+    viewBox={`0 0 ${ARCHITECTURE_VIEWBOX.width} ${ARCHITECTURE_VIEWBOX.height}`}
+    xmlns="http://www.w3.org/2000/svg"
+    focusable="false"
+    aria-hidden="true"
+  >
+    <title id="architecture-diagram-title">Verchestra architecture: a delivery control plane</title>
+    <desc id="architecture-diagram-desc">{description}</desc>
+    <defs>
+      {["plain", "cyan", "amber"].map((tone) => (
+        <marker
+          id={`architecture-arrow-${tone}`}
+          class={`diagram__arrow diagram__arrow--${tone}`}
+          viewBox="0 0 10 10"
+          refX="9"
+          refY="5"
+          markerWidth="10"
+          markerHeight="10"
+          markerUnits="userSpaceOnUse"
+          orient="auto"
+        >
+          <path d="M0,0 L10,5 L0,10 z"></path>
+        </marker>
+      ))}
+    </defs>
+    {edges.map((edge) => (
+      <path
+        class={`diagram__edge diagram__edge--${edge.tone}`}
+        d={edge.path}
+        marker-end={`url(#architecture-arrow-${edge.tone})`}
+        data-edge={`${edge.from}-${edge.to}`}
+      ></path>
+    ))}
+    {architectureNodes.map((node) => (
+      <g class={`diagram__node diagram__node--${node.tone}`} data-node={node.id}>
+        <rect x={node.x} y={node.y} width={node.width} height={node.height} rx="10"></rect>
+        <text
+          class="diagram__label"
+          x={node.x + node.width / 2}
+          y={node.y + node.height / 2 - ((node.lines.length - 1) * LINE_HEIGHT) / 2}
+          text-anchor="middle"
+          dominant-baseline="central"
+        >
+          {node.lines.map((line, index) => (
+            <tspan x={node.x + node.width / 2} dy={index === 0 ? 0 : LINE_HEIGHT}>
+              {line}
+            </tspan>
+          ))}
+        </text>
+      </g>
+    ))}
+  </svg>
+</div>
+<ul class="diagram-text">
+  {edges.map((edge) => (
+    <li>
+      {label(edge.from)} → {label(edge.to)}
+    </li>
+  ))}
+</ul>

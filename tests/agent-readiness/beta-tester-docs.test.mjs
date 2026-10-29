@@ -100,11 +100,15 @@ test("the README Beta testers section scopes every command family", () => {
   assert.match(beta, /SECURITY\.md#[a-z-]*sandbox/u, "the section does not link the not-a-sandbox statement");
 });
 
+// why: the landing page derives its install command from the ledger at build
+// time (`publishedLauncherVersion`); listing its source here means a version
+// typed into it by hand would be caught the same way as in a guide.
 const PINNED_DOCUMENTS = Object.freeze([
   "README.md",
   "docs/quick-start.md",
   "apps/vestra-launcher/README.md",
-  "apps/site/src/content/docs/docs/install-and-run.md"
+  "apps/site/src/content/docs/docs/install-and-run.md",
+  "apps/site/src/pages/index.astro"
 ]);
 
 test("every pinned npx command names the latest ledger version", () => {

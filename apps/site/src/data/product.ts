@@ -46,35 +46,44 @@ export const deliveryStages = [
   }
 ] as const;
 
+// `clause` is the one concrete mechanism behind each guarantee, in the words
+// docs/architecture.md uses for it, so the landing page can show a fact rather
+// than a restatement of the title.
 export const guarantees = [
   {
     title: "Portable execution",
     description: "Move work between qualified environments without transferring credentials or machine authority.",
+    clause: "Execution Package, Handoff, Capsule",
     tone: "violet"
   },
   {
     title: "Policy before effects",
     description: "Capabilities, approvals, leases, and egress rules are evaluated before external actions.",
+    clause: "Cedar, approvals, leases, egress",
     tone: "cyan"
   },
   {
     title: "Read-only discovery",
     description: "Bounded database probes expose approved context without creating a hidden writer.",
+    clause: "bounded plans, audit evidence, read-only credentials",
     tone: "cyan"
   },
   {
     title: "Evidence, not assertions",
     description: "Packages, runs, reports, and release inputs bind their source state by digest and signature.",
+    clause: "content digests, signatures, sealed reports",
     tone: "violet"
   },
   {
     title: "Human control",
     description: "Independent verification and human acceptance remain explicit workflow states.",
+    clause: "independent verification, then human acceptance",
     tone: "amber"
   },
   {
     title: "Safe repetition",
     description: "Initialization, effects, Git operations, recovery, and handoff converge idempotently.",
+    clause: "idempotent init, effects, Git, recovery, handoff",
     tone: "amber"
   }
 ] as const;

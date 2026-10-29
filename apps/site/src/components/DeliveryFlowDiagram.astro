@@ -1,0 +1,123 @@
+---
+// The delivery path as one inline SVG, mapped over the typed `deliveryStages`
+// so the drawing and the mobile list (the `<ol>` the page shows at or below
+// 680px) describe the same six stages. The signed-package seal sits between
+// stage 3 (the Execution Package is sealed) and stage 4 (a qualified driver
+// receives it): that is the point where work becomes portable.
+import { deliveryStages } from "../data/product.ts";
+
+const VIEWBOX = { width: 960, height: 420 } as const;
+const NODE = { width: 290, height: 92 } as const;
+const COLUMNS = [15, 335, 655] as const;
+const ROWS = [16, 312] as const;
+const SEAL = { x: 800, y: 210, radius: 40 } as const;
+// Row one reads left to right, row two right to left, so the path snakes
+// through the seal in the right-hand column.
+const placement = [
+  [0, 0],
+  [1, 0],
+  [2, 0],
+  [2, 1],
+  [1, 1],
+  [0, 1]
+] as const;
+const tones = ["violet", "violet", "violet", "cyan", "cyan", "amber"] as const;
+const nodes = deliveryStages.map((stage, index) => {
+  const [column, row] = placement[index] ?? [0, 0];
+  const x = COLUMNS[column] ?? 0;
+  const y = ROWS[row] ?? 0;
+  return {
+    index,
+    name: stage.name,
+    description: stage.description,
+    tone: tones[index] ?? "violet",
+    x,
+    y,
+    centreX: x + NODE.width / 2,
+    centreY: y + NODE.height / 2
+  };
+});
+const edges = nodes.slice(1).flatMap((to, index) => {
+  const from = nodes[index];
+  if (from === undefined) return [];
+  // The seal interrupts the edge between stages 3 and 4.
+  if (from.y !== to.y) return [];
+  return [
+    to.x > from.x
+      ? `M${from.x + NODE.width},${from.centreY} H${to.x}`
+      : `M${from.x},${from.centreY} H${to.x + NODE.width}`
+  ];
+});
+const sealedFrom = nodes[2];
+const sealedTo = nodes[3];
+const description = `Six stages in order: ${deliveryStages
+  .map((stage, index) => `${index + 1}. ${stage.name}: ${stage.description}`)
+  .join(" ")} A signed-package seal sits between stage 3 and stage 4.`;
+---
+
+<div
+  class="diagram diagram--delivery"
+  role="img"
+  aria-labelledby="delivery-flow-diagram-title delivery-flow-diagram-desc"
+>
+  <svg
+    viewBox={`0 0 ${VIEWBOX.width} ${VIEWBOX.height}`}
+    xmlns="http://www.w3.org/2000/svg"
+    focusable="false"
+    aria-hidden="true"
+  >
+    <title id="delivery-flow-diagram-title">The Verchestra delivery path, from request to human review</title>
+    <desc id="delivery-flow-diagram-desc">{description}</desc>
+    <defs>
+      <marker
+        id="delivery-flow-arrow"
+        class="diagram__arrow diagram__arrow--plain"
+        viewBox="0 0 10 10"
+        refX="9"
+        refY="5"
+        markerWidth="10"
+        markerHeight="10"
+        markerUnits="userSpaceOnUse"
+        orient="auto"
+      >
+        <path d="M0,0 L10,5 L0,10 z"></path>
+      </marker>
+    </defs>
+    {edges.map((path) => (
+      <path class="diagram__edge diagram__edge--plain" d={path} marker-end="url(#delivery-flow-arrow)" />
+    ))}
+    {sealedFrom && sealedTo && (
+      <g class="diagram__seal-group">
+        <path
+          class="diagram__edge diagram__edge--amber"
+          d={`M${sealedFrom.centreX},${sealedFrom.y + NODE.height} V${SEAL.y - SEAL.radius}`}
+        />
+        <path
+          class="diagram__edge diagram__edge--amber"
+          d={`M${sealedTo.centreX},${SEAL.y + SEAL.radius} V${sealedTo.y}`}
+          marker-end="url(#delivery-flow-arrow)"
+        />
+        <circle class="diagram__seal" cx={SEAL.x} cy={SEAL.y} r={SEAL.radius} />
+        <path class="diagram__seal-mark" d={`M${SEAL.x - 14},${SEAL.y} l10,10 l18,-20`} />
+        <text class="diagram__hint" x={SEAL.x - SEAL.radius - 16} y={SEAL.y - 6} text-anchor="end">
+          signed package
+        </text>
+        <text class="diagram__hint" x={SEAL.x - SEAL.radius - 16} y={SEAL.y + 16} text-anchor="end">
+          digests · signature
+        </text>
+      </g>
+    )}
+    {nodes.map((node) => (
+      <g class={`diagram__node diagram__node--${node.tone}`} data-node={node.index + 1}>
+        <rect x={node.x} y={node.y} width={NODE.width} height={NODE.height} rx="12" />
+        <rect class="diagram__accent" x={node.x} y={node.y} width={NODE.width} height="3" rx="1.5" />
+        <text class="diagram__index" x={node.x + 20} y={node.y + 34}>
+          {String(node.index + 1).padStart(2, "0")}
+        </text>
+        <text class="diagram__label diagram__label--large" x={node.x + 20} y={node.y + 68}>
+          {node.name}
+        </text>
+      </g>
+    ))}
+  </svg>
+</div>
