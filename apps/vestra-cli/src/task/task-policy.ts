@@ -55,7 +55,10 @@ export const WORKSPACE_POLICY_PATH = ".verchestra/policy/task-authority.json";
 
 let engine: CedarEnginePort | undefined;
 
-async function cedarEngine(): Promise<CedarEnginePort> {
+// invariant: one Cedar engine per process, from the sealed release's own
+// module or, in a source checkout, the installed one; every built-in policy
+// view the CLI authorizes under (the task's, the probe's) runs on it.
+export async function cedarEngine(): Promise<CedarEnginePort> {
   if (engine !== undefined) return engine;
   const path = isSealedRelease()
     ? fileURLToPath(new URL("../native/cedar-wasm.wasm", import.meta.url))

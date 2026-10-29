@@ -5,15 +5,18 @@ import {
   ApprovalRequester,
   ApprovalVerifier,
   CapabilityBroker,
+  type ApprovalArtifactPort,
   type ApprovalBinding,
   type ApprovalRecord,
   type CapabilityGrant,
   type ExecutionAuthorityPort,
+  type PolicyAuthorizationPort,
   type SignedApprovalArtifact
 } from "@verchestra/application";
 import { canonicalizeJsonV2 } from "@verchestra/domain";
 import { ArtifactSealer, type EvidenceSigner, type TrustRoot } from "@verchestra/evidence";
 import { NodeContentDigest, RuntimeAuthorityStore, SystemClock, type RuntimeStore } from "@verchestra/platform-node";
+import type { CedarRequest, PolicyDecision } from "@verchestra/policy";
 
 import { stateInvalid } from "./task-errors.ts";
 import { HUMAN_ACTOR, WRITE_CAPABILITY, type TaskPlanRecord } from "./task-plan-record.ts";
@@ -27,6 +30,52 @@ function approvalBinding(approvalId: string, sourceStateDigest: string) {
     purpose: "approval",
     bindingId: approvalId,
     sourceStateDigest: sourceStateDigest.slice(7)
+  };
+}
+
+// invariant: a signed approval verifies only against the Workspace's pinned
+// trust root, under the binding of its own approval id and source state.
+// why: `ArtifactSealer` takes a signer even to verify, and its `verify` never
+// signs, so the one it gets here refuses.
+export function approvalVerification(trust: TrustRoot): Pick<ApprovalArtifactPort, "verify"> {
+  const verifier = new ArtifactSealer({
+    signer: {
+      publicKeyRef: trust.keys[0]!,
+      sign: async () => {
+        throw new Error("verify only");
+      }
+    }
+  });
+  return {
+    verify: async (artifact) =>
+      verifier.verify(artifact as never, trust, {
+        ...approvalBinding(artifact.payload.approvalId, artifact.payload.binding.sourceStateDigest),
+        now: new Date()
+      })
+  };
+}
+
+// why: the broker reads only the decision and the view a Cedar decision was
+// made under, from the policy view in force when it asks.
+export function policyAuthorization(authorize: (request: CedarRequest) => PolicyDecision): PolicyAuthorizationPort {
+  return {
+    authorize: async (request) => {
+      const decision = authorize(request as CedarRequest);
+      return { decision: decision.decision, policyViewDigest: decision.policyViewDigest };
+    }
+  };
+}
+
+// invariant: the one way an approval is sealed: by the Workspace evidence key,
+// under the binding approvalVerification checks.
+export function approvalSealing(signer: EvidenceSigner): Pick<ApprovalArtifactPort, "seal"> {
+  const sealer = new ArtifactSealer({ signer });
+  return {
+    seal: async (payload) =>
+      (await sealer.seal(
+        payload as never,
+        approvalBinding(payload.approvalId, payload.binding.sourceStateDigest)
+      )) as unknown as SignedApprovalArtifact
   };
 }
 
@@ -56,27 +105,11 @@ export class TaskAuthority {
     this.#policy = options.policy;
     this.#store = new RuntimeAuthorityStore(options.runtime);
     this.#requests = new ApprovalRequester({ digest: this.#digest, clock: this.#clock, uuid: randomUUID });
-    // why: `ArtifactSealer` takes a signer even to verify, and its `verify`
-    // never signs, so the one it gets here refuses.
-    const verifier = new ArtifactSealer({
-      signer: {
-        publicKeyRef: options.trust.keys[0]!,
-        sign: async () => {
-          throw new Error("verify only");
-        }
-      }
-    });
     this.#approvals = new ApprovalVerifier({
       store: this.#store,
       digest: this.#digest,
       clock: this.#clock,
-      artifacts: {
-        verify: async (artifact) =>
-          verifier.verify(artifact as never, options.trust, {
-            ...approvalBinding(artifact.payload.approvalId, artifact.payload.binding.sourceStateDigest),
-            now: new Date()
-          })
-      }
+      artifacts: approvalVerification(options.trust)
     });
     this.#capabilities = new CapabilityBroker({
       store: this.#store,
@@ -84,12 +117,7 @@ export class TaskAuthority {
       clock: this.#clock,
       uuid: randomUUID,
       approvals: this.#approvals,
-      policy: {
-        authorize: async (request) => {
-          const decision = this.#policy.authorize(request as never);
-          return { decision: decision.decision, policyViewDigest: decision.policyViewDigest };
-        }
-      }
+      policy: policyAuthorization((request) => this.#policy.authorize(request))
     });
   }
 
@@ -109,18 +137,11 @@ export class TaskAuthority {
   async record(signer: EvidenceSigner): Promise<ApprovalRecord> {
     const existing = await this.#store.loadApproval(this.#plan.approvalRequest.approvalId);
     if (existing !== undefined) return existing;
-    const sealer = new ArtifactSealer({ signer });
     return new ApprovalRecorder({
       store: this.#store,
       digest: this.#digest,
       clock: this.#clock,
-      artifacts: {
-        seal: async (payload) =>
-          (await sealer.seal(
-            payload as never,
-            approvalBinding(payload.approvalId, payload.binding.sourceStateDigest)
-          )) as unknown as SignedApprovalArtifact
-      }
+      artifacts: approvalSealing(signer)
     }).record(this.#plan.approvalRequest, { kind: "human", id: HUMAN_ACTOR });
   }
 
