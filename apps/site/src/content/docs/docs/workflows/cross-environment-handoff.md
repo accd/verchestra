@@ -15,4 +15,20 @@ The receiving environment:
 4. resumes from the last idempotent checkpoint;
 5. appends evidence without rewriting accepted history.
 
+The sequence below is the target workflow a handoff follows end to end; today `init` is the part composed into the CLI, and the other steps are qualified piece by piece in the [qualification reports](/verchestra/docs/qualification/).
+
+```mermaid
+sequenceDiagram
+  participant S as Source environment
+  participant V as Verchestra
+  participant R as Receiving environment
+  participant H as Human reviewer
+  S->>V: Capture requirements, evidence, and decisions
+  V->>V: Seal a portable Execution Package
+  V->>R: Publish signed Handoff
+  R->>V: Rebuild local authority and run declared gates
+  V->>H: Present independent verification evidence
+  H->>V: Accept or reject
+```
+
 Provider-specific prompts are never the handoff contract. Jira or Confluence may expose a human-readable projection, but the signed repository package remains the executable source of truth.
