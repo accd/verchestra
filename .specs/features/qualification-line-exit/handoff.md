@@ -56,7 +56,7 @@ tracked evidence it produces is named beside it.
       (`.specs/features/release-decision/prepared-decision.md` §4.3, with the
       record's path), paste the signature, and confirm `pnpm agent:check`
       reports no warning.
-- [ ] Confirm the status of AD-033 in `.specs/STATE.md`: the signed decision
+- [x] Confirm the status of AD-033 in `.specs/STATE.md`: the signed decision
       records it as ratified on 2026-08-28; the status line still reads
       proposed.
 - [ ] Name a custodian #2 if one becomes available

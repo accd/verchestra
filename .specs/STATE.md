@@ -373,8 +373,9 @@ note. -->
 
 ### AD-033 — The signed decision body is the §4.1 canonical projection (#18)
 
-- **Status:** proposed (owner ratifies by reviewing the pull request that
-  carries the signature-verifying validator).
+- **Status:** ratified on 2026-08-28, when the owner signed
+  `docs/qualification/release-decision-1.0.0.md` over these bytes; confirmed by
+  the owner on 2026-10-29.
 - **Decision:** The bytes a release decision's `signature` covers are the RFC
   8785 canonical JSON of `{ claims, bodyDigest }`, where `claims` is the decision
   frontmatter with the `signature` field removed and `bodyDigest` is
@@ -392,11 +393,9 @@ note. -->
   enforces so a promote's signature is accountable rather than decorative.
 - **Note (2026-10-29):** the signed decision file
   `docs/qualification/release-decision-1.0.0.md` ("Provenance of this record")
-  states that §4.1 was "ratified as AD-033" when it was signed on 2026-08-28,
-  while the status line above still reads proposed. The decision file is
-  signed and is not edited. The owner is asked to confirm the status here
-  (`.specs/features/qualification-line-exit/handoff.md`, owner checklist);
-  the status line is left for the owner.
+  states that §4.1 was "ratified as AD-033" when it was signed on 2026-08-28.
+  The status line read proposed until the owner confirmed it on 2026-10-29
+  (`.specs/features/qualification-line-exit/handoff.md`, owner checklist).
 
 ### AD-034 — Readable provider credentials get their own qualified contract; key material keeps non-exportable (#379)
 
