@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { NodeEd25519Signer, createTrustRoot, type EvidenceSigner, type TrustRoot } from "@verchestra/evidence";
 import { EncryptedFileKeyProvider } from "@verchestra/platform-node";
 
+import { SIGNING_PASSPHRASE, readCredentials } from "./task-credentials.ts";
 import { stateInvalid, taskError } from "./task-errors.ts";
 import { objectRow, readJsonFile, writeJsonAtomic } from "./task-files.ts";
 import type { TaskWorkspace } from "./task-workspace.ts";
@@ -36,6 +37,18 @@ export async function workspaceSigner(workspace: TaskWorkspace, passphrase: stri
   }
   await pinTrustAnchor(workspace, signer);
   return signer;
+}
+
+// invariant: the evidence key unlocked with the brokered signing passphrase,
+// the one credential a command that only signs reads (TCK-05).
+export async function unlockedSigner(
+  io: { readonly platform: string; readonly keychainPath?: string },
+  workspace: TaskWorkspace
+): Promise<EvidenceSigner> {
+  const keychain = io.keychainPath === undefined ? {} : { keychainPath: io.keychainPath };
+  const source = { workspaceId: workspace.workspaceId, platform: io.platform, ...keychain };
+  const credentials = await readCredentials(source, [SIGNING_PASSPHRASE]);
+  return workspaceSigner(workspace, credentials.get(SIGNING_PASSPHRASE) as string);
 }
 
 // why: verification needs the public key without the passphrase; it is pinned

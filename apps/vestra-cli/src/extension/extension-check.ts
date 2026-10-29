@@ -4,12 +4,16 @@
 // importable from here (tests/architecture/extension-host-composition.test.mjs).
 import type { CommandResult } from "@verchestra/application";
 import type { SkillLock } from "@verchestra/agent-runtime";
-import { WorkspaceProbeAdmission, type WorkspaceProbeWorkerExtension } from "@verchestra/extension-host/admission";
+import {
+  WorkspaceProbeAdmission,
+  type WorkspaceProbeWorkerExtension,
+  type WorkspaceProbeWorkerRequest
+} from "@verchestra/extension-host/admission";
 import { assertProbeWorkerEnvironment, probeLaunchDigest } from "@verchestra/platform-node";
 
 import type { TaskCommandIo } from "../task/task-io.ts";
 import { workspaceTrustRoot } from "../task/task-signing.ts";
-import { openTaskWorkspace, requireWorkspaceStateContained } from "../task/task-workspace.ts";
+import { openTaskWorkspace, requireWorkspaceStateContained, type TaskWorkspace } from "../task/task-workspace.ts";
 import type { ExtensionApproval } from "./extension-approval-store.ts";
 import { approvalStore, lockedRequest, refuseUnsupportedPlatform, resolveEntry } from "./extension-workspace.ts";
 import { SkillLockFile, extensionRegistry, workspaceLockVerifier } from "./skill-lock-file.ts";
@@ -140,13 +144,24 @@ function line(row: ExtensionCheckRow): string {
   return `fail ${row.id}: ${row.code}: ${row.recovery}`;
 }
 
+// invariant: what `vestra extension check` judged for one approval reference:
+// its rows in order, and the lock, request, resolved extension and approval
+// they were judged on; the extension and the approval are present only when
+// their rows passed.
+export interface ExtensionInspection {
+  readonly checks: readonly ExtensionCheckRow[];
+  readonly lock: SkillLock | null;
+  readonly request: WorkspaceProbeWorkerRequest;
+  readonly extension?: WorkspaceProbeWorkerExtension;
+  readonly approval?: ExtensionApproval;
+}
+
 // invariant: AC 10, AC 11, AC 14. Admission runs with the production lock and
 // approval ports and no grant, so nothing is admitted and nothing starts; the
-// entry and the launch are measured, never executed.
-export async function checkExtension(io: TaskCommandIo, approvalRef: string): Promise<CommandResult> {
-  refuseUnsupportedPlatform(io.platform);
-  const workspace = await openTaskWorkspace(io, { ensure: false });
-  await requireWorkspaceStateContained(workspace.layout);
+// entry and the launch are measured, never executed. `vestra probe run`
+// judges its worker through this same inspection, so it refuses with the
+// code `check` reports (.specs/features/probe-run/plan.md, AC 12).
+export async function inspectExtension(workspace: TaskWorkspace, approvalRef: string): Promise<ExtensionInspection> {
   const trust = await workspaceTrustRoot(workspace).catch(() => undefined);
   const registry = extensionRegistry(workspaceLockVerifier(trust));
   const store = approvalStore(workspace);
@@ -180,6 +195,20 @@ export async function checkExtension(io: TaskCommandIo, approvalRef: string): Pr
     await entryRow(workspace.repositoryRoot, extensionPassed),
     await launchRow(extensionPassed, approvalPassed)
   ];
+  return Object.freeze({
+    checks,
+    lock,
+    request,
+    ...(extensionPassed === undefined ? {} : { extension: extensionPassed }),
+    ...(approvalPassed === undefined ? {} : { approval: approvalPassed })
+  });
+}
+
+export async function checkExtension(io: TaskCommandIo, approvalRef: string): Promise<CommandResult> {
+  refuseUnsupportedPlatform(io.platform);
+  const workspace = await openTaskWorkspace(io, { ensure: false });
+  await requireWorkspaceStateContained(workspace.layout);
+  const { checks } = await inspectExtension(workspace, approvalRef);
   const failed = checks.filter((row) => row.status !== "pass");
   return { data: { checks }, diagnostics: failed.map(line), exitCode: failed.length === 0 ? 0 : 4 };
 }

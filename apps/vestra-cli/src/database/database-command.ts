@@ -2,8 +2,7 @@
 // through a dynamic import, so no other command loads data-probe.
 import type { CliCommand, CommandResult } from "@verchestra/application";
 
-import { cliError } from "../cli-errors.ts";
-import { SIGNING_PASSPHRASE, readCredentials } from "../task/task-credentials.ts";
+import { requiredOption } from "../cli-options.ts";
 import {
   executeTaskFamilyCommand,
   type TaskFamily,
@@ -11,41 +10,31 @@ import {
   type TaskFamilyProcess
 } from "../task/task-dispatch.ts";
 import type { TaskCommandIo } from "../task/task-io.ts";
-import { workspaceSigner, workspaceTrustRoot } from "../task/task-signing.ts";
+import { unlockedSigner, workspaceTrustRoot } from "../task/task-signing.ts";
 import { openTaskWorkspace, type TaskWorkspace } from "../task/task-workspace.ts";
 import { readDefinition, registrationDocument } from "./database-definition.ts";
 import { databasePublicError } from "./database-errors.ts";
 import {
   DATABASE_ID,
   DatabaseRegistrationFiles,
-  type DatabaseRegistrationEntry
+  type DatabaseRegistrationEntry,
+  type DatabaseRegistrationFilesOptions
 } from "./database-registration-file.ts";
-
-// invariant: an option a command needs is refused as an argument (exit 2),
-// naming the option, before anything is read.
-function required(command: CliCommand, option: string, pattern?: RegExp): string {
-  const value = command.options[option];
-  if (typeof value !== "string" || (pattern !== undefined && !pattern.test(value)))
-    throw cliError("VES_CLI_ARGUMENT_INVALID", { argument: `--${option}` }, `--${option} is missing or malformed`);
-  return value;
-}
 
 // invariant: door 1. Registrations live in the Workspace's repository and
 // verify against the pinned anchor of its evidence key; with no anchor there
-// is nothing to verify against, so no registration verifies.
-function registrationFiles(workspace: TaskWorkspace): DatabaseRegistrationFiles {
-  return new DatabaseRegistrationFiles({
+// is nothing to verify against, so no registration verifies. `vestra probe
+// run` reads them through the same options.
+export function registrationOptions(workspace: TaskWorkspace): DatabaseRegistrationFilesOptions {
+  return {
     repositoryRoot: workspace.repositoryRoot,
     workspaceId: workspace.workspaceId,
     trust: () => workspaceTrustRoot(workspace).catch(() => undefined)
-  });
+  };
 }
 
-async function unlockedSigner(io: TaskCommandIo, workspace: TaskWorkspace) {
-  const keychain = io.keychainPath === undefined ? {} : { keychainPath: io.keychainPath };
-  const source = { workspaceId: workspace.workspaceId, platform: io.platform, ...keychain };
-  const credentials = await readCredentials(source, [SIGNING_PASSPHRASE]);
-  return workspaceSigner(workspace, credentials.get(SIGNING_PASSPHRASE) as string);
+function registrationFiles(workspace: TaskWorkspace): DatabaseRegistrationFiles {
+  return new DatabaseRegistrationFiles(registrationOptions(workspace));
 }
 
 // invariant: AC 1 to AC 8. The definition is read and validated, and the
@@ -92,9 +81,10 @@ async function removeDatabase(io: TaskCommandIo, databaseId: string) {
 const data = (value: unknown): CommandResult => ({ data: value, diagnostics: [] });
 
 const HANDLERS: Readonly<Record<string, TaskFamilyHandler>> = Object.freeze({
-  "database add": async (command, io) => data(await addDatabase(io, required(command, "definition"))),
+  "database add": async (command, io) => data(await addDatabase(io, requiredOption(command, "definition"))),
   "database list": async (_command, io) => data(await listDatabases(io)),
-  "database remove": async (command, io) => data(await removeDatabase(io, required(command, "database", DATABASE_ID)))
+  "database remove": async (command, io) =>
+    data(await removeDatabase(io, requiredOption(command, "database", DATABASE_ID)))
 });
 
 const DATABASE_FAMILY: TaskFamily = Object.freeze({
