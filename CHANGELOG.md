@@ -8,6 +8,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- `vestra database add|list|remove` record which database a probe may read
+  and under which access policy, without contacting it (#235). `add` reads a
+  definition file of at most 64 KiB, validates its database and policy as a
+  probe plan would, and writes `.verchestra/databases/<databaseId>.json`
+  signed by the Workspace evidence key; adding the same definition again
+  changes nothing, and different content for a registered id is refused.
+  `list` shows each registration as valid, or invalid once its file no longer
+  verifies, and `remove` deletes one. `vestra database --help` lists the
+  family.
 - `vestra extension add|approve|list|revoke|check` take a probe worker from a
   Workspace's own repository to "would be admitted", without running it
   (#235). `add` registers the worker in the signed skill lock
