@@ -3339,6 +3339,45 @@ note. -->
   which under `process-contained` includes the host user's own authority
   (AD-037).
 
+### AD-087 — Verchestra ships a SQLite probe worker that a command writes into the Workspace and that takes its database file and identity from its approved launch
+
+- **Status:** proposed, human review required, with the plan
+  (`.specs/features/sqlite-probe-worker/plan.md`, #235). Doors 1-3 of that
+  plan reach past the feature, so they are recorded here.
+- **Context:** `vestra probe run` (#690, #700) runs a confirmed statement
+  through an approved worker, but no worker ships: the only SQLite worker is a
+  test fixture that imports repository sources by an absolute URL whose bytes
+  are not pinned. An extension's entry must be a regular file inside the
+  Workspace's Git top level, and the probe host runs it as an isolated copy,
+  so a worker must be one self-contained file in the Workspace.
+- **Decision:**
+  1. `vestra probe worker --engine sqlite --entry <path>` writes the release's
+     SQLite worker into the Workspace (owner, 2026-10-29). It never overwrites
+     other bytes. The owner commits the file and registers and approves it with
+     the existing `extension add` and `approve`, so AD-037's rule stands: only
+     Workspace code the owner approved runs.
+  2. The worker takes its database file from `PROBE_SQLITE_PATH` and its
+     handshake id from `PROBE_COMPONENT_ID`, both in its approved environment
+     and so pinned by the approval's launch digest (owner, 2026-10-29). It
+     exits before the handshake without them, and it reads the file only
+     through the read-only `SqliteReadConnection`.
+  3. The sealed release carries the worker as the child bundle
+     `bin/sqlite-probe-worker.mjs`, sealed as `core-code` and importing only
+     `node:` modules. A source checkout builds the same bundle with
+     `corepack pnpm build:probe-worker`.
+- **Alternatives rejected:** `vestra extension add --builtin`, one command
+  that both writes code and signs it into the lock (owner, 2026-10-29);
+  admitting a worker from the release directory, which amends AD-037's entry
+  rule (owner, 2026-10-29); values baked into the written file, one file per
+  database (owner, 2026-10-29); `vestra init --probe-worker`, whose conflict
+  rule refuses the file a later release changes.
+- **Consequence:** a worker written by one release differs in bytes from the
+  next release's, so an upgrade means writing it again and registering the new
+  digest, as a new executable already means a new approval. The worker reads
+  whatever file its approval names, with the host user's authority
+  (`process-contained`, AD-037). Engines that need a credential still have no
+  first-party worker.
+
 ## Handoff
 
 - **Feature:** `strands-subscription-integration` (T1–T10) on `main` through
