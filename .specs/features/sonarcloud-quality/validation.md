@@ -40,8 +40,8 @@ Alternative for the owner: enable `ignoreRestSiblings: true` on
 ## Rules turned off in the project quality profile
 
 The owner chose, on 2026-10-29, to turn these two rules off in a custom quality
-profile (extending Sonar way) assigned to `accd_verchestra`, rather than
-accept each issue. A sample of about 40 of the 396 sites, spread across every
+profile assigned to `accd_verchestra`, rather than accept each issue. The
+profile extends Sonar way comprehensive, the profile the project uses today. A sample of about 40 of the 396 sites, spread across every
 package, found no true positive. Turning the rules off also stops new port
 doubles and ordered loops from raising fresh issues; the cost is that a future
 true positive is no longer flagged.

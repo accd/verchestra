@@ -505,15 +505,15 @@ Every mechanical family is done. What remains is owner work in SonarCloud
 
 - S7503 (212) and S9382 (124 TypeScript + 60 JavaScript): the owner chose,
   2026-10-29, to turn both off in a custom quality profile; the reason is in
-  `validation.md`. The owner creates the profile (extending Sonar way) for
-  TypeScript and for JavaScript, deactivates the rule in each, and assigns
-  both to `accd_verchestra`. Then confirm on the next `main` analysis that
-  both rules read 0 and open issues drop from 409 to the 11 in
-  `validation.md`.
+  `validation.md`. The owner creates the profile for TypeScript and for
+  JavaScript, each extending Sonar way comprehensive (the profile the project
+  uses today, not Sonar way), deactivates the rule in each, and assigns both
+  to `accd_verchestra`. Then confirm on the next `main` analysis that both
+  rules read 0 and open issues drop to the 11 in `validation.md`.
 - The owner marks the 8 S3735 and 3 long-tail issues in `validation.md` as
   Accepted.
 - S4323 and S6582 from probe-host slice 1 were fixed by the Beta session in
-  #682 (`937d1fe6`); confirm both read 0 on the same analysis.
+  #682 (`937d1fe6`); both read 0 on the `main` analysis of `ce9d6bba`.
 
 When those read as expected, T8 is complete: set `status` and `nextTask`
 accordingly and close the feature.
