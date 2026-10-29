@@ -96,6 +96,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   example "Search Ctrl K", so its accessible name contains its visible text
   (WCAG 2.5.3).
 
+### Fixed
+
+- A probe statement with several parameters of one classification is planned
+  with one classification per bind, as every engine parser reads it, so the
+  worker runs it instead of refusing a bind count that no longer matched.
+  `vestra probe run` now binds every parameter of a statement; a plan with
+  zero or one parameter keeps its digests (#235).
+
 ### Security
 
 - The probe worker supervisor refuses, with `VES_PROBE_SECRET_LEAK`, a result
