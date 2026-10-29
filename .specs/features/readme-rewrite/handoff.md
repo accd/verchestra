@@ -5,8 +5,8 @@ issue: null
 status: verification
 branch: docs/readme-rewrite
 baseRevision: d2f6de855089e1496a6d9a95c01c54975da1120e
-lastCompletedTask: T2
-nextTask: T3 — confirm the four Mermaid diagrams render on the pull request's rich diff, then human review and merge
+lastCompletedTask: T3
+nextTask: Human review and merge of pull request #694; rebase on main if #692 merges first
 lastGate: README pin tests 21/21; site unit 64/64; agent:check PASS; site build + check:built PASS (135 pages); gate:quick PASS
 updatedAt: 2026-10-29T19:50:00Z
 ---
@@ -26,9 +26,8 @@ T1 and T2 complete; see `validation.md`.
 
 # Next action
 
-1. Open the pull request against `main`, view its rich diff on GitHub and
-   confirm all four Mermaid diagrams render (GitHub is the README's only
-   Mermaid renderer). Record the result in `validation.md` RR-05.
+1. Pull request #694 is open; the four Mermaid diagrams render on GitHub
+   (recorded in `validation.md` RR-05).
 2. Human review and merge by rebase through the maintainer bypass once the
    required checks pass at the exact head. If #692 merges first, rebase this
    branch; the only shared hunks are README lines 77 and 86-87 in the old
