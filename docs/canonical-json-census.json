@@ -895,7 +895,7 @@
         "canonicalizer": 0,
         "digest": 0,
         "localeCompare": 0,
-        "serialization": 1
+        "serialization": 2
       },
       "reason": "Structured material already uses the V2 contract or is a V2 support primitive."
     },

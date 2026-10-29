@@ -343,11 +343,16 @@ export class ProbeWorkerSupervisor {
     let byteCount = 0;
     await this.#parameters.withParameters(plan.operation.protectedRequestRef, async (parameters) => {
       const secret = new TextDecoder().decode(parameters);
+      // invariant: a row leaks the protected material whether it carries it
+      // as it is or as a JSON string holds it, escaped: a probe's protected
+      // request is itself JSON (AD-086), so its quotes are escaped wherever a
+      // worker echoes it into a string value.
+      const forms = secret.length === 0 ? [] : [secret, JSON.stringify(secret).slice(1, -1)];
       for await (const rows of this.#worker.execute(plan, parameters, signal)) {
         if (signal.aborted) break;
         if (!Array.isArray(rows)) fail("VES_PROBE_RESULT_INVALID", "Probe result chunk is invalid");
         const serialized = JSON.stringify(rows);
-        if (secret.length > 0 && serialized.includes(secret)) {
+        if (forms.some((form) => serialized.includes(form))) {
           fail("VES_PROBE_SECRET_LEAK", "Probe result contains protected parameter material");
         }
         rowCount += rows.length;
