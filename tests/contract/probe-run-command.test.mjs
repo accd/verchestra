@@ -176,8 +176,9 @@ const FAMILIES = Object.freeze({
 // invariant: the CLI runner parses the arguments against the release manifest
 // and maps a refusal to its exit code, exactly as main() does; the command bus
 // is the named family alone. `answer` decides what is typed when the command
-// reads its confirmation, from what it has written to stderr so far.
-async function vestra(fixture, argv, { answer, input = "", platform = process.platform } = {}) {
+// reads its confirmation, from what it has written to stderr so far, and
+// `onStderr` sees each write to stderr as the command makes it.
+async function vestra(fixture, argv, { answer, input = "", platform = process.platform, onStderr } = {}) {
   const stdout = [];
   const stderr = [];
   const stdin =
@@ -197,7 +198,10 @@ async function vestra(fixture, argv, { answer, input = "", platform = process.pl
             platform,
             env,
             stdin,
-            stderr: (value) => stderr.push(value),
+            stderr: (value) => {
+              stderr.push(value);
+              onStderr?.(value);
+            },
             pid: process.pid
           })
       },
@@ -320,7 +324,14 @@ async function probeWorkspace({ workers = [SQLITE_WORKER], modes = {}, definitio
 const typedBack = (review) => bindingDigestOf(review);
 
 async function probe(fixture, request, options = {}) {
-  const { worker = SQLITE_WORKER, database = "orders", confirm = true, answer = typedBack, platform } = options;
+  const {
+    worker = SQLITE_WORKER,
+    database = "orders",
+    confirm = true,
+    answer = typedBack,
+    platform,
+    onStderr
+  } = options;
   const path =
     typeof request === "string" && request.startsWith("@") ? request.slice(1) : await jsonFile(fixture, request);
   const argv = [
@@ -337,7 +348,8 @@ async function probe(fixture, request, options = {}) {
   ];
   return vestra(fixture, argv, {
     ...(answer === null ? {} : { answer }),
-    ...(platform === undefined ? {} : { platform })
+    ...(platform === undefined ? {} : { platform }),
+    onStderr
   });
 }
 
@@ -530,23 +542,16 @@ test("a run whose digest is not typed back is aborted", TIMEOUT, async () => {
     ["no terminal and no --confirm-stdin", { confirm: false, answer: null }]
   ]) {
     const before = runs(fixture).map((run) => run.runId);
-    let shownAt;
+    // why: the review is shown once the run exists, before its digest is read.
+    let reviewedAt;
+    const onStderr = (value) => {
+      if (reviewedAt === undefined && value.startsWith("Approve probe run ")) reviewedAt = started.length;
+    };
     started.length = 0;
     recording = true;
     let result;
     try {
-      const answer = options.answer ?? undefined;
-      result = await probe(fixture, probeRequest(), {
-        ...options,
-        ...(answer === undefined
-          ? {}
-          : {
-              answer: (review) => {
-                shownAt = started.length;
-                return answer(review);
-              }
-            })
-      });
+      result = await probe(fixture, probeRequest(), { ...options, onStderr });
     } finally {
       recording = false;
     }
@@ -555,12 +560,13 @@ test("a run whose digest is not typed back is aborted", TIMEOUT, async () => {
     assert.equal(run.state, "ABORTED", label);
     assert.deepEqual(approvalsOf(fixture, run.runId), [], `${label} recorded an approval`);
     assert.deepEqual(grantsOf(fixture, run.runId), [], `${label} issued a grant`);
+    assert.notEqual(reviewedAt, undefined, `${label} showed no review`);
+    assert.deepEqual(started.slice(reviewedAt), [], `${label} started a process once its run existed`);
     // why: the signing passphrase is read before the run exists (AC 14), so
-    // the credential store's own tool is the one other start a run makes.
+    // the credential store's own tool is the one start besides Git the
+    // command makes, and it is over before the run is created.
     const others = started.filter((file) => !git(file) && !CREDENTIAL_TOOL.test(file));
     assert.deepEqual(others, [], `${label} started a process other than Git`);
-    if (shownAt !== undefined)
-      assert.deepEqual(started.slice(shownAt), [], `${label} started something after its review`);
   }
 });
 
