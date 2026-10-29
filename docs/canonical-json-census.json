@@ -1076,6 +1076,17 @@
       "reason": "The SQLite effect repository stores the canonicalization version the application computed for each idempotency identity and derives no identity of its own; JSON.stringify only compares two receipts in process and stores an ordered string array."
     },
     {
+      "path": "packages/platform-node/src/runtime-store/runtime-migration-runner.ts",
+      "classification": "raw-byte-digest",
+      "signals": {
+        "canonicalizer": 0,
+        "digest": 2,
+        "localeCompare": 0,
+        "serialization": 0
+      },
+      "reason": "The runtime migration checksum is SHA-256 over the migration's SQL text exactly as written, the same digest the store recorded before the runner moved here; it computes no structured JSON identity."
+    },
+    {
       "path": "packages/platform-node/src/runtime-store/runtime-store.ts",
       "classification": "migrated-v2",
       "signals": {

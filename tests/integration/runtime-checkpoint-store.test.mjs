@@ -43,9 +43,9 @@ function tamper(dbPath, sql, ...values) {
 
 test("migration 012 creates the execution checkpoint table as the twelfth registered migration", async () => {
   const { dbPath, store } = await storeFixture();
-  assert.equal(DEFAULT_RUNTIME_MIGRATIONS.length, 12);
-  assert.equal(DEFAULT_RUNTIME_MIGRATIONS.at(-1).id, "012_execution_checkpoints");
-  assert.equal(store.migrationLedger().at(-1).id, "012_execution_checkpoints");
+  assert.equal(DEFAULT_RUNTIME_MIGRATIONS.length, 13);
+  assert.equal(DEFAULT_RUNTIME_MIGRATIONS[11].id, "012_execution_checkpoints");
+  assert.equal(store.migrationLedger()[11].id, "012_execution_checkpoints");
   store.close();
   const db = new DatabaseSync(dbPath, { readOnly: true });
   try {

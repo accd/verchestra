@@ -15,6 +15,11 @@
 export interface RuntimeMigration {
   readonly id: string;
   readonly up: string;
+  // invariant: a migration that drops and recreates a table other tables
+  // reference. The runner applies it with foreign keys off around its
+  // transaction and commits it only when `PRAGMA foreign_key_check` is empty
+  // (AD-086). It is not part of the checksum, which stays the digest of `up`.
+  readonly tableRebuild?: boolean;
 }
 
 const EFFECT_SCHEMA = `
@@ -311,6 +316,46 @@ CREATE TABLE execution_checkpoints (
   UNIQUE (kind, workspace_id, run_id, task_id, sequence)
 ) STRICT;`;
 
+// AD-086 (door 1): a probe run is a third run kind. SQLite cannot change a
+// CHECK in place, so this rebuilds `runs` by SQLite's documented procedure:
+// 001's definition with only the run kind's CHECK widened, every row copied
+// with its rowid, the old table dropped and the new one renamed. Eight tables
+// reference runs(run_id) and keep their rows; dropping a referenced table
+// fails a transaction that runs with foreign keys on, deferred or not, so the
+// runner applies this as a table rebuild.
+const PROBE_RUN_KIND = `
+CREATE TABLE runs_next (
+  run_id TEXT PRIMARY KEY,
+  run_kind TEXT NOT NULL CHECK (run_kind IN ('feature', 'recovery', 'probe')),
+  state TEXT NOT NULL CHECK (state IN (
+    'CREATED', 'INTAKE_REQUIRED', 'READY', 'DISCOVERY_REQUIRED', 'RECONNING',
+    'SPECIFYING', 'SPEC_REVIEW', 'DESIGNING', 'DESIGN_REVIEW', 'TASKING',
+    'EXECUTION_READY', 'AWAITING_EXECUTION_APPROVAL', 'EXECUTION_AUTHORIZED',
+    'IMPLEMENTING', 'VERIFYING', 'REPAIRING', 'HUMAN_RESOLUTION_REQUIRED',
+    'HUMAN_REVIEW', 'HANDOFF_PREPARING', 'AWAITING_HANDOFF_PUBLICATION_APPROVAL',
+    'COMPLETED', 'HANDED_OFF', 'FAILED', 'ABORTED', 'INTERRUPTED', 'RECOVERED'
+  )),
+  state_version INTEGER NOT NULL CHECK (state_version >= 0),
+  repair_cycles INTEGER NOT NULL CHECK (repair_cycles >= 0),
+  approval_binding_digest TEXT,
+  implementation_actor_id TEXT,
+  terminal_capsule_required INTEGER NOT NULL CHECK (terminal_capsule_required IN (0, 1)),
+  predecessor_run_id TEXT,
+  successor_run_id TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+) STRICT;
+INSERT INTO runs_next (
+  rowid, run_id, run_kind, state, state_version, repair_cycles, approval_binding_digest, implementation_actor_id,
+  terminal_capsule_required, predecessor_run_id, successor_run_id, created_at, updated_at
+)
+SELECT
+  rowid, run_id, run_kind, state, state_version, repair_cycles, approval_binding_digest, implementation_actor_id,
+  terminal_capsule_required, predecessor_run_id, successor_run_id, created_at, updated_at
+FROM runs ORDER BY rowid;
+DROP TABLE runs;
+ALTER TABLE runs_next RENAME TO runs;`;
+
 export const DEFAULT_RUNTIME_MIGRATIONS: readonly RuntimeMigration[] = Object.freeze([
   Object.freeze({ id: "001_runtime", up: RUNTIME_SCHEMA }),
   Object.freeze({ id: "002_effects", up: EFFECT_SCHEMA }),
@@ -326,5 +371,6 @@ export const DEFAULT_RUNTIME_MIGRATIONS: readonly RuntimeMigration[] = Object.fr
   // avoid a numbering collision regardless of merge order.
   Object.freeze({ id: "010_policy_view_digest_reencoding", up: POLICY_VIEW_DIGEST_REENCODING }),
   Object.freeze({ id: "011_effect_identity_canonicalization", up: EFFECT_IDENTITY_CANONICALIZATION }),
-  Object.freeze({ id: "012_execution_checkpoints", up: EXECUTION_CHECKPOINT_SCHEMA })
+  Object.freeze({ id: "012_execution_checkpoints", up: EXECUTION_CHECKPOINT_SCHEMA }),
+  Object.freeze({ id: "013_probe_runs", up: PROBE_RUN_KIND, tableRebuild: true })
 ]);

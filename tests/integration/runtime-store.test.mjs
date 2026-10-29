@@ -43,11 +43,11 @@ test("default raw migration applies once and records its checksum", async () => 
   store.close();
 });
 
-test("the migration registry is pinned to twelve entries ending at the execution checkpoints", () => {
-  assert.equal(DEFAULT_RUNTIME_MIGRATIONS.length, 12);
+test("the migration registry is pinned to thirteen entries ending at the probe runs", () => {
+  assert.equal(DEFAULT_RUNTIME_MIGRATIONS.length, 13);
   assert.deepEqual(
     DEFAULT_RUNTIME_MIGRATIONS.slice(-2).map((migration) => migration.id),
-    ["011_effect_identity_canonicalization", "012_execution_checkpoints"]
+    ["012_execution_checkpoints", "013_probe_runs"]
   );
 });
 
@@ -284,7 +284,8 @@ test("foreign-key enforcement rejects orphan authority records", async () => {
 });
 
 test("runtime public-error catalog is complete and schema-valid", async () => {
-  assert.equal(runtimePublicErrorRegistry.codes.length, 19);
+  assert.equal(runtimePublicErrorRegistry.codes.length, 20);
+  assert.ok(runtimePublicErrorRegistry.codes.includes("VES_RUNTIME_MIGRATION_FOREIGN_KEY"));
   assert.ok(runtimePublicErrorRegistry.codes.includes("VES_RUNTIME_CHECKPOINT_CONFLICT"));
   assert.ok(runtimePublicErrorRegistry.codes.includes("VES_RUNTIME_CHECKPOINT_CORRUPT"));
   const schemas = await SchemaRegistry.load(new URL("../../schemas/", import.meta.url));
