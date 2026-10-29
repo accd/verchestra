@@ -3,8 +3,8 @@ schema: verchestra-feature-handoff/v1
 feature: sonarcloud-quality
 issue: null
 status: in_progress
-branch: docs/sonar-t8-quality-profile
-baseRevision: d713137387cb1f7b7ea882cd01227cb0a8ad22ee
+branch: ci/sonar-ignore-s7503-s9382
+baseRevision: 02b50ba88bea5d8917f9cdcfd03a2d82df9ba878
 lastCompletedTask: T8
 nextTask: T8
 lastGate: pnpm gate:quick plus pnpm test:architecture
@@ -500,23 +500,23 @@ issues; 179 bugs, 32 vulnerabilities, 924 code smells; quality gate ERROR.
 
 # Next Exact Action
 
-Every mechanical family is done. What remains is owner work in SonarCloud
-(counts from the `main` analysis of `8a6e7c62`):
+Every mechanical family is done (counts from the `main` analysis of
+`02b50ba8`):
 
-- S7503 (212) and S9382 (124 TypeScript + 60 JavaScript): the owner chose,
-  2026-10-29, to turn both off in a custom quality profile; the reason is in
-  `validation.md`. The owner creates the profile for TypeScript and for
-  JavaScript, each extending Sonar way comprehensive (the profile the project
-  uses today, not Sonar way), deactivates the rule in each, and assigns both
-  to `accd_verchestra`. Then confirm on the next `main` analysis that both
-  rules read 0 and open issues drop to the 11 in `validation.md`.
+- S7503 (211) and S9382 (125 TypeScript + 60 JavaScript) are ignored for every
+  file by `sonar-project.properties` (owner decision, 2026-10-29; reasons in
+  `validation.md`). Confirm on the first `main` analysis after that change
+  lands that both rules read 0.
 - The owner marks the 8 S3735 and 3 long-tail issues in `validation.md` as
   Accepted.
+- S4043 at `apps/vestra-cli/src/database/database-registration-file.ts:259`
+  arrived with database-registration slice 2a (`8633ef0b`); the Beta session
+  owns that file and fixes it with `toSorted` in the slice 2b change.
 - S4323 and S6582 from probe-host slice 1 were fixed by the Beta session in
   #682 (`937d1fe6`); both read 0 on the `main` analysis of `ce9d6bba`.
 
-When those read as expected, T8 is complete: set `status` and `nextTask`
-accordingly and close the feature.
+When open issues read 0 with the 11 Accepted, T8 is complete: set `status` and
+`nextTask` accordingly and close the feature.
 
 # Blockers
 
@@ -527,10 +527,13 @@ None. `SONAR_TOKEN` is set and Automatic Analysis is off (owner, 2026-10-26).
 - No coverage dependency: tests import `.ts` sources, so Node's coverage maps
   to source directly (owner-approved plan, 2026-10-26).
 - `SonarSource/sonarqube-scan-action` added with owner approval, 2026-10-26.
-- S7503 and S9382 are turned off in a custom quality profile, not accepted
-  per issue (owner, 2026-10-29): a sample of about 40 of 396 sites found no
-  true positive, and the rules would keep flagging every new port double and
-  ordered loop.
+- S7503 and S9382 are turned off for the project, not accepted per issue
+  (owner, 2026-10-29): a sample of about 40 of 396 sites found no true
+  positive, and the rules would keep flagging every new port double and
+  ordered loop. The plan refuses a custom quality profile, both assigned to
+  the project and as the organization default, so the rules are ignored in
+  `sonar-project.properties`. An unused "Verchestra" TypeScript profile from
+  that attempt remains in the organization; deleting it is the owner's call.
 - The token is scoped to the presence check and the scan step only, never to
   the test steps that execute the change under review.
 - Coverage scopes are unit, contract and security (security added by #625,

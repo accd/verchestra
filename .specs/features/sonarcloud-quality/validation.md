@@ -37,14 +37,19 @@ Alternative for the owner: enable `ignoreRestSiblings: true` on
 | `AaDw358CW0OXA57WdXPF` | S7785 | `apps/vestra-launcher/closure/single-binary-main.ts:6` | `scripts/build-vestra-binary.mjs` bundles this entry as CommonJS (`format: "cjs"`) for the single executable, and CommonJS has no top-level await.                                                                              |
 | `AaEBb9RM_FksIXlR8Rgp` | S4144 | `packages/application/src/authority/authority.ts:331`  | `ApprovalVerifier` and `ApprovalRecorder` take distinct capability-narrowed ports (verify and load against seal and save). One cannot delegate to the other without a shared base that would merge the two capability surfaces. |
 
-## Rules turned off in the project quality profile
+## Rules turned off for the project
 
-The owner chose, on 2026-10-29, to turn these two rules off in a custom quality
-profile assigned to `accd_verchestra`, rather than accept each issue. The
-profile extends Sonar way comprehensive, the profile the project uses today. A sample of about 40 of the 396 sites, spread across every
-package, found no true positive. Turning the rules off also stops new port
-doubles and ordered loops from raising fresh issues; the cost is that a future
-true positive is no longer flagged.
+The owner chose, on 2026-10-29, to turn these two rules off for the whole
+project rather than accept each issue. The organization's plan refuses both
+assigning a custom quality profile to the project and making one the default
+("not allowed to perform this action"), so `sonar-project.properties` ignores
+them through `sonar.issue.ignore.multicriteria` instead, on every file; the
+project keeps Sonar way comprehensive for every other rule.
+`tests/agent-readiness/sonarcloud-workflow.test.mjs` pins the ignore list to
+exactly these three rule keys. A sample of about 40 of the 396 sites, spread
+across every package, found no true positive. Turning the rules off also stops
+new port doubles and ordered loops from raising fresh issues; the cost is that
+a future true positive is no longer flagged.
 
 ### S7503 — async function without `await` (212)
 
