@@ -3,7 +3,7 @@ import { mkdirSync } from "node:fs";
 import { link, lstat, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 
-import { codeUnitCompare, normalizeDeclaredSet } from "@verchestra/domain";
+import { RUN_KINDS, codeUnitCompare, normalizeDeclaredSet, type RunKind } from "@verchestra/domain";
 
 import {
   ArtifactSealer,
@@ -91,7 +91,7 @@ export interface RunCapsuleBuildInput {
   readonly schemaVersion: 1 | 2;
   readonly workspaceId: string;
   readonly runId: string;
-  readonly runKind: "feature" | "recovery";
+  readonly runKind: RunKind;
   readonly runVersion: number;
   readonly status: RunTerminalStatus;
   readonly riskTier: RunRiskTier;
@@ -476,8 +476,8 @@ function runClassification(valueRow: Row): {
     fail("VES_RUN_CAPSULE_INVALID", "Terminal status is invalid");
   if (!["low", "medium", "high", "critical"].includes(String(valueRow["riskTier"])))
     fail("VES_RUN_CAPSULE_INVALID", "Risk tier is invalid");
-  const runKind = valueRow["runKind"];
-  if (runKind !== "feature" && runKind !== "recovery") fail("VES_RUN_CAPSULE_INVALID", "Run kind is invalid");
+  const runKind = valueRow["runKind"] as RunKind;
+  if (!RUN_KINDS.includes(runKind)) fail("VES_RUN_CAPSULE_INVALID", "Run kind is invalid");
   return { status: valueRow["status"] as RunTerminalStatus, riskTier: valueRow["riskTier"] as RunRiskTier, runKind };
 }
 
@@ -810,7 +810,7 @@ export class FileRunCapsuleStore {
 
 export interface UnsealedRunCapsuleIntent {
   readonly runId: string;
-  readonly runKind: "feature" | "recovery";
+  readonly runKind: RunKind;
   readonly status: RunTerminalStatus;
   readonly stateVersion: number;
   readonly predecessorRunId?: string;

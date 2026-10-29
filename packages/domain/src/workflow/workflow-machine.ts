@@ -71,9 +71,16 @@ export const WORKFLOW_COMMANDS = [
   "ABORT",
   "INTERRUPT",
   "COMPLETE_RECOVERY",
-  "EXPAND_REPAIR_SCOPE"
+  "EXPAND_REPAIR_SCOPE",
+  "COMPLETE_PROBE"
 ] as const;
 export type WorkflowCommandType = (typeof WORKFLOW_COMMANDS)[number];
+
+// invariant: AD-086. A `probe` run is one approved statement through one
+// admitted worker under one single-use `database-read` grant; it shares the
+// approval and terminal events of the other kinds and nothing else.
+export const RUN_KINDS = ["feature", "recovery", "probe"] as const;
+export type RunKind = (typeof RUN_KINDS)[number];
 
 export const WORKFLOW_ACTOR_ROLES = ["human", "planner", "implementer", "verifier", "controller", "recovery"] as const;
 export type WorkflowActorRole = (typeof WORKFLOW_ACTOR_ROLES)[number];
@@ -84,7 +91,7 @@ export interface ExecutionApproval {
 
 export interface RunSnapshot {
   readonly runId: string;
-  readonly runKind: "feature" | "recovery";
+  readonly runKind: RunKind;
   readonly state: RunState;
   readonly version: number;
   readonly repairCycles: number;
@@ -216,6 +223,13 @@ const BASE_EDGES: readonly TransitionDefinition[] = [
     actorRole: "human",
     requiredEvidence: ["human-review-record"]
   }),
+  // invariant: AD-086. Only a probe run takes this edge (runKindGuard); its
+  // statement ran under the approval the owner typed back, and no
+  // implementation, verification or review follows it.
+  edge("EXECUTION_AUTHORIZED", "COMPLETE_PROBE", "COMPLETED", {
+    actorRole: "controller",
+    requiredEvidence: ["probe-result"]
+  }),
   edge("EXECUTION_READY", "PREPARE_HANDOFF", "HANDOFF_PREPARING", {
     requiredEvidence: ["signed-package"]
   }),
@@ -261,6 +275,13 @@ const REQUIRED_EDGE_KEYS = new Set([
 
 const edgeKey = (value: TransitionDefinition): string => `${value.from}|${value.command}|${value.to}`;
 
+// invariant: the only edges into COMPLETED. A task run completes through Human
+// Review; the probe edge is accepted for a probe run only (runKindGuard).
+const COMPLETION_EDGE_KEYS: ReadonlySet<string> = new Set([
+  "HUMAN_REVIEW|APPROVE_HUMAN_REVIEW|COMPLETED",
+  "EXECUTION_AUTHORIZED|COMPLETE_PROBE|COMPLETED"
+]);
+
 // Each rule names the violation a transition records when its predicate holds;
 // rules are checked, and violations reported, in this order.
 const TRANSITION_RULES: readonly {
@@ -277,8 +298,7 @@ const TRANSITION_RULES: readonly {
   },
   {
     kind: "human-review-bypass",
-    violates: (transition) =>
-      transition.to === "COMPLETED" && edgeKey(transition) !== "HUMAN_REVIEW|APPROVE_HUMAN_REVIEW|COMPLETED"
+    violates: (transition) => transition.to === "COMPLETED" && !COMPLETION_EDGE_KEYS.has(edgeKey(transition))
   },
   {
     kind: "repair-scope-bypass",
@@ -414,10 +434,7 @@ interface DecisionInput {
 // A guard returns the decision that pre-empts the defined transition, or
 // undefined to let the next guard decide. Guards run in this order.
 const DECISION_GUARDS: readonly ((input: DecisionInput) => WorkflowDecision | undefined)[] = [
-  ({ current, command }) =>
-    command.type === "COMPLETE_RECOVERY" && current.runKind !== "recovery"
-      ? reject("VES_WORKFLOW_RUN_KIND_MISMATCH")
-      : undefined,
+  ({ current, command }) => runKindGuard(current, command),
   ({ command, definition }) =>
     definition.actorRole !== undefined && definition.actorRole !== command.actorRole
       ? reject("VES_WORKFLOW_ACTOR_DENIED")
@@ -444,6 +461,28 @@ const DECISION_GUARDS: readonly ((input: DecisionInput) => WorkflowDecision | un
       ? transition(current, command, "HUMAN_RESOLUTION_REQUIRED", "REPAIR_LIMIT_REACHED")
       : undefined
 ];
+
+// invariant: AD-086. A probe run takes only these events: its approval, its
+// completion, and the terminal failure, abort and interruption. Every
+// implementation, verification, repair, review, handoff and recovery event is
+// refused for it, as is every event added later until it is listed here.
+const PROBE_RUN_COMMANDS: ReadonlySet<WorkflowCommandType> = new Set([
+  "REQUEST_EXECUTION_APPROVAL",
+  "GRANT_EXECUTION_APPROVAL",
+  "COMPLETE_PROBE",
+  "FAIL",
+  "ABORT",
+  "INTERRUPT"
+]);
+
+function runKindGuard(current: RunSnapshot, command: WorkflowCommand): WorkflowDecision | undefined {
+  if (command.type === "COMPLETE_RECOVERY" && current.runKind !== "recovery")
+    return reject("VES_WORKFLOW_RUN_KIND_MISMATCH");
+  if (command.type === "COMPLETE_PROBE" && current.runKind !== "probe") return reject("VES_WORKFLOW_RUN_KIND_MISMATCH");
+  if (current.runKind === "probe" && !PROBE_RUN_COMMANDS.has(command.type))
+    return reject("VES_WORKFLOW_RUN_KIND_MISMATCH");
+  return undefined;
+}
 
 function grantApprovalGuard(command: WorkflowCommand): WorkflowDecision | undefined {
   if (
