@@ -275,6 +275,30 @@ export const installedReleaseManifest: InstalledCliManifest = Object.freeze({
       supportsJson: true,
       mutating: false,
       options: Object.freeze([APPROVAL_REF])
+    }),
+    // invariant: door 4 of .specs/features/database-registration/plan.md. The
+    // database family registers, lists and removes the Workspace's database
+    // registrations; none of its commands contacts a database.
+    Object.freeze({
+      name: "database add",
+      summary: "Register a database and its access policy in the Workspace, without contacting it",
+      supportsJson: true,
+      mutating: true,
+      options: Object.freeze([Object.freeze({ name: "definition", kind: "string" as const }), KEYCHAIN])
+    }),
+    Object.freeze({
+      name: "database list",
+      summary: "List the Workspace's database registrations and whether each still verifies",
+      supportsJson: true,
+      mutating: false,
+      options: Object.freeze([])
+    }),
+    Object.freeze({
+      name: "database remove",
+      summary: "Remove a database registration from the Workspace",
+      supportsJson: true,
+      mutating: true,
+      options: Object.freeze([Object.freeze({ name: "database", kind: "string" as const })])
     })
   ])
 });

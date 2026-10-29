@@ -95,7 +95,10 @@ const SEALED_COMMANDS = Object.freeze([
   "extension approve",
   "extension list",
   "extension revoke",
-  "extension check"
+  "extension check",
+  "database add",
+  "database list",
+  "database remove"
 ]);
 const NATIVE_PLACEHOLDERS = Object.freeze({
   "native/sqlite-vec": Buffer.alloc(4096, 7),

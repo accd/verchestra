@@ -12,6 +12,7 @@ import { createCommandBus } from "./command-bus.ts";
 import { runDoctorDeep } from "./doctor-composition.ts";
 import { installedReleaseManifest, isSealedRelease } from "./release-manifest.ts";
 import { runSelfTestProfile } from "./self-test-composition.ts";
+import type { TaskFamilyProcess } from "./task/task-dispatch.ts";
 
 // The self-test command is composed here, not inside createCommandBus:
 // createCommandBus is also reused by the T69/T70 trust domain itself (its
@@ -103,32 +104,38 @@ async function executeSecret(command: CliCommand): Promise<CommandResult> {
   });
 }
 
-async function executeTask(command: CliCommand): Promise<CommandResult> {
-  // why: a dynamic import, like secret and self-test, so only `vestra task`
-  // loads the governed task composition and the runtime store it opens.
-  const { executeTaskCommand } = await import("./task/task-command.ts");
-  return executeTaskCommand(command, {
+// invariant: everything a command family that shares the task io reads from
+// this process, handed over once for each family.
+function familyProcess(): TaskFamilyProcess {
+  return {
     controlRoot: process.cwd(),
     platform: process.platform,
     env: process.env,
     stdin: process.stdin,
     stderr: (value) => process.stderr.write(value),
     pid: process.pid
-  });
+  };
+}
+
+async function executeTask(command: CliCommand): Promise<CommandResult> {
+  // why: a dynamic import, like secret and self-test, so only `vestra task`
+  // loads the governed task composition and the runtime store it opens.
+  const { executeTaskCommand } = await import("./task/task-command.ts");
+  return executeTaskCommand(command, familyProcess());
 }
 
 async function executeExtension(command: CliCommand): Promise<CommandResult> {
   // why: a dynamic import, like task, so only `vestra extension` loads the
   // skill registry and the probe host's admission.
   const { executeExtensionCommand } = await import("./extension/extension-command.ts");
-  return executeExtensionCommand(command, {
-    controlRoot: process.cwd(),
-    platform: process.platform,
-    env: process.env,
-    stdin: process.stdin,
-    stderr: (value) => process.stderr.write(value),
-    pid: process.pid
-  });
+  return executeExtensionCommand(command, familyProcess());
+}
+
+async function executeDatabase(command: CliCommand): Promise<CommandResult> {
+  // why: a dynamic import, like extension, so only `vestra database` loads
+  // the data-probe registration and policy validation (door 4).
+  const { executeDatabaseCommand } = await import("./database/database-command.ts");
+  return executeDatabaseCommand(command, familyProcess());
 }
 
 export async function main(invokedAs: string, argv: readonly string[]): Promise<number> {
@@ -147,6 +154,7 @@ export async function main(invokedAs: string, argv: readonly string[]): Promise<
         if (command.name.startsWith("secret ")) return executeSecret(command);
         if (command.name.startsWith("task ")) return executeTask(command);
         if (command.name.startsWith("extension ")) return executeExtension(command);
+        if (command.name.startsWith("database ")) return executeDatabase(command);
         return commandBus.execute(command, context);
       }
     },

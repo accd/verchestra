@@ -10,14 +10,16 @@ import {
   type TrustRoot
 } from "@verchestra/evidence";
 
-// invariant: doors 2 and 3 of .specs/features/probe-host-composition/plan.md.
-// Every record an extension command signs is a DSSE envelope sealed by the
+// invariant: doors 2 and 3 of .specs/features/probe-host-composition/plan.md,
+// and door 1 of .specs/features/database-registration/plan.md. Every record an
+// extension or database command signs is a DSSE envelope sealed by the
 // Workspace evidence key under its existing `approval` purpose. No purpose is
 // added: the key provider refuses a stored key whose purposes differ, so a new
 // one would lock every existing Workspace key.
 const PURPOSE = "approval";
 
-export type ExtensionRecordSchema = "skill-lock" | "extension-approval" | "extension-approval-revocation";
+export type ExtensionRecordSchema =
+  "skill-lock" | "extension-approval" | "extension-approval-revocation" | "database-registration";
 
 export interface ExtensionRecordBinding {
   readonly bindingId: string;

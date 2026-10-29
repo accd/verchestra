@@ -15,7 +15,8 @@ import { promisify } from "node:util";
 
 const require = createRequire(import.meta.url);
 
-const CREDENTIAL_TOOL =
+// why: exported so a test that observes child processes names the same tools.
+export const CREDENTIAL_TOOL =
   /(?:^|[\\/])(?:security|secret-tool|dbus-send|cmdkey(?:\.exe)?|powershell(?:\.exe)?|pwsh(?:\.exe)?)$/iu;
 const CREDENTIAL_COMMAND =
   /^\s*"?(?:[^\s"]*[\\/])?(?:security|secret-tool|dbus-send|cmdkey(?:\.exe)?|powershell(?:\.exe)?|pwsh(?:\.exe)?)"?(?:\s|$)/iu;
