@@ -3326,7 +3326,9 @@ note. -->
   satisfy checks keyed on a task approval); one grant across runs (the owner
   confirms each run); designing credential delivery first (owner, 2026-10-29).
 - **Consequence:** an older binary refuses a store migrated by `013`, as with
-  every migration. Six code unions over the run kind widen. Until credential
+  every migration. The run kind widens in the workflow machine, the run
+  capsule and the runtime store; the handoff and verification inputs keep
+  their task kinds and so refuse a probe run, which never enters those flows. Until credential
   delivery exists, a probe reads only what the worker can reach on its own,
   which under `process-contained` includes the host user's own authority
   (AD-037).
