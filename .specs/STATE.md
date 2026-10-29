@@ -3341,9 +3341,9 @@ note. -->
 
 ### AD-087 — Verchestra ships a SQLite probe worker that a command writes into the Workspace and that takes its database file and identity from its approved launch
 
-- **Status:** proposed, human review required, with the plan
-  (`.specs/features/sqlite-probe-worker/plan.md`, #235). Doors 1-3 of that
-  plan reach past the feature, so they are recorded here.
+- **Status:** accepted by the owner on 2026-10-29 with the plan
+  (`.specs/features/sqlite-probe-worker/plan.md`, #235, PR #703). Doors 1-3
+  of that plan reach past the feature, so they are recorded here.
 - **Context:** `vestra probe run` (#690, #700) runs a confirmed statement
   through an approved worker, but no worker ships: the only SQLite worker is a
   test fixture that imports repository sources by an absolute URL whose bytes

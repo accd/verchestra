@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: sqlite-probe-worker
 issue: 235
-status: planned
-branch: plan/235-sqlite-probe-worker
-baseRevision: 48e2ae281e4f62f447e64fa9960efa1cfaefe752
+status: in_progress
+branch: feat/235-sqlite-probe-worker
+baseRevision: d3c64cce1b6cf8eb839809fbf0d7d09adeb7596e
 lastCompletedTask: null
-nextTask: "The owner reviews plan.md and AD-087. After approval, derive checks.md from the plan, build, and dispatch an independent Verifier."
-lastGate: "validate_plan: 0 errors, 0 warnings"
-updatedAt: 2026-10-29T23:45:00Z
+nextTask: "Build C1-C21 from checks.md with one builder, then dispatch an independent Verifier over the plan's merge base..HEAD with every check."
+lastGate: "validate_plan and validate_checks: 0 errors, 0 warnings; no code yet"
+updatedAt: 2026-10-29T23:55:00Z
 ---
 
 # Evidence
@@ -41,7 +41,13 @@ Facts found while planning, with their places:
 - `--output` is the CLI's global output-format flag (`apps/vestra-cli/src/cli.ts`),
   so the write command's path flag is `--entry`.
 
+The owner approved `plan.md` and AD-087 on 2026-10-29 (#703). `checks.md`
+holds 21 checks at profile `light`; the distinct files the build reads or
+touches come to ~75-100k, under the 150k budget, so one builder.
+
 # Next exact action
 
-The owner reviews `plan.md` and AD-087 (proposed). After approval, derive
-`checks.md` from the plan, build, and dispatch an independent Verifier.
+Build C1-C21 test-first from `checks.md` on `feat/235-sqlite-probe-worker`,
+running the real-worker proofs on Linux (WSL clone `~/verchestra-569`) and
+test:e2e and test:build there (lesson L-019). Then dispatch an independent
+Verifier over the plan's merge base `..HEAD` with every check.
