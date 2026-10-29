@@ -188,11 +188,15 @@ function deepFreeze<T>(value: T): Readonly<T> {
   return value;
 }
 
-function uniqueSorted(values: unknown, pattern: RegExp, code: string, label: string, allowEmpty = false): string[] {
+function sortedValues(values: unknown, pattern: RegExp, code: string, label: string, allowEmpty = false): string[] {
   if (!Array.isArray(values) || (!allowEmpty && values.length === 0) || values.length > 256) {
     fail(code, `${label} is invalid`);
   }
-  return [...new Set(values.map((value) => textValue(value, pattern, code, label)))].sort(codeUnitCompare);
+  return values.map((value) => textValue(value, pattern, code, label)).sort(codeUnitCompare);
+}
+
+function uniqueSorted(values: unknown, pattern: RegExp, code: string, label: string, allowEmpty = false): string[] {
+  return [...new Set(sortedValues(values, pattern, code, label, allowEmpty))];
 }
 
 export interface DatabaseRegistrationInput {
@@ -433,7 +437,9 @@ function normalizeOperation(value: unknown): NormalizedReadOperation {
     };
     objectMap.set(`${normalized.schema}.${normalized.name}.${normalized.type}`, normalized);
   }
-  const parameterClassifications = uniqueSorted(
+  // invariant: one classification per bind, as every engine parser reads the
+  // statement; a repeated classification is another bind, never a duplicate.
+  const parameterClassifications = sortedValues(
     input.parameterClassifications,
     /^[a-z]+$/u,
     "VES_PROBE_OPERATION_INVALID",

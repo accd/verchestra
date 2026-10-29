@@ -72,3 +72,32 @@ test("SQLite byte limit rolls back without promotion", async () => {
   await assert.rejects(f.supervisor.execute(), { code: "VES_PROBE_BYTE_LIMIT" });
   assert.deepEqual([f.results.commits, f.results.rollbacks], [0, 1]);
 });
+
+// invariant: a real SQLite read binds every parameter of one classification,
+// in order (.specs/features/probe-multi-parameter/checks.md C4).
+test("a real SQLite read binds two parameters of one classification", async (t) => {
+  for (const [parameters, ids] of [
+    [["paid", 10], [1]],
+    [["paid", 60], []]
+  ]) {
+    const f = await realSqliteFixture({
+      sql: "SELECT id FROM main.orders WHERE status = ? AND amount > ?",
+      parameters,
+      parameterClassifications: ["internal", "internal"]
+    });
+    t.after(() => f.cleanup());
+    const rows = [];
+    const append = f.results.append.bind(f.results);
+    f.results.append = async (transactionId, chunk) => {
+      rows.push(...chunk);
+      return append(transactionId, chunk);
+    };
+    const result = await f.supervisor.execute();
+    assert.equal(result.status, "complete");
+    assert.equal(result.rowCount, ids.length);
+    assert.deepEqual(
+      rows.map((row) => row.id),
+      ids
+    );
+  }
+});
