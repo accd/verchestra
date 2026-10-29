@@ -39,6 +39,8 @@ flowchart LR
 
 Version `1.0.0` is promoted only when all acceptance requirements are mapped to evidence, all required gates pass, no required fault survives independent verification, and human operational and security reviewers sign the decision.
 
+The 1.0.0 decision in effect is a signed reject, a recorded hold; the conditions under which a public `0.x` line or a 1.0.0 round 2 would open are recorded in [docs/qualification/qualification-line-exit-record.md](docs/qualification/qualification-line-exit-record.md).
+
 The authoritative implementation backlog is maintained in [GitHub Issues](https://github.com/accd/verchestra/issues).
 
 ## Inserted hardening tasks (T68a–T68d)

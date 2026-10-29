@@ -8,7 +8,7 @@ baseRevision: 4e95805586c321a56bcd7b6587a3408e0c175ec3
 lastCompletedTask: T7
 nextTask: "The owner configures the npm-publication environment and the npm trusted publisher for npm-publish.yml (O6, T7 landed on 2026-10-28), then publishes the next version through it. Otherwise none while no custodian #2 exists. The owner decided on 2026-10-02 to name none (O1); #408 is closed as not planned. If the owner later names a second accountable human, resume from O1 in docs/release-custody.md section 9."
 lastGate: "gate:quick, gate:build, gate:security, gate:release, agent:check PASS (feat/408-protected-signing-environments)"
-updatedAt: 2026-10-28T14:30:00Z
+updatedAt: 2026-10-29T12:00:00Z
 ---
 
 # Scope
@@ -68,24 +68,22 @@ O9, O10) are not actionable.
 
 # Blockers
 
-Every remaining step needs an owner decision or action that an agent cannot
-take:
+Reconciled 2026-10-29 (`.specs/features/qualification-line-exit/`). Done
+since this list was written: the custody change merged; `.3` was re-signed
+from a new `main` candidate and `.3` to `.8` are ledger sequences 3 to 8; the
+retired repository-level secrets were deleted on 2026-10-01 (O2 step 4); the
+trusted-publishing workflow `npm-publish.yml` (T7) landed on 2026-10-28, and
+it publishes nothing until O6 is done. Every remaining step needs an owner
+decision or action that an agent cannot take:
 
-- **Merge.** The workflow, script, anchor, and test change must merge to `main`
-  before any signing run can use the new keys: the old workflows name the
-  retired repository secrets, and the new anchors exist only on the branch.
-- **`.3` re-sign.** The 2026-09-30 `.3` signing (publish run `36771571763`) used
-  the retired keys and must never be uploaded. Build a new candidate from
-  `main`, dispatch `t76-publish-release.yml` from `main`, and approve it in
-  `tuf-release-signing` (`republish-v3-runbook.md`).
+- **O6, the owner's next action.** Create the `npm-publication` environment
+  (owner as interim reviewer, `main` only, admin bypass off), add the trusted
+  publisher on npmjs.com for `npm-publish.yml` and that environment, publish
+  `0.0.0-qualification.9` through the workflow, check its attestation, then
+  disallow tokens (`docs/release-custody.md` section 9, O6; #596; exit
+  condition X1 in `docs/qualification/qualification-line-exit-record.md`).
 - **O1.** Name custodian #2, and a distinct ratifying reviewer. This is
-  human-only.
-- **O2 step 4.** Delete the three retired repository-level secrets
-  (`VESTRA_RELEASE_SIGNING_KEY_PKCS8_BASE64`,
-  `VESTRA_RELEASE_TIMESTAMP_SIGNING_KEY_PKCS8_BASE64`,
-  `VESTRA_T75_EVIDENCE_SIGNING_KEY_PKCS8_BASE64`) after the merge and the `.3`
-  re-sign. Until then a write collaborator can still read the retired values
-  (RR4, RR11).
+  human-only. Decided on 2026-10-02 as "none named".
 - **O2 reviewer switch.** Once custodian #2 exists, make them the required
   reviewer of both environments with `prevent_self_review: true`.
 - **O4.** Grant custodian #2 `write`. Custodian #2 authors the CODEOWNERS pull
@@ -101,7 +99,8 @@ take:
 
 # Next action
 
-The coordinator merges `feat/408-protected-signing-environments` (maintainer
-bypass; enforcement strengthened). The owner then re-signs `.3` from a new
-`main` candidate with environment approval, deletes the three retired
-repository-level secrets, and records O1 on #408.
+The owner does O6: the `npm-publication` environment, the npm trusted
+publisher for `npm-publish.yml`, the `.9` publication through the workflow,
+and the attestation check. The merge, the `.3` re-sign, and the secret
+deletion this section used to ask for are done (see Blockers). Nothing else
+moves until a custodian #2 is named.

@@ -1212,7 +1212,7 @@
       "classification": "migrated-v2",
       "signals": {
         "canonicalizer": 5,
-        "digest": 4,
+        "digest": 5,
         "localeCompare": 1,
         "serialization": 2
       },

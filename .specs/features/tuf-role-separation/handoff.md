@@ -6,9 +6,9 @@ status: blocked
 branch: feat/408-protected-signing-environments
 baseRevision: 4e95805586c321a56bcd7b6587a3408e0c175ec3
 lastCompletedTask: null
-nextTask: "After the #408 custody change merges, follow republish-v3-runbook.md for .3 (#387): build a NEW candidate from main (the 2026-09-30 .3 signing used the retired keys and must never be uploaded), dispatch t76-publish-release.yml from main and approve it in the tuf-release-signing environment, publish under /v3/ with a metadata_version above the ledger, verify R2 (200 metadata, 206 targets) before npm publish, then append the ledger entry. The npm 2FA session and the R2 upload are owner-held. Run t76-refresh-timestamp.yml monthly, from main with environment approval, for any root published with a short timestamp_expires."
+nextTask: "The .3 republication is done: .3 to .8 are ledger sequences 3 to 8 on the role-separated root 949fbce3, each from a candidate built on main after the custody change. What remains of F1 and F2 is owner-gated: detached signing of the root threshold (T6, docs/release-custody.md section 3.1, RR5) and people separation (custodian #2, O1; none named on 2026-10-02), plus the first successful role-refresh run with its ledger entry (docs/qualification/qualification-line-exit-record.md, X2; the only run so far, 36779932633, failed)."
 lastGate: "gate:quick, gate:build, gate:security, gate:release, agent:check PASS (feat/408-protected-signing-environments)"
-updatedAt: 2026-09-30T22:00:00Z
+updatedAt: 2026-10-29T12:00:00Z
 ---
 
 # TUF role separation (#18, F1 + F2)
@@ -109,7 +109,28 @@ same-root release and the #393 decision — a single `.3` cannot close it.
 
 # Blockers
 
-Reconciled 2026-09-29 (#407).
+Reconciled 2026-10-29 (`.specs/features/qualification-line-exit/`). The `.3`
+republication this handoff waited for is done, and so are the five releases
+after it: `.3` to `.8` are ledger sequences 3 to 8
+(`docs/qualification/tuf-publication-ledger.json`), all on the role-separated
+root `949fbce3…`, each signed by a `t76-publish-release.yml` run from `main`
+approved in `tuf-release-signing`, and the live update and rollback leg passed
+on all five targets for `.3` to `.4` through `.7` to `.8`
+(`.specs/features/live-activation-matrix/validation.md`). The bullets below
+from 2026-09-29 are history. What still blocks this feature:
+
+- **Detached signing does not exist (T6, RR5).** The root threshold is signed
+  in one process; until each custodian signs the canonical bytes on their own
+  machine, a threshold root separates purposes, not people
+  (`docs/release-custody.md` section 3.1).
+- **People separation needs custodian #2 (O1).** The owner named none on
+  2026-10-02. Both role-separated keys sit with one operator (matrix L8).
+- **F2 is implemented, not operating.** No `role-refresh` entry exists in the
+  ledger; the only refresh run (36779932633, 2026-09-30) failed. The first
+  successful refresh is exit condition X2 in
+  `docs/qualification/qualification-line-exit-record.md`.
+
+History, reconciled 2026-09-29 (#407):
 
 - **The code has landed.** Role separation landed in `1ee646e`, and the
   monotonic `metadataVersion` guard for #387 landed in `5ac3122`.
