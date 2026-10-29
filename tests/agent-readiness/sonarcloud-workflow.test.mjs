@@ -36,6 +36,22 @@ test("test code is analysed as tests, never as product sources", () => {
   assert.ok(excluded.includes("packages/contracts/src/generated.ts"), "generated contracts are not hand-written code");
 });
 
+test("only the rules the owner turned off are ignored, and for every file", () => {
+  const ids = property("sonar.issue.ignore.multicriteria").split(",");
+  const ignored = ids.map((id) => {
+    assert.equal(property(`sonar.issue.ignore.multicriteria.${id}.resourceKey`), "**/*");
+    return property(`sonar.issue.ignore.multicriteria.${id}.ruleKey`);
+  });
+  assert.deepEqual(ignored.toSorted(), ["javascript:S9382", "typescript:S7503", "typescript:S9382"]);
+  const declared = properties.match(/^sonar\.issue\.ignore\.multicriteria\.[^.]+\.ruleKey=/gmu) ?? [];
+  assert.equal(
+    declared.length,
+    ids.length,
+    "every ignore criterion must be listed in sonar.issue.ignore.multicriteria"
+  );
+  assert.doesNotMatch(properties, /^sonar\.issue\.(?:ignore\.(?:block|allfile)|enforce)/mu);
+});
+
 test("coverage is measured by exactly the scopes test-scope declares a report for", () => {
   const scopes = /for stage in ([^;\n]+); do/u.exec(workflow);
   assert.ok(scopes, "the workflow must list its coverage stages in one loop");
