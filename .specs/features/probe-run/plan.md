@@ -51,7 +51,7 @@ transport, instead of a second implementation of any of them.
 | domain | existing term: `approval action` gains `probe-execution`; `bindingFrom` validates it, and nothing stores a CHECK on it |
 | domain | new term: `probe run` - a run of kind `probe`: one approved statement through one admitted worker under one single-use `database-read` grant |
 | stored data | migration `013_probe_runs` rebuilds `runs` (door 1); every existing row is copied unchanged and the eight tables that reference `runs` keep their rows. As with every migration, an older binary refuses the migrated store. The migration count is pinned in three tests |
-| package boundary | `packages/extension-host`: the supervisor refuses a plan whose `grantRef` differs from the admitted grant's. The CLI composes the supervisor, the framed protocol and the spawned transport for the first time, so slice 1's composition guard and slice 2a's data-probe guard each admit the probe family |
+| package boundary | `packages/extension-host`: the supervisor refuses a plan whose `grantRef` differs from the admitted grant's, and refuses a result that carries the protected request JSON-escaped as it refuses the bytes as they are (a probe's protected request is JSON, so a worker's echo into a string value escapes its quotes; added by the owner on 2026-10-29, after batch B). The CLI composes the supervisor, the framed protocol and the spawned transport for the first time, so slice 1's composition guard and slice 2a's data-probe guard each admit the probe family |
 | evidence | the run capsule validator accepts the kind `probe`; a probe run needs no terminal capsule |
 | CLI surface | one command joins the release command manifest, so every pinned command list changes with it (lesson L-019) |
 
@@ -123,7 +123,9 @@ grant, runs the statement, and prints the result envelope.
 19. The workflow SHALL accept `COMPLETE_PROBE` only for a `probe` run in `EXECUTION_AUTHORIZED`, and SHALL refuse every implementation, verification and review event for a `probe` run
 20. WHEN migration `013_probe_runs` runs on a store that holds feature and recovery runs with approvals, grants and events THEN the system SHALL keep every row of every table, report an empty `PRAGMA foreign_key_check`, and accept a run of kind `probe`
 
-**Independent test:** on Linux, in a disposable Workspace with a SQLite file holding a table `orders`, register the database (`vestra database add`), register and approve a SQLite worker whose approved arguments name the file (`vestra extension add` and `approve`), then `vestra probe run` with `SELECT id, status FROM orders WHERE id = ?`: type the digest back, see exit 0 and an envelope for one row, see the run `COMPLETED` and its grant revoked in the authority store, and see `vestra task status` refuse the run id. Run it again with a mistyped digest: exit 5, run `ABORTED`, no grant.
+**Independent test:** on Linux, in a disposable Workspace with a SQLite file holding a table `orders`, register the database (`vestra database add`), register and approve a SQLite worker whose approved arguments name the file (`vestra extension add` and `approve`), then `vestra probe run` with `SELECT id, status FROM main.orders WHERE id = ?`: type the digest back, see exit 0 and an envelope for one row, see the run `COMPLETED` and its grant revoked in the authority store, and see `vestra task status` refuse the run id. Run it again with a mistyped digest: exit 5, run `ABORTED`, no grant.
+
+The owner amended the independent test's statement on 2026-10-29, after batch B: it read `FROM orders`, which SQLite's parser refuses with `VES_SQLITE_OBJECT_INVALID` because every object must be `main`-qualified.
 
 ## Out of scope
 
