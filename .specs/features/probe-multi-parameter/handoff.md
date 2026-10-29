@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: probe-multi-parameter
 issue: 235
-status: verification
+status: complete
 branch: fix/235-probe-multi-parameter
 baseRevision: 6ce57bc73b6d14e5a5ebe4a48e7ad5ef1c9c3305
 lastCompletedTask: null
-nextTask: "Dispatch an independent Verifier over 6ce57bc7..HEAD with every check (C1-C7)."
-lastGate: "Built at c6b30009. Every proof passes on Windows and Linux (C6-C7 with a real worker on Linux, the platform refusal on Windows). Windows: gate:quick exit 0 (3666/464/14), test:architecture 149/149, complexity:check and agent:check PASS. Linux: gate:quick exit 0 (3666/464/14); at b5ade112 test:contract 1031/1031, test:integration 1286/1286, test:architecture 149/149."
-updatedAt: 2026-10-29T20:30:00Z
+nextTask: "Owner review of the probe-multi-parameter PR; after it lands, the owner decides the next T3 step (the database credential is its own feature)."
+lastGate: "Independent Verifier round 1 PASS at ba4aa226 (7/7; Windows proofs 7/7, gate:quick, test:architecture 149; Linux proofs 7/7, gate:quick, test:contract 1031, test:architecture 149, test:integration 1286, test:e2e 363); validate_verification exit 0"
+updatedAt: 2026-10-29T21:10:00Z
 ---
 
 # Evidence
@@ -37,8 +37,17 @@ parameter. Slice 2b's unit test that pinned the old plan-time refusal now
 requires one classification per bind. What the build settled is under
 `## Handoff` in `checks.md`.
 
+The independent Verifier proved C1-C7 at `ba4aa226` (`verification.md`, round
+1, PASS, profile `light`), on Windows and on Linux, where C6 and C7 ran a real
+worker. It confirmed C2's digests and the defect itself on `6ce57bc7`, and
+judged the changed slice 2b assertion equal in input and layer with the
+expectation inverted, not weakened. Its non-failing notes: C3 proves each
+engine's worker bind-count check over a fake connection, while a real database
+binds only in C4 and C6 (SQLite); C2 pins SQLite's plans only; macOS is not
+run.
+
 # Next exact action
 
-Dispatch an independent Verifier over `6ce57bc7..HEAD` with every check
-(C1-C7). C6 and C7 need a real worker, so they run on Linux or macOS; on
-Windows the command refuses.
+The owner reviews the PR. After it lands, the owner decides the next T3 step;
+delivering a database credential to the worker is its own feature (owner,
+2026-10-29).
