@@ -1,8 +1,10 @@
 // invariant: AC 15 and door 4 of .specs/features/database-registration/plan.md.
 // The `vestra database` family validates and records registrations; it
 // reaches no database client, no probe worker, no network module and no
-// platform branch, and it is the only part of the CLI that loads
-// @verchestra/data-probe, which main.ts reaches only through a dynamic import.
+// platform branch. It and the `vestra probe` family (AD-086) are the only
+// parts of the CLI that load @verchestra/data-probe, which main.ts reaches only
+// through a dynamic import of each family's entry; the probe family plans with
+// it and reads a statement with its SQLite parser, and opens no database.
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -13,13 +15,24 @@ import { fileURLToPath } from "node:url";
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const CLI_SOURCE = join(ROOT, "apps", "vestra-cli", "src");
 const FAMILY = join(CLI_SOURCE, "database");
+const PROBE_FAMILY = join(CLI_SOURCE, "probe");
 const MAIN = join(CLI_SOURCE, "main.ts");
 const ENTRY = "./database/database-command.ts";
+const PROBE_ENTRY = "./probe/probe-command.ts";
 const DATA_PROBE = "@verchestra/data-probe";
 const DATA_PROBE_VALUES = new Set([
   "normalizeDatabaseRegistration",
   "normalizeDatabaseAccessPolicy",
   "DatabaseProbeError"
+]);
+// invariant: what the probe family takes from data-probe: the planner and its
+// registry, and the SQLite parser with its error. No connection, adapter or
+// fixture: the worker reads the database, out of process.
+const PROBE_DATA_PROBE_VALUES = new Set([
+  "DatabaseRegistry",
+  "ProbePlanner",
+  "SqliteProbeError",
+  "parseSqliteReadOperation"
 ]);
 // why: the modules that open a socket or start a process; a database client
 // or a probe worker needs one of them, and so does the probe host.
@@ -154,56 +167,105 @@ function inside(directory, file) {
   return path !== "" && !path.startsWith("..") && !isAbsolute(path);
 }
 
-// invariant: C23. Only database family modules import data-probe, and main.ts
-// reaches the family only through its dynamic import of the entry.
-function compositionFindings(files, main, family) {
-  const findings = [];
-  for (const file of files) {
-    const edges = importStatements(readFileSync(file, "utf8")).filter((statement) =>
-      statement.specifier.startsWith(DATA_PROBE)
-    );
-    if (edges.length > 0 && !inside(family, file)) findings.push(`${repositoryPath(file)} imports ${DATA_PROBE}`);
-  }
-  for (const file of staticClosure(main))
-    if (inside(family, file)) findings.push(`${repositoryPath(main)} loads ${repositoryPath(file)} eagerly`);
-  const entries = importStatements(readFileSync(main, "utf8")).filter(
-    (statement) => statement.dynamic && statement.specifier === ENTRY
+// invariant: C23 of slice 2a and C29 of slice 2b. Only database and probe
+// family modules import data-probe, each only the values its family takes,
+// and main.ts reaches each family only through its dynamic import of the entry.
+function edgeFindings(file, families) {
+  const edges = importStatements(readFileSync(file, "utf8")).filter((statement) =>
+    statement.specifier.startsWith(DATA_PROBE)
   );
-  if (entries.length !== 1) findings.push(`${repositoryPath(main)} has no dynamic import of ${ENTRY}`);
+  if (edges.length === 0) return [];
+  const family = families.find((candidate) => inside(candidate.directory, file));
+  if (family === undefined) return [`${repositoryPath(file)} imports ${DATA_PROBE}`];
+  return edges.flatMap((statement) =>
+    (statement.names ?? [{ name: "*", type: false }])
+      .filter((entry) => !entry.type && !family.values.has(entry.name))
+      .map(({ name }) => `${repositoryPath(file)} imports ${name} from ${statement.specifier}`)
+  );
+}
+
+function compositionFindings(files, main, families) {
+  const findings = files.flatMap((file) => edgeFindings(file, families));
+  for (const file of staticClosure(main))
+    if (families.some((family) => inside(family.directory, file)))
+      findings.push(`${repositoryPath(main)} loads ${repositoryPath(file)} eagerly`);
+  for (const family of families) {
+    const entries = importStatements(readFileSync(main, "utf8")).filter(
+      (statement) => statement.dynamic && statement.specifier === family.entry
+    );
+    if (entries.length !== 1) findings.push(`${repositoryPath(main)} has no dynamic import of ${family.entry}`);
+  }
   return findings;
 }
 
-test("only the database family loads data-probe", () => {
+const families = (database, probe) => [
+  { directory: database, entry: ENTRY, values: DATA_PROBE_VALUES },
+  { directory: probe, entry: PROBE_ENTRY, values: PROBE_DATA_PROBE_VALUES }
+];
+
+test("only the database family loads data-probe, and the probe family plans with it", () => {
   const files = sources(CLI_SOURCE);
   assert.ok(files.length > 50, `the walk reached only ${files.length} modules`);
-  assert.deepEqual(compositionFindings(files, MAIN, FAMILY), [], "door 4: only the database family loads data-probe");
+  assert.deepEqual(
+    compositionFindings(files, MAIN, families(FAMILY, PROBE_FAMILY)),
+    [],
+    "door 4: only the database and probe families load data-probe"
+  );
+  assert.ok(
+    files.some(
+      (file) =>
+        inside(PROBE_FAMILY, file) &&
+        importStatements(readFileSync(file, "utf8")).some((statement) => statement.specifier === DATA_PROBE)
+    ),
+    "the probe family never imports data-probe, so its allowlist proved nothing"
+  );
   assert.ok(staticClosure(MAIN).size > 5, "main.ts's static closure was not walked");
   // why: the walk itself must flag each forbidden shape, or a pass above
   // would prove nothing.
   const probe = mkdtempSync(join(tmpdir(), "verchestra-database-walk-"));
   try {
     const family = join(probe, "database");
+    const probeFamily = join(probe, "probe");
+    const both = families(family, probeFamily);
     const main = join(probe, "main.ts");
     const write = (path, source) => {
       writeFileSync(path, source);
       return path;
     };
     mkdirSync(family);
+    mkdirSync(probeFamily);
     const importsProbe = `import { DatabaseProbeError } from "${DATA_PROBE}";\n`;
     const entry = write(join(family, "database-command.ts"), importsProbe);
+    const planner = write(
+      join(probeFamily, "probe-run.ts"),
+      `import { DatabaseRegistry, ProbePlanner, type ProbePlan } from "${DATA_PROBE}";\n`
+    );
+    const connection = write(
+      join(probeFamily, "probe-open.ts"),
+      `import { SqliteReadConnection } from "${DATA_PROBE}";\n`
+    );
+    write(join(probeFamily, "probe-command.ts"), "export const command = 0;\n");
     const other = write(join(probe, "other.ts"), importsProbe);
+    const task = join(probe, "task");
+    mkdirSync(task);
+    const otherFamily = write(join(task, "task-run.ts"), `import { ProbePlanner } from "${DATA_PROBE}";\n`);
     write(join(probe, "eager.ts"), `export * from "${ENTRY}";\n`);
-    const dynamicMain = `const loaded = await import("${ENTRY}");\n`;
+    write(join(probe, "eager-probe.ts"), `export * from "${PROBE_ENTRY}";\n`);
+    const dynamicMain = `const loaded = await import("${ENTRY}");\nconst probed = await import("${PROBE_ENTRY}");\n`;
     write(main, dynamicMain);
-    assert.deepEqual(compositionFindings([entry, main], main, family), []);
+    assert.deepEqual(compositionFindings([entry, planner, main], main, both), []);
     for (const [label, files_, source] of [
-      ["a module outside the family imports data-probe", [entry, other], dynamicMain],
+      ["a module outside the families imports data-probe", [entry, other], dynamicMain],
+      ["another family imports data-probe", [entry, otherFamily], dynamicMain],
+      ["the probe family imports a SQLite connection", [entry, connection], dynamicMain],
       ["main imports the entry statically", [entry], `import { entry } from "${ENTRY}";\n${dynamicMain}`],
       ["main loads a module that loads the entry", [entry], `import "./eager.ts";\n${dynamicMain}`],
-      ["main never imports the entry", [entry], "export const nothing = 0;\n"]
+      ["main loads a module that loads the probe entry", [entry], `import "./eager-probe.ts";\n${dynamicMain}`],
+      ["main never imports the database entry", [entry], `const probed = await import("${PROBE_ENTRY}");\n`],
+      ["main never imports the probe entry", [entry], `const loaded = await import("${ENTRY}");\n`]
     ]) {
       write(main, source);
-      assert.equal(compositionFindings(files_, main, family).length, 1, `the walk misses: ${label}`);
+      assert.equal(compositionFindings(files_, main, both).length, 1, `the walk misses: ${label}`);
     }
   } finally {
     rmSync(probe, { recursive: true, force: true });

@@ -1,10 +1,13 @@
-// invariant (#569, door 4 of .specs/features/probe-host-composition/plan.md):
-// the CLI composes the out-of-process probe host's admission and nothing else
-// of it until slice 2's grant exists. The walk covers every module reachable
-// from the CLI and the launcher. An edge into packages/extension-host is
-// allowed only from the extension check module, only through the admission
-// subpath, and only for `WorkspaceProbeAdmission` and its types; the worker,
-// the supervisor, and the spawned transport stay unreachable.
+// invariant (#569, door 4 of .specs/features/probe-host-composition/plan.md,
+// and AD-086): the CLI composes the out-of-process probe host in two places
+// only. The walk covers every module reachable from the CLI and the launcher.
+// The extension check module reaches admission alone, through the admission
+// subpath, for `WorkspaceProbeAdmission` and its types; from it the worker,
+// the supervisor, and the spawned transport stay unreachable. The probe
+// family's run module, which starts a probe worker under its grant, also
+// reaches the supervisor, the framed protocol and the in-memory parameter
+// broker and result sink through the package index, and the spawned transport
+// through platform-node; no other module names any of them.
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -16,7 +19,10 @@ const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const HOST = join(ROOT, "packages", "extension-host");
 const ENTRY_ROOTS = ["apps/vestra-cli/src", "apps/vestra-launcher/src", "apps/vestra-launcher/closure"];
 const COMPOSER = "apps/vestra-cli/src/extension/extension-check.ts";
+const RUNNER = "apps/vestra-cli/src/probe/probe-run.ts";
 const ADMISSION_SPECIFIER = "@verchestra/extension-host/admission";
+const HOST_SPECIFIER = "@verchestra/extension-host";
+const TRANSPORT_SPECIFIER = "@verchestra/platform-node";
 const ADMISSION_NAMES = new Set([
   "WorkspaceProbeAdmission",
   "WorkspaceProbeWorkerApproval",
@@ -27,9 +33,35 @@ const ADMISSION_NAMES = new Set([
   "WorkspaceProbeWorkerRequest",
   "WorkspaceProbeWorkerTrust"
 ]);
-// why: these start or drive a worker; slice 1 starts none (AC 14).
+const SUPERVISION_NAMES = new Set([
+  "FramedProbeWorker",
+  "MemoryProbeResultSink",
+  "MemoryProtectedParameterBroker",
+  "ProbeWorkerSupervisor"
+]);
+// why: these start or drive a worker; only the probe run module starts one.
 const SPAWNING_NAMES = new Set(["FramedProbeWorker", "ProbeWorkerSupervisor", "SpawnedProbeWorker"]);
-const HOST_UNREACHABLE = ["src/index.ts", "src/framed-probe-worker.ts", "src/testing.ts"];
+// invariant: what each composing module's host edges may load inside
+// extension-host: admission alone from the extension check, and never the
+// testing doubles from either.
+const HOST_UNREACHABLE = Object.freeze({
+  [COMPOSER]: ["src/index.ts", "src/framed-probe-worker.ts", "src/testing.ts"],
+  [RUNNER]: ["src/testing.ts"]
+});
+
+// why: the composing modules a walk admits, and the edge each may have into
+// extension-host: its module, its specifier, and the names it may import.
+function composition(composer, runner) {
+  return {
+    runner,
+    edges: [
+      [composer, ADMISSION_SPECIFIER, ADMISSION_NAMES],
+      [runner, ADMISSION_SPECIFIER, ADMISSION_NAMES],
+      [runner, HOST_SPECIFIER, SUPERVISION_NAMES]
+    ]
+  };
+}
+const PRODUCT = composition(join(ROOT, COMPOSER), join(ROOT, RUNNER));
 
 // why: a statement's imported names, or null when it imports the whole module
 // (a namespace, a default, a side effect, or a dynamic import), which no
@@ -78,24 +110,27 @@ function sources(directory) {
 
 const repositoryPath = (file) => relative(ROOT, file).replaceAll("\\", "/");
 
-// invariant: one edge is allowed, and only in one shape. Anything else is a
-// finding: an app module naming a spawning export from any package, or any
-// other edge into extension-host. Packages themselves may name their own
-// exports; the walk judges what the apps import.
-function statementFinding(file, statement, composer, hostEdge) {
+// invariant: three edges are allowed, each only in its shape. Anything else
+// is a finding: an app module other than the probe run module naming a
+// spawning export from any package, the run module naming one from anywhere
+// but the host index or the transport's package, or any other edge into
+// extension-host. Packages themselves may name their own exports; the walk
+// judges what the apps import.
+function statementFinding(file, statement, allowed, hostEdge) {
   const names = statement.names ?? ["*"];
   const described = `${repositoryPath(file)} imports ${names.join(", ")} from ${statement.specifier}`;
   const appModule = !file.startsWith(join(ROOT, "packages"));
-  if (appModule && names.some((name) => SPAWNING_NAMES.has(name))) return described;
+  const spawnsHere = file === allowed.runner && [HOST_SPECIFIER, TRANSPORT_SPECIFIER].includes(statement.specifier);
+  if (appModule && !spawnsHere && names.some((name) => SPAWNING_NAMES.has(name))) return described;
   if (!hostEdge) return undefined;
-  const allowed =
-    file === composer &&
-    statement.specifier === ADMISSION_SPECIFIER &&
-    names.every((name) => ADMISSION_NAMES.has(name));
-  return allowed ? undefined : described;
+  const permitted = allowed.edges.some(
+    ([module, specifier, permittedNames]) =>
+      file === module && statement.specifier === specifier && names.every((name) => permittedNames.has(name))
+  );
+  return permitted ? undefined : described;
 }
 
-function hostEdges(entries, composer = join(ROOT, COMPOSER)) {
+function hostEdges(entries, allowed = PRODUCT) {
   const visited = new Set(entries);
   const queue = [...entries];
   const edges = [];
@@ -107,11 +142,11 @@ function hostEdges(entries, composer = join(ROOT, COMPOSER)) {
       const target = resolveSpecifier(statement.specifier, file);
       const hostEdge =
         statement.specifier.startsWith("@verchestra/extension-host") || target?.startsWith(HOST) === true;
-      const finding = statementFinding(file, statement, composer, hostEdge);
+      const finding = statementFinding(file, statement, allowed, hostEdge);
       if (finding !== undefined) findings.push(finding);
       if (hostEdge) {
         edges.push(`${repositoryPath(file)} imports ${statement.specifier}`);
-        if (target !== null) hostTargets.push(target);
+        if (target !== null) hostTargets.push({ from: repositoryPath(file), target });
         continue;
       }
       if (target !== null && !visited.has(target)) {
@@ -148,12 +183,28 @@ test("only the extension commands reach admission", () => {
     [...visited].some((path) => path.startsWith(join(ROOT, "packages", "application"))),
     "the walk never left the apps"
   );
-  assert.deepEqual(findings, [], "AC 16: only the extension check module imports admission, and only admission");
-  assert.deepEqual(edges, [`${COMPOSER} imports ${ADMISSION_SPECIFIER}`], "the composition edge is the only one");
-  const closure = hostClosure(hostTargets);
-  assert.ok(closure.includes("src/workspace-trust.ts"), `the admission edge loads ${closure.join(", ")}`);
-  for (const module of HOST_UNREACHABLE)
-    assert.equal(closure.includes(module), false, `the admission edge reaches extension-host ${module}`);
+  assert.deepEqual(
+    findings,
+    [],
+    "AC 16: only the extension check module imports admission, and only the probe run module the supervisor"
+  );
+  assert.deepEqual(
+    [...edges].sort(),
+    [
+      `${COMPOSER} imports ${ADMISSION_SPECIFIER}`,
+      `${RUNNER} imports ${HOST_SPECIFIER}`,
+      `${RUNNER} imports ${ADMISSION_SPECIFIER}`
+    ].sort(),
+    "the composition edges are the only ones"
+  );
+  for (const [from, unreachable] of Object.entries(HOST_UNREACHABLE)) {
+    const closure = hostClosure(hostTargets.filter((edge) => edge.from === from).map((edge) => edge.target));
+    assert.ok(closure.includes("src/workspace-trust.ts"), `${from}'s edges load ${closure.join(", ")}`);
+    for (const module of unreachable)
+      assert.equal(closure.includes(module), false, `${from}'s edges reach extension-host ${module}`);
+  }
+  const runnerClosure = hostClosure(hostTargets.filter((edge) => edge.from === RUNNER).map((edge) => edge.target));
+  assert.ok(runnerClosure.includes("src/index.ts"), "the probe run module never reached the supervisor");
 });
 
 test("the walk flags spawning imports and other modules", () => {
@@ -162,6 +213,8 @@ test("the walk flags spawning imports and other modules", () => {
   const probe = mkdtempSync(join(tmpdir(), "verchestra-extension-host-walk-"));
   try {
     const composer = join(probe, "extension-check.ts");
+    const runner = join(probe, "probe-run.ts");
+    const allowed = composition(composer, runner);
     const module = (name, code) => {
       const path = join(probe, name);
       writeFileSync(path, code);
@@ -174,20 +227,39 @@ test("the walk flags spawning imports and other modules", () => {
       [module("spawn.ts", ""), `import { SpawnedProbeWorker } from "@verchestra/platform-node";\n`],
       [module("other.ts", ""), `import { WorkspaceProbeAdmission } from "${ADMISSION_SPECIFIER}";\n`],
       [composer, `import * as host from "${ADMISSION_SPECIFIER}";\n`],
-      [composer, `const host = await import("${ADMISSION_SPECIFIER}");\n`]
+      [composer, `const host = await import("${ADMISSION_SPECIFIER}");\n`],
+      [composer, `import { ProbeWorkerSupervisor } from "${HOST_SPECIFIER}";\n`],
+      [composer, `import { SpawnedProbeWorker } from "${TRANSPORT_SPECIFIER}";\n`],
+      [module("probe-other.ts", ""), `import { ProbeWorkerSupervisor } from "${HOST_SPECIFIER}";\n`],
+      [module("probe-spawn.ts", ""), `import { SpawnedProbeWorker } from "${TRANSPORT_SPECIFIER}";\n`],
+      [runner, `import { ProbeFrameDecoder } from "${HOST_SPECIFIER}";\n`],
+      [runner, `import { SpawnedProbeWorker } from "acme-transport";\n`],
+      [runner, `import * as host from "${HOST_SPECIFIER}";\n`]
     ];
     for (const [path, code] of cases) {
       writeFileSync(path, code);
-      const { findings } = hostEdges([path], composer);
+      const { findings } = hostEdges([path], allowed);
       assert.equal(findings.length, 1, `the walk misses: ${code.trim()}`);
     }
     writeFileSync(
       composer,
       `import { WorkspaceProbeAdmission, type WorkspaceProbeWorkerApproval } from "${ADMISSION_SPECIFIER}";\n`
     );
-    const allowed = hostEdges([composer], composer);
-    assert.deepEqual(allowed.findings, []);
-    assert.equal(allowed.edges.length, 1, "the walk misses the allowed admission edge");
+    const admitted = hostEdges([composer], allowed);
+    assert.deepEqual(admitted.findings, []);
+    assert.equal(admitted.edges.length, 1, "the walk misses the allowed admission edge");
+    writeFileSync(
+      runner,
+      [
+        `import { FramedProbeWorker, MemoryProbeResultSink, ProbeWorkerSupervisor } from "${HOST_SPECIFIER}";`,
+        `import { WorkspaceProbeAdmission, type WorkspaceProbeWorkerGrant } from "${ADMISSION_SPECIFIER}";`,
+        `import { SpawnedProbeWorker, type RuntimeStore } from "${TRANSPORT_SPECIFIER}";`,
+        ""
+      ].join("\n")
+    );
+    const running = hostEdges([runner], allowed);
+    assert.deepEqual(running.findings, [], "the walk refuses the probe run module's own edges");
+    assert.equal(running.edges.length, 2, "the walk misses the probe run module's host edges");
   } finally {
     rmSync(probe, { recursive: true, force: true });
   }

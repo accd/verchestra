@@ -299,6 +299,22 @@ export const installedReleaseManifest: InstalledCliManifest = Object.freeze({
       supportsJson: true,
       mutating: true,
       options: Object.freeze([Object.freeze({ name: "database", kind: "string" as const })])
+    }),
+    // invariant: door 5 of .specs/features/probe-run/plan.md. `vestra probe
+    // run` runs one read-only statement the owner confirms, under a run of
+    // kind `probe` and a single-use grant, through an approved worker.
+    Object.freeze({
+      name: "probe run",
+      summary: "Run one confirmed read-only statement against a registered database through an approved worker",
+      supportsJson: true,
+      mutating: true,
+      options: Object.freeze([
+        Object.freeze({ name: "database", kind: "string" as const }),
+        APPROVAL_REF,
+        Object.freeze({ name: "request", kind: "string" as const }),
+        CONFIRM_STDIN,
+        KEYCHAIN
+      ])
     })
   ])
 });
