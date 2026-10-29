@@ -1,0 +1,114 @@
+---
+import SiteTitle from "@astrojs/starlight/components/SiteTitle.astro";
+import SocialIcons from "@astrojs/starlight/components/SocialIcons.astro";
+import ThemeSelect from "@astrojs/starlight/components/ThemeSelect.astro";
+
+import { productNavigation } from "../lib/site-chrome.ts";
+import Search from "./StarlightSearch.astro";
+
+/*
+ * why: Starlight's default header has no product navigation, so a reader who
+ * enters the documentation loses the Docs / Roadmap / Community links that the
+ * product pages show. This header keeps Starlight's own parts (site title,
+ * search, social icons, theme select) and adds the product navigation between
+ * the title and the search. Starlight's ThemeSelect stays, since its script
+ * owns the `starlight-theme` storage key that the product toggle also writes.
+ *
+ * The navigation's label must differ from the sidebar's "Main" (Axe
+ * landmark-unique). It hides below Starlight's md breakpoint through the same
+ * utilities the default header uses; the mobile menu footer lists the same
+ * links there.
+ */
+const navigation = productNavigation(import.meta.env.BASE_URL, Astro.url.pathname);
+---
+
+<div class="header">
+  <div class="title-wrapper sl-flex">
+    <SiteTitle />
+  </div>
+  <nav class="product-nav sl-hidden md:sl-flex print:hidden" aria-label="Product navigation">
+    {navigation.map((item) => (
+      <a href={item.href} aria-current={item.current ? "page" : undefined}>
+        {item.label}
+      </a>
+    ))}
+  </nav>
+  <div class="search-wrapper sl-flex print:hidden">
+    <Search />
+  </div>
+  <div class="right-group sl-hidden md:sl-flex print:hidden">
+    <div class="social-icons sl-flex">
+      <SocialIcons />
+    </div>
+    <ThemeSelect />
+  </div>
+</div>
+
+<style>
+  .header {
+    display: flex;
+    gap: var(--sl-nav-gap);
+    justify-content: space-between;
+    align-items: center;
+    height: 100%;
+  }
+
+  /* The wordmark never shrinks; the search box gives way on narrow desktops. */
+  .title-wrapper {
+    flex: none;
+    overflow: clip;
+    padding: 0.25rem;
+    margin: -0.25rem;
+  }
+
+  /* Display stays with Starlight's sl-hidden and md:sl-flex utilities. */
+  .product-nav {
+    gap: 0.25rem;
+    align-items: center;
+    margin-inline-start: auto;
+  }
+
+  .product-nav a {
+    display: inline-flex;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    align-items: center;
+    justify-content: center;
+    padding-inline: 0.6rem;
+    color: var(--muted);
+    font-size: 0.88rem;
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .product-nav a:hover {
+    color: var(--text);
+  }
+
+  .product-nav a[aria-current="page"] {
+    color: var(--text);
+    text-decoration: underline;
+    text-decoration-color: var(--cyan);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 0.45rem;
+  }
+
+  .search-wrapper {
+    flex: 0 1 16rem;
+    min-width: 0;
+    justify-content: flex-end;
+  }
+
+  .right-group,
+  .social-icons {
+    gap: 1rem;
+    align-items: center;
+  }
+
+  .social-icons::after {
+    content: "";
+    height: 2rem;
+    border-inline-end: 1px solid var(--sl-color-gray-5);
+  }
+</style>

@@ -1,0 +1,92 @@
+---
+import { Image } from "astro:assets";
+import DefaultFooter from "@astrojs/starlight/components/Footer.astro";
+
+import brandMark from "../assets/brand/verchestra-mark.png";
+import { productFooterLinks, withBase } from "../lib/site-chrome.ts";
+
+/*
+ * why: Starlight's default footer is the pagination alone, so a documentation
+ * page ends without the product footer that every product page shows. The
+ * default stays first; the product block follows it with the same wordmark,
+ * line, and links as ProductLayout.astro. Pagefind skips the block so the
+ * footer line does not match a search on every page.
+ */
+const base = import.meta.env.BASE_URL;
+const links = productFooterLinks(base);
+---
+
+<DefaultFooter />
+<div class="product-footer" data-pagefind-ignore>
+  <div>
+    <a class="product-footer__wordmark" href={withBase(base, "")}>
+      <Image src={brandMark} alt="" width={68} height={68} loading="lazy" />
+      <span>Verchestra</span>
+    </a>
+    <p>Verified AI software delivery. Apache-2.0.</p>
+  </div>
+  <nav aria-label="Footer navigation">
+    {links.map((link) => (
+      <a href={link.href}>{link.label}</a>
+    ))}
+  </nav>
+</div>
+
+<style>
+  .product-footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem 2rem;
+    margin-top: 3rem;
+    padding-block: 2.5rem;
+    border-top: 1px solid var(--line);
+  }
+
+  .product-footer__wordmark {
+    display: inline-flex;
+    min-height: 2.75rem;
+    align-items: center;
+    gap: 0.75rem;
+    color: var(--text);
+    font-size: 1.05rem;
+    font-weight: 750;
+    letter-spacing: -0.02em;
+    text-decoration: none;
+  }
+
+  .product-footer__wordmark img {
+    width: 2.125rem;
+    height: 2.125rem;
+    flex: none;
+  }
+
+  .product-footer p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.75rem;
+  }
+
+  .product-footer nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.75rem;
+  }
+
+  .product-footer nav a {
+    display: inline-flex;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    font-size: 0.88rem;
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .product-footer nav a:hover {
+    color: var(--text);
+  }
+</style>

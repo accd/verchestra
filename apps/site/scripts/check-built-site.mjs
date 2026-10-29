@@ -61,6 +61,9 @@ for (const file of htmlFiles) {
   }
   titles.set(title, route);
   descriptions.set(description, route);
+  // Starlight renders the title as the h1, so a projected Markdown page that
+  // kept its own h1 rendered two; every page has exactly one.
+  assert.equal((html.match(/<h1[\s>]/gu) ?? []).length, 1, `${route} must render exactly one h1`);
 
   const canonical = html.match(/<link rel="canonical" href="([^"]+)"/u)?.[1];
   assert.ok(canonical?.startsWith(`${productionOrigin}${basePath}`), `${route} has an invalid canonical URL`);

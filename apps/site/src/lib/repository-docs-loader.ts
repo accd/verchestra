@@ -3,6 +3,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { docsLoader } from "@astrojs/starlight/loaders";
 import type { Loader, LoaderContext } from "astro/loaders";
 
+import { parseFrontmatter, withoutLeadingTitle } from "./llm-content.ts";
 import {
   assertProjectStatus,
   canonicalContentFilePath,
@@ -43,7 +44,12 @@ async function loadCanonicalEntries(context: LoaderContext, repositoryRoot: URL)
   for (const source of sources) {
     const sourceFilePath = resolveRepositoryPath(repositoryRoot, source.sourcePath);
     const originalMarkdown = await readFile(sourceFilePath, "utf8");
-    const markdown = rewriteCanonicalLinks(originalMarkdown, source, sources, context.config.base);
+    // Starlight renders the title as the page's h1, so the Markdown h1 the
+    // title came from would render a second one on every projected page. The
+    // newer qualification reports open with YAML front matter, which is not
+    // page content; their h1 follows it after a blank line.
+    const rewritten = rewriteCanonicalLinks(originalMarkdown, source, sources, context.config.base);
+    const markdown = withoutLeadingTitle((parseFrontmatter(rewritten)?.body ?? rewritten).trimStart());
     const title = source.title ?? extractTitle(originalMarkdown);
     const description = source.description ?? extractDescription(originalMarkdown);
     const data = await context.parseData({
