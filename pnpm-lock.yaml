@@ -125,6 +125,9 @@ importers:
       '@verchestra/contracts':
         specifier: workspace:0.0.0
         version: link:../../packages/contracts
+      '@verchestra/data-probe':
+        specifier: workspace:0.0.0
+        version: link:../../packages/data-probe
       '@verchestra/domain':
         specifier: workspace:0.0.0
         version: link:../../packages/domain

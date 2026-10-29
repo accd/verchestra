@@ -9,6 +9,7 @@ import {
 } from "../../packages/domain/src/index.ts";
 import { TASK_PUBLIC_ERROR_DEFINITIONS } from "../../apps/vestra-cli/src/task/task-errors.ts";
 import { EXTENSION_PUBLIC_ERROR_DEFINITIONS } from "../../apps/vestra-cli/src/extension/extension-errors.ts";
+import { DATABASE_PUBLIC_ERROR_DEFINITIONS } from "../../apps/vestra-cli/src/database/database-errors.ts";
 import { BOOTSTRAP_PUBLIC_ERROR_DEFINITIONS } from "../../packages/application/src/bootstrap/bootstrap-errors.ts";
 import { EFFECT_PUBLIC_ERROR_DEFINITIONS } from "../../packages/effects/src/effect-errors.ts";
 import { ACTIVATION_LAUNCHER_PUBLIC_ERROR_DEFINITIONS } from "../../packages/platform-node/src/activation-launcher-errors.ts";
@@ -106,7 +107,10 @@ test("the source manifest advertises the composed init, self-test, doctor, secre
       "extension approve",
       "extension list",
       "extension revoke",
-      "extension check"
+      "extension check",
+      "database add",
+      "database list",
+      "database remove"
     ]
   );
   assert.deepEqual(
@@ -279,6 +283,32 @@ test("the extension slice takes the options its Surface names", () => {
         ]
       ],
       ["extension check", false, [["approval-ref", "string", false]]]
+    ]
+  );
+});
+
+// invariant: door 4 and the Surface of .specs/features/database-registration/plan.md.
+test("the database slice takes the options its Surface names", () => {
+  const database = installedReleaseManifest.commands.filter((command) => command.name.startsWith("database "));
+  assert.deepEqual(
+    database.map((command) => [
+      command.name,
+      command.mutating,
+      command.supportsJson,
+      command.options.map((option) => [option.name, option.kind, option.repeatable === true])
+    ]),
+    [
+      [
+        "database add",
+        true,
+        true,
+        [
+          ["definition", "string", false],
+          ["keychain", "string", false]
+        ]
+      ],
+      ["database list", false, true, []],
+      ["database remove", true, true, [["database", "string", false]]]
     ]
   );
 });
@@ -634,6 +664,7 @@ const COMPOSED_ERROR_DEFINITIONS = Object.freeze({
   cli: CLI_PUBLIC_ERROR_DEFINITIONS,
   task: TASK_PUBLIC_ERROR_DEFINITIONS,
   extension: EXTENSION_PUBLIC_ERROR_DEFINITIONS,
+  database: DATABASE_PUBLIC_ERROR_DEFINITIONS,
   bootstrap: BOOTSTRAP_PUBLIC_ERROR_DEFINITIONS,
   core: CORE_PUBLIC_ERROR_DEFINITIONS,
   workflow: WORKFLOW_PUBLIC_ERROR_DEFINITIONS,
@@ -678,7 +709,7 @@ function optionLine(option) {
 }
 
 test("every command answers --help with its declared options", async () => {
-  assert.equal(installedReleaseManifest.commands.length, 19);
+  assert.equal(installedReleaseManifest.commands.length, 22);
   for (const command of installedReleaseManifest.commands) {
     const result = await commandHelp(command, "human");
     assert.equal(result.exitCode, 0, command.name);

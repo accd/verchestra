@@ -42,6 +42,17 @@
       "reason": "Closed presentation, fixture, or repository-diagnostic ordering only; not a trust or persistent identity."
     },
     {
+      "path": "apps/vestra-cli/src/database/database-registration-file.ts",
+      "classification": "migrated-v2",
+      "signals": {
+        "canonicalizer": 8,
+        "digest": 0,
+        "localeCompare": 0,
+        "serialization": 1
+      },
+      "reason": "Compares a re-validated database registration and access policy with the stored ones through the declared V2 canonical contract; the registration envelope is sealed and verified by extension-seal.ts under the V1 evidence contract its /v1 predicate type names (database-registration door 1), and JSON.stringify writes that envelope, whose signed bytes travel base64-encoded, so no identity depends on it."
+    },
+    {
       "path": "apps/vestra-cli/src/doctor-composition.ts",
       "classification": "raw-byte-digest",
       "signals": {
