@@ -79,12 +79,10 @@
   --shadow-raised: 0 1.5rem 3.75rem rgba(38, 30, 65, 0.12);
   --shadow-interactive: 0 0.75rem 2rem rgba(38, 30, 65, 0.1);
   --shadow: var(--shadow-raised);
-}
-
-/* Starlight's own light palette lives in @layer starlight.base, which the
-   unlayered dark tokens above always beat; the light tokens must be unlayered
-   too, or a light documentation page keeps the dark page background. */
-:root[data-theme="light"] {
+  /* Starlight's own light palette lives in @layer starlight.base, which the
+     unlayered dark tokens above always beat; the light tokens must be
+     unlayered too, or a light documentation page keeps the dark page
+     background. */
   --sl-color-accent-low: #e3dffc;
   --sl-color-accent: #5b4fd8;
   --sl-color-accent-high: #2a2470;
