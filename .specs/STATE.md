@@ -3292,9 +3292,9 @@ note. -->
 
 ### AD-086 — A probe run is a third run kind, approved per run, under a single-use `database-read` grant, and Verchestra delivers no database credential
 
-- **Status:** proposed, **human review required**
-  (`.specs/features/probe-run/plan.md`, T3 slice 2b of #235). Doors 1-3 of that
-  plan reach past the feature, so they are recorded here.
+- **Status:** accepted by the owner on 2026-10-29 with the plan
+  (`.specs/features/probe-run/plan.md`, T3 slice 2b of #235, merged as #688).
+  Doors 1-3 of that plan reach past the feature, so they are recorded here.
 - **Context:** slice 1 (#681) lets the owner register and approve a probe
   worker, and slice 2a (#686) lets the owner register a database, but nothing
   issues the probe host's grant, `CapabilityBroker` has never issued

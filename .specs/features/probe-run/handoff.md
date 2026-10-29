@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: probe-run
 issue: 235
-status: planned
-branch: plan/235-probe-run
-baseRevision: 859092a9e41da727c62869c904343bf72e808c98
+status: in_progress
+branch: feat/235-probe-run
+baseRevision: 02b50ba88bea5d8917f9cdcfd03a2d82df9ba878
 lastCompletedTask: null
-nextTask: "Owner review of plan.md (slice 2b) and AD-086; then derive checks.md from the approved plan and build."
-lastGate: "validate_plan.py 0 errors, 0 warnings"
-updatedAt: 2026-10-29T11:44:00Z
+nextTask: "Build batch A (C16, C20-C22, C26), then batch B on green; then dispatch an independent Verifier over 02b50ba8..HEAD."
+lastGate: "validate_plan.py and validate_checks.py 0 errors, 0 warnings"
+updatedAt: 2026-10-29T14:51:13Z
 ---
 
 # Evidence
@@ -17,8 +17,10 @@ Slice 2b of T3 runs one governed read-only probe: `vestra probe run`. Slices 1
 (#681) and 2a (#686) are on main. The owner decided on 2026-10-29 that 2b
 delivers no database credential (the qualified real path is a SQLite file named
 by the worker's approved arguments) and that a probe run is a new run kind
-`probe`. `plan.md` and AD-086 in `.specs/STATE.md` await the owner's review.
-No check or code exists.
+`probe`. The owner approved `plan.md` and AD-086 on 2026-10-29 (#688). `checks.md` holds
+30 checks at profile `light`, about 190k, over the 150k budget; the owner chose
+a handoff in two batches: A (C16, C20-C22, C26, the foundations), then B (the
+rest, the command), B only on A's green. No code exists.
 
 Facts found while planning, with their places:
 
@@ -39,7 +41,7 @@ Facts found while planning, with their places:
 
 # Next exact action
 
-The owner reviews `plan.md` and AD-086. On approval, derive `checks.md`
-(profile `light` unless the owner raises it), size it against the 150k budget,
-build, and dispatch an independent Verifier. The real-database proofs run on
-Linux; on Windows the command refuses (AC 15).
+Build batch A on `feat/235-probe-run`, then batch B from `checks.md` and A's
+diff, then dispatch an independent Verifier over `02b50ba8..HEAD` with every
+check. The real-worker proofs run on Linux; on Windows the command refuses
+(AC 15).
