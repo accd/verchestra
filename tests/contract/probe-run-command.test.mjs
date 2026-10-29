@@ -581,6 +581,10 @@ test("a run whose digest is not typed back is aborted", TIMEOUT, async () => {
     assert.deepEqual(approvalsOf(fixture, run.runId), [], `${label} recorded an approval`);
     assert.deepEqual(grantsOf(fixture, run.runId), [], `${label} issued a grant`);
     assert.notEqual(reviewedAt, undefined, `${label} showed no review`);
+    // why: the spy's positive control. The command locates its Workspace
+    // through Git before the run exists, so a spy that recorded nothing would
+    // fail here instead of passing every assertion of emptiness below.
+    assert.ok(started.slice(0, reviewedAt).some(git), `${label} recorded no Git start before the review`);
     assert.deepEqual(started.slice(reviewedAt), [], `${label} started a process once its run existed`);
     // why: the signing passphrase is read before the run exists (AC 14), so
     // the credential store's own tool is the one start besides Git the
