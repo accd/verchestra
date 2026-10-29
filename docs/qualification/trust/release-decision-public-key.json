@@ -1,7 +1,7 @@
 {
   "algorithm": "Ed25519",
   "encoding": "spki-der-base64url",
-  "keyId": "release-decision-20260828",
-  "publicKey": "MCowBQYDK2VwAyEA4k1dThMdmZOlmprjgybqbkduDA2W5IfQG0HITo75ntY",
+  "keyId": "release-decision-20261029",
+  "publicKey": "MCowBQYDK2VwAyEAVyqXs2SO6ad_565173OuyldfYpPlySryPx-Pi6Qy8PE",
   "purposes": ["release-decision"]
 }

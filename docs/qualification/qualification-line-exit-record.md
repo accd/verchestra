@@ -5,8 +5,8 @@ latestRelease: 0.0.0-qualification.8
 decisionInEffect: docs/qualification/release-decision-1.0.0.md
 decisionDigest: sha256:e3b53bd4bc2d076fb7e883ea87e15c0f62e2db0877dae52f8e37f85f317ab11c
 decidedBy: accd
-decidedAt: <RFC 3339 UTC instant, set by the owner when signing>
-signature:
+decidedAt: 2026-10-29T22:43:37Z
+signature: cGAykNcnwF2KN5nPEt5cTXGJ9KyEvsyiRebasKmm-AAKgcRPGerkJYhBBOFYaIm-eZqEFWlXsFUcgu_knC78Dw
 publicKeyRef: docs/qualification/trust/release-decision-public-key.json
 ---
 

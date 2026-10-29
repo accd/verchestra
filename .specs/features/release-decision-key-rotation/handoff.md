@@ -5,8 +5,8 @@ issue: null
 status: verification
 branch: feat/release-decision-key-rotation
 baseRevision: 8e46231aac45c4aaad05396205c5f27946a8d30e
-lastCompletedTask: T1
-nextTask: "Owner runs the rotate-and-sign script on this branch and stores the new private key in the password manager; then human review and merge."
+lastCompletedTask: T2
+nextTask: "Human review and merge. The owner rotated the key and signed the exit record on 2026-10-29; the new private key is held by the owner outside the repository index."
 lastGate: "gate:quick and agent:check PASS before the owner run; dry run with a throwaway key verified the record and the 1.0.0 decision"
 updatedAt: 2026-10-29T23:00:00Z
 ---

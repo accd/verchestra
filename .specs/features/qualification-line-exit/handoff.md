@@ -51,7 +51,7 @@ tracked evidence it produces is named beside it.
       condition X3).
 - [ ] Move npm `latest` to `0.0.0-qualification.9` once it is published
       through the workflow and verified live.
-- [ ] Sign `docs/qualification/qualification-line-exit-record.md`: fill
+- [x] Sign `docs/qualification/qualification-line-exit-record.md`: fill
       `decidedAt`, sign the canonical bytes with the release-decision key
       (`.specs/features/release-decision/prepared-decision.md` §4.3, with the
       record's path), paste the signature, and confirm `pnpm agent:check`

@@ -20,3 +20,6 @@ spikes/node-runtime/.bundle/
 .verchestra/.worktrees/
 .verchestra/.secrets/
 .verchestra/.runtime/agent-eval/
+
+# owner-local release-decision key; never commit (docs/release-custody.md 7.4)
+/.verchestra.key
