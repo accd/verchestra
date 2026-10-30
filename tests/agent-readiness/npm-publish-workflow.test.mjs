@@ -94,7 +94,7 @@ test("the publish job runs no repository code and publishes only the verified ta
   const commands = runBlockLines(jobs.publish).filter((line) => /\bnpm publish\b/u.test(line));
   assert.deepEqual(
     commands.map((line) => line.trim()),
-    ['npm publish "dist/$TARBALL" --provenance --access public --tag "$DIST_TAG"']
+    ['npm publish "./dist/$TARBALL" --provenance --access public --tag "$DIST_TAG"']
   );
   const body = runBlockLines(jobs.publish).join("\n");
   const integrityCheck = body.indexOf('test "$actual" = "$INTEGRITY" || {');

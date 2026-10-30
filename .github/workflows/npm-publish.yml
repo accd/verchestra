@@ -212,7 +212,9 @@ jobs:
             if (major < 11 || (major === 11 && (minor < 5 || (minor === 5 && patch < 1))))
               throw new Error(`npm ${process.argv[1]} cannot use trusted publishing`);
           ' "$(npm --version)"
-          npm publish "dist/$TARBALL" --provenance --access public --tag "$DIST_TAG"
+          # why: npm reads "dist/<file>.tgz" as the GitHub repository dist/<file>
+          # (npm-package-arg: type git); only a "./" prefix makes it a local file.
+          npm publish "./dist/$TARBALL" --provenance --access public --tag "$DIST_TAG"
           {
             echo "## Published"
             echo ""
