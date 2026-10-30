@@ -19,6 +19,7 @@
     "t76:materialize-candidate": "node scripts/t76-materialize-candidate.mjs",
     "build:vestra-launcher": "node scripts/build-vestra-launcher.mjs",
     "build:vestra-binary": "node scripts/build-vestra-binary.mjs",
+    "build:probe-worker": "node scripts/build-probe-worker.mjs",
     "complexity:report": "node scripts/complexity.mjs report",
     "complexity:check": "node scripts/complexity.mjs check",
     "complexity:update": "node scripts/complexity.mjs update",

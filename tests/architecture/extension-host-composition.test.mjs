@@ -7,7 +7,9 @@
 // family's run module, which starts a probe worker under its grant, also
 // reaches the supervisor, the framed protocol and the in-memory parameter
 // broker and result sink through the package index, and the spawned transport
-// through platform-node; no other module names any of them.
+// through platform-node; no other module names any of them. The first-party
+// SQLite probe worker (AD-087), which runs only as its own bundled process,
+// takes the probe protocol's frame codec, by name, through the package index.
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -20,6 +22,7 @@ const HOST = join(ROOT, "packages", "extension-host");
 const ENTRY_ROOTS = ["apps/vestra-cli/src", "apps/vestra-launcher/src", "apps/vestra-launcher/closure"];
 const COMPOSER = "apps/vestra-cli/src/extension/extension-check.ts";
 const RUNNER = "apps/vestra-cli/src/probe/probe-run.ts";
+const WORKER = "apps/vestra-cli/src/probe/sqlite-probe-worker.ts";
 const ADMISSION_SPECIFIER = "@verchestra/extension-host/admission";
 const HOST_SPECIFIER = "@verchestra/extension-host";
 const TRANSPORT_SPECIFIER = "@verchestra/platform-node";
@@ -39,6 +42,9 @@ const SUPERVISION_NAMES = new Set([
   "MemoryProtectedParameterBroker",
   "ProbeWorkerSupervisor"
 ]);
+// why: the frame codec a worker speaks the protocol with, and nothing that
+// supervises, admits or starts one.
+const CODEC_NAMES = new Set(["ProbeFrameDecoder", "encodeProbeFrame"]);
 // why: these start or drive a worker; only the probe run module starts one.
 const SPAWNING_NAMES = new Set(["FramedProbeWorker", "ProbeWorkerSupervisor", "SpawnedProbeWorker"]);
 // invariant: what each composing module's host edges may load inside
@@ -46,22 +52,24 @@ const SPAWNING_NAMES = new Set(["FramedProbeWorker", "ProbeWorkerSupervisor", "S
 // testing doubles from either.
 const HOST_UNREACHABLE = Object.freeze({
   [COMPOSER]: ["src/index.ts", "src/framed-probe-worker.ts", "src/testing.ts"],
-  [RUNNER]: ["src/testing.ts"]
+  [RUNNER]: ["src/testing.ts"],
+  [WORKER]: ["src/testing.ts"]
 });
 
 // why: the composing modules a walk admits, and the edge each may have into
 // extension-host: its module, its specifier, and the names it may import.
-function composition(composer, runner) {
+function composition(composer, runner, worker) {
   return {
     runner,
     edges: [
       [composer, ADMISSION_SPECIFIER, ADMISSION_NAMES],
       [runner, ADMISSION_SPECIFIER, ADMISSION_NAMES],
-      [runner, HOST_SPECIFIER, SUPERVISION_NAMES]
+      [runner, HOST_SPECIFIER, SUPERVISION_NAMES],
+      [worker, HOST_SPECIFIER, CODEC_NAMES]
     ]
   };
 }
-const PRODUCT = composition(join(ROOT, COMPOSER), join(ROOT, RUNNER));
+const PRODUCT = composition(join(ROOT, COMPOSER), join(ROOT, RUNNER), join(ROOT, WORKER));
 
 // why: a statement's imported names, or null when it imports the whole module
 // (a namespace, a default, a side effect, or a dynamic import), which no
@@ -110,7 +118,7 @@ function sources(directory) {
 
 const repositoryPath = (file) => relative(ROOT, file).replaceAll("\\", "/");
 
-// invariant: three edges are allowed, each only in its shape. Anything else
+// invariant: four edges are allowed, each only in its shape. Anything else
 // is a finding: an app module other than the probe run module naming a
 // spawning export from any package, the run module naming one from anywhere
 // but the host index or the transport's package, or any other edge into
@@ -193,7 +201,8 @@ test("only the extension commands reach admission", () => {
     [
       `${COMPOSER} imports ${ADMISSION_SPECIFIER}`,
       `${RUNNER} imports ${HOST_SPECIFIER}`,
-      `${RUNNER} imports ${ADMISSION_SPECIFIER}`
+      `${RUNNER} imports ${ADMISSION_SPECIFIER}`,
+      `${WORKER} imports ${HOST_SPECIFIER}`
     ].sort(),
     "the composition edges are the only ones"
   );
@@ -214,7 +223,8 @@ test("the walk flags spawning imports and other modules", () => {
   try {
     const composer = join(probe, "extension-check.ts");
     const runner = join(probe, "probe-run.ts");
-    const allowed = composition(composer, runner);
+    const worker = join(probe, "sqlite-probe-worker.ts");
+    const allowed = composition(composer, runner, worker);
     const module = (name, code) => {
       const path = join(probe, name);
       writeFileSync(path, code);
@@ -234,7 +244,12 @@ test("the walk flags spawning imports and other modules", () => {
       [module("probe-spawn.ts", ""), `import { SpawnedProbeWorker } from "${TRANSPORT_SPECIFIER}";\n`],
       [runner, `import { ProbeFrameDecoder } from "${HOST_SPECIFIER}";\n`],
       [runner, `import { SpawnedProbeWorker } from "acme-transport";\n`],
-      [runner, `import * as host from "${HOST_SPECIFIER}";\n`]
+      [runner, `import * as host from "${HOST_SPECIFIER}";\n`],
+      [worker, `import { ProbeWorkerSupervisor } from "${HOST_SPECIFIER}";\n`],
+      [worker, `import { ProbeFrameDecoder, ProbeSequenceGuard } from "${HOST_SPECIFIER}";\n`],
+      [worker, `import { encodeProbeFrame } from "${ADMISSION_SPECIFIER}";\n`],
+      [worker, `import * as host from "${HOST_SPECIFIER}";\n`],
+      [worker, `import { SpawnedProbeWorker } from "${TRANSPORT_SPECIFIER}";\n`]
     ];
     for (const [path, code] of cases) {
       writeFileSync(path, code);
@@ -260,6 +275,10 @@ test("the walk flags spawning imports and other modules", () => {
     const running = hostEdges([runner], allowed);
     assert.deepEqual(running.findings, [], "the walk refuses the probe run module's own edges");
     assert.equal(running.edges.length, 2, "the walk misses the probe run module's host edges");
+    writeFileSync(worker, `import { ProbeFrameDecoder, encodeProbeFrame } from "${HOST_SPECIFIER}";\n`);
+    const serving = hostEdges([worker], allowed);
+    assert.deepEqual(serving.findings, [], "the walk refuses the worker module's frame codec");
+    assert.equal(serving.edges.length, 1, "the walk misses the worker module's host edge");
   } finally {
     rmSync(probe, { recursive: true, force: true });
   }

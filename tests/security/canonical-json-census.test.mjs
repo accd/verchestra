@@ -109,6 +109,7 @@ test("the reviewed serialization scope exclusions are closed", () => {
   assert.deepEqual([...CENSUS_SCOPE_EXCLUSIONS.keys()].sort(), [
     "apps/site/scripts/check-built-site.mjs",
     "apps/site/tests/e2e/site.spec.ts",
+    "apps/vestra-cli/dist/sqlite-probe-worker.mjs",
     "apps/vestra-cli/src/self-test-driver-fake.mjs",
     "apps/vestra-cli/src/self-test-full-crash-child.ts",
     "packages/drivers/src/claude-code-driver.ts",

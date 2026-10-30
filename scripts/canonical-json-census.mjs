@@ -7,6 +7,10 @@ export const CENSUS_SCOPE_EXCLUSIONS = Object.freeze(
   new Map([
     ["apps/site/scripts/check-built-site.mjs", "Build-time site diagnostic output, not a product identity."],
     ["apps/site/tests/e2e/site.spec.ts", "Site test fixture, not product source."],
+    [
+      "apps/vestra-cli/dist/sqlite-probe-worker.mjs",
+      "Git-ignored build output bundled from tracked worker sources the census reads, never canonical."
+    ],
     ["apps/vestra-cli/src/self-test-driver-fake.mjs", "Self-Test fake-driver fixture, not product behavior."],
     ["apps/vestra-cli/src/self-test-full-crash-child.ts", "Ephemeral Self-Test child-process fact handoff."],
     ["packages/drivers/src/claude-code-driver.ts", "Protocol frame serialization, not a canonical product identity."],

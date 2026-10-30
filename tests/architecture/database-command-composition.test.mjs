@@ -4,7 +4,10 @@
 // platform branch. It and the `vestra probe` family (AD-086) are the only
 // parts of the CLI that load @verchestra/data-probe, which main.ts reaches only
 // through a dynamic import of each family's entry; the probe family plans with
-// it and reads a statement with its SQLite parser, and opens no database.
+// it and reads a statement with its SQLite parser, and opens no database. Only
+// the first-party SQLite probe worker (AD-087), which runs as its own bundled
+// process and never in the CLI's, takes the SQLite adapter and its read-only
+// connection.
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -19,6 +22,7 @@ const PROBE_FAMILY = join(CLI_SOURCE, "probe");
 const MAIN = join(CLI_SOURCE, "main.ts");
 const ENTRY = "./database/database-command.ts";
 const PROBE_ENTRY = "./probe/probe-command.ts";
+const WORKER = join(PROBE_FAMILY, "sqlite-probe-worker.ts");
 const DATA_PROBE = "@verchestra/data-probe";
 const DATA_PROBE_VALUES = new Set([
   "normalizeDatabaseRegistration",
@@ -34,6 +38,10 @@ const PROBE_DATA_PROBE_VALUES = new Set([
   "SqliteProbeError",
   "parseSqliteReadOperation"
 ]);
+// invariant: door 2 of .specs/features/sqlite-probe-worker/plan.md. The worker
+// module, and it alone, takes the SQLite adapter and its read-only connection,
+// and nothing else from data-probe.
+const WORKER_DATA_PROBE_VALUES = new Set(["SqliteProbeAdapter", "SqliteReadConnection"]);
 // why: the modules that open a socket or start a process; a database client
 // or a probe worker needs one of them, and so does the probe host.
 const FORBIDDEN_BUILTINS = new Set(["child_process", "net", "tls", "dgram", "http", "https", "http2"]);
@@ -177,9 +185,10 @@ function edgeFindings(file, families) {
   if (edges.length === 0) return [];
   const family = families.find((candidate) => inside(candidate.directory, file));
   if (family === undefined) return [`${repositoryPath(file)} imports ${DATA_PROBE}`];
+  const values = family.worker?.path === file ? family.worker.values : family.values;
   return edges.flatMap((statement) =>
     (statement.names ?? [{ name: "*", type: false }])
-      .filter((entry) => !entry.type && !family.values.has(entry.name))
+      .filter((entry) => !entry.type && !values.has(entry.name))
       .map(({ name }) => `${repositoryPath(file)} imports ${name} from ${statement.specifier}`)
   );
 }
@@ -198,16 +207,21 @@ function compositionFindings(files, main, families) {
   return findings;
 }
 
-const families = (database, probe) => [
+const families = (database, probe, worker) => [
   { directory: database, entry: ENTRY, values: DATA_PROBE_VALUES },
-  { directory: probe, entry: PROBE_ENTRY, values: PROBE_DATA_PROBE_VALUES }
+  {
+    directory: probe,
+    entry: PROBE_ENTRY,
+    values: PROBE_DATA_PROBE_VALUES,
+    worker: { path: worker, values: WORKER_DATA_PROBE_VALUES }
+  }
 ];
 
 test("only the database family loads data-probe, and the probe family plans with it", () => {
   const files = sources(CLI_SOURCE);
   assert.ok(files.length > 50, `the walk reached only ${files.length} modules`);
   assert.deepEqual(
-    compositionFindings(files, MAIN, families(FAMILY, PROBE_FAMILY)),
+    compositionFindings(files, MAIN, families(FAMILY, PROBE_FAMILY, WORKER)),
     [],
     "door 4: only the database and probe families load data-probe"
   );
@@ -226,7 +240,8 @@ test("only the database family loads data-probe, and the probe family plans with
   try {
     const family = join(probe, "database");
     const probeFamily = join(probe, "probe");
-    const both = families(family, probeFamily);
+    const workerPath = join(probeFamily, "sqlite-probe-worker.ts");
+    const both = families(family, probeFamily, workerPath);
     const main = join(probe, "main.ts");
     const write = (path, source) => {
       writeFileSync(path, source);
@@ -252,8 +267,23 @@ test("only the database family loads data-probe, and the probe family plans with
     write(join(probe, "eager.ts"), `export * from "${ENTRY}";\n`);
     write(join(probe, "eager-probe.ts"), `export * from "${PROBE_ENTRY}";\n`);
     const dynamicMain = `const loaded = await import("${ENTRY}");\nconst probed = await import("${PROBE_ENTRY}");\n`;
+    const worker = (names) => write(workerPath, `import { ${names} } from "${DATA_PROBE}";\n`);
     write(main, dynamicMain);
     assert.deepEqual(compositionFindings([entry, planner, main], main, both), []);
+    assert.deepEqual(
+      compositionFindings(
+        [entry, worker("SqliteProbeAdapter, SqliteReadConnection, type SqliteConnectionPlan")],
+        main,
+        both
+      ),
+      [],
+      "the walk refuses the worker module's adapter and connection"
+    );
+    for (const [label, names] of [
+      ["the worker imports a fixture connection", "SqliteReadConnection, SqliteFixtureConnection"],
+      ["the worker imports the planner", "SqliteProbeAdapter, ProbePlanner"]
+    ])
+      assert.equal(compositionFindings([entry, worker(names)], main, both).length, 1, `the walk misses: ${label}`);
     for (const [label, files_, source] of [
       ["a module outside the families imports data-probe", [entry, other], dynamicMain],
       ["another family imports data-probe", [entry, otherFamily], dynamicMain],
