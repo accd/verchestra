@@ -8,7 +8,7 @@ section names the exact current build. Installing it needs no clone, no build,
 no credential, and no configuration.
 
 ```bash
-npx verchestra@0.0.0-qualification.8 --help
+npx verchestra@0.0.0-qualification.9 --help
 ```
 
 The package provides two equivalent binaries, `verchestra` and `vestra`.

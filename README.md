@@ -14,7 +14,7 @@
 [![Node 24.14.0](https://img.shields.io/badge/Node-24.14.0-339933?logo=node.js&logoColor=white)](package.json)
 [![Status: qualification](https://img.shields.io/badge/status-qualification-6f42c1)](ROADMAP.md)
 
-> **Status:** `0.0.0-qualification`. T77 is complete and the declared qualification chain is fully verified. The signed 1.0.0 decision is a **reject, recorded as a hold** ([release-decision-1.0.0.md](docs/qualification/release-decision-1.0.0.md)). The npm package `verchestra@0.0.0-qualification.8` is the published beta build. It is not a production release and not 1.0.
+> **Status:** `0.0.0-qualification`. T77 is complete and the declared qualification chain is fully verified. The signed 1.0.0 decision is a **reject, recorded as a hold** ([release-decision-1.0.0.md](docs/qualification/release-decision-1.0.0.md)). The npm package `verchestra@0.0.0-qualification.9` is the published beta build. It is not a production release and not 1.0.
 
 The [product site](https://accd.github.io/verchestra/) has the searchable docs. This page is the short version.
 
@@ -56,7 +56,7 @@ production release and not 1.0: the signed 1.0.0 decision is a hold. Install the
 exact build this section names, so every report refers to the same one:
 
 ```bash
-npx verchestra@0.0.0-qualification.8 --version
+npx verchestra@0.0.0-qualification.9 --version
 ```
 
 You need Node 24.14.0 or later for `npx`, and `git` on `PATH`.
