@@ -17,3 +17,5 @@ The workflow:
 SQLite is live-qualified in this repository; PostgreSQL, MySQL/MariaDB, SQL Server, Oracle, SAP ASE / Sybase, and MongoDB are contract-verified here and qualified at the edge. The same no-writer contract applies to every engine.
 
 An ER model can improve discovery and should be registered as a source when available. It does not replace live, bounded metadata evidence.
+
+To run one confirmed read-only statement against a SQLite file through Verchestra's own worker, follow the [probe quick start](https://github.com/accd/verchestra/blob/main/docs/probe-quick-start.md): it registers the database, writes, registers and approves the worker, and ends at the result envelope.

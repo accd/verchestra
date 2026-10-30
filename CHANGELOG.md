@@ -8,6 +8,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- `vestra probe worker --engine sqlite --entry <path>` writes Verchestra's own
+  SQLite probe worker into the Workspace, for the owner to review, commit,
+  register with `vestra extension add` and approve like any other worker
+  (#235). It prints the path, the engine, the `sha256:` digest of the bytes it
+  wrote and whether it wrote them; the same bytes already in place are left as
+  they are, and other bytes, another engine, or a path outside the Git top
+  level, through a link or at a directory are refused before anything is
+  written. The worker is one self-contained file that imports only Node
+  built-ins: a sealed release carries it as `bin/sqlite-probe-worker.mjs`, and
+  a source checkout builds the same bundle with `corepack pnpm
+  build:probe-worker`. It reads the SQLite file named by `PROBE_SQLITE_PATH`
+  read-only, names itself by `PROBE_COMPONENT_ID`, both from its approved
+  environment, and exits before its handshake without them.
+- `docs/probe-quick-start.md` walks one SQLite probe from `vestra init` to the
+  printed result envelope through the first-party worker, and the site's
+  read-only database discovery and SQLite pages link it (#235).
 - `vestra probe run --database <id> --approval-ref <ref> --request <file>` runs
   one read-only statement against a registered SQLite database through an
   approved probe worker (#235). The request file, at most 64 KiB, names the
