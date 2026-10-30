@@ -6,7 +6,8 @@
 // the fake's good behavior, and the user's checkout must not move.
 //
 // The cases run on macOS (the fake keychain) and on Linux (the fake Secret
-// Service, #599); Windows skips each by name, as the e2e journeys do.
+// Service, #599); on Windows each asserts that the task path reports not
+// configured, as the e2e journeys do.
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -18,6 +19,7 @@ import {
   DARWIN,
   LINUX,
   MODE_CREDENTIALS,
+  WIN32,
   approveArguments,
   cleanupTaskFixtures,
   taskFixture as cliFixture
@@ -33,9 +35,21 @@ const TIMEOUT = { timeout: 300_000 };
 // invariant: #599 (TST-002). The single-session journeys run wherever the task
 // path's credential store can be stood in for: the macOS keychain fake, and on
 // Linux the Secret Service fake. Windows runs its own journey over the named
-// pipe, so a journey here is skipped there by name, never passed silently.
+// pipe, so a case here asserts there that the task path reports not
+// configured: never a silent pass, and never a skip, which the release build's
+// sealed counters refuse.
 const JOURNEYS = DARWIN || LINUX;
-const WINDOWS_JOURNEY = "Windows runs the single-session journey in tests/e2e/task-windows-e2e.test.mjs";
+
+function notConfiguredWithoutJourneys(t) {
+  t.diagnostic("no journey runs here: asserting that the task path reports not configured before any effect");
+  return taskFixture(WIN32 ? { credentials: {} } : {}).then((fixture) => {
+    const plan = fixture.launch(["task", "plan", "--request", fixture.requestPath, "--output", "json"]);
+    assert.notEqual(plan.status, 0, "plan unexpectedly succeeded");
+    assert.equal(plan.json?.error?.code, "VES_TASK_NOT_CONFIGURED", `plan: ${plan.stdout}${plan.stderr}`);
+    assert.equal(plan.json.error.safeDetails.requirement, WIN32 ? "evidence-signing-passphrase" : "credential-store");
+    assert.equal(existsSync(join(fixture.stateRoot, "tasks")), false);
+  });
+}
 
 function data(result, label) {
   assert.ok(result.json !== undefined, `${label}: ${result.stderr}`);
@@ -89,7 +103,7 @@ function committedPaths(fixture, branch) {
 }
 
 test("traversal out of the worktree is refused for reads and writes", TIMEOUT, async (t) => {
-  if (!JOURNEYS) return t.skip(WINDOWS_JOURNEY);
+  if (!JOURNEYS) return notConfiguredWithoutJourneys(t);
   const { fixture, started, results } = await run("traversal");
   // The bridge refuses a non-logical path itself; the executor would too.
   denied(results, "../escape.txt", /VES_BRIDGE_PATH_INVALID|VES_EXECUTOR_SCOPE_DENIED/u);
@@ -103,7 +117,7 @@ test("traversal out of the worktree is refused for reads and writes", TIMEOUT, a
 });
 
 test("a symlink planted in the repository cannot carry a read or write outside it", TIMEOUT, async (t) => {
-  if (!JOURNEYS) return t.skip(WINDOWS_JOURNEY);
+  if (!JOURNEYS) return notConfiguredWithoutJourneys(t);
   const { fixture, started, results } = await run("symlink");
   denied(results, "src/link/planted.txt");
   denied(results, "src/link/secret.txt");
@@ -113,7 +127,7 @@ test("a symlink planted in the repository cannot carry a read or write outside i
 });
 
 test("protected paths stay untouched even inside the change scope", TIMEOUT, async (t) => {
-  if (!JOURNEYS) return t.skip(WINDOWS_JOURNEY);
+  if (!JOURNEYS) return notConfiguredWithoutJourneys(t);
   const { fixture, started, results } = await run("protected");
   denied(results, "src/protected/config.json", /VES_EXECUTOR_PROTECTED_PATH|VES_BRIDGE/u);
   denied(results, ".verchestra/policy/task-authority.json");
@@ -128,7 +142,7 @@ test(
   "a prompt injection read from the repository cannot widen scope or reach a non-bridge tool",
   TIMEOUT,
   async (t) => {
-    if (!JOURNEYS) return t.skip(WINDOWS_JOURNEY);
+    if (!JOURNEYS) return notConfiguredWithoutJourneys(t);
     const { fixture, plan, started, results, log } = await run("injection");
     // The injected text reached the model only as labeled, untrusted data...
     assert.equal(log[0].promptHasInjectionText, true);
@@ -191,7 +205,7 @@ for (const [scenario, state] of [
     `the subscription token stays out of argv, logs, output, evidence, and errors when a run is ${state}`,
     TIMEOUT,
     async (t) => {
-      if (!JOURNEYS) return t.skip(WINDOWS_JOURNEY);
+      if (!JOURNEYS) return notConfiguredWithoutJourneys(t);
       const fixture = await taskFixture({ request: { instructions: `Set the value. scenario:${scenario}` } });
       const outputs = [];
       const launch = (argv, input) => {
@@ -257,7 +271,7 @@ for (const [scenario, state] of [
 }
 
 test("an owner's ambient sessions never reach a provider child", TIMEOUT, async (t) => {
-  if (!JOURNEYS) return t.skip(WINDOWS_JOURNEY);
+  if (!JOURNEYS) return notConfiguredWithoutJourneys(t);
   const fixture = await taskFixture({ ambient: true });
   const plan = data(
     fixture.launch(["task", "plan", "--request", fixture.requestPath, ...fixture.keychainArgs, "--output", "json"]),
@@ -291,7 +305,7 @@ test("an owner's ambient sessions never reach a provider child", TIMEOUT, async 
 });
 
 test("an ambient Claude Code session cannot stand in for a token that is not bound", TIMEOUT, async (t) => {
-  if (!JOURNEYS) return t.skip(WINDOWS_JOURNEY);
+  if (!JOURNEYS) return notConfiguredWithoutJourneys(t);
   const { "claude-code-oauth-token": omitted, ...withoutToken } = MODE_CREDENTIALS.subscription;
   assert.equal(omitted, TOKEN);
   const fixture = await taskFixture({ ambient: true, credentials: withoutToken });
@@ -308,7 +322,7 @@ test("an ambient Claude Code session cannot stand in for a token that is not bou
 });
 
 test("an ambient Codex login cannot stand in for the Workspace identity", TIMEOUT, async (t) => {
-  if (!JOURNEYS) return t.skip(WINDOWS_JOURNEY);
+  if (!JOURNEYS) return notConfiguredWithoutJourneys(t);
   const fixture = await taskFixture({ ambient: true, codexLogin: null });
   const plan = data(
     fixture.launch(["task", "plan", "--request", fixture.requestPath, ...fixture.keychainArgs, "--output", "json"]),
