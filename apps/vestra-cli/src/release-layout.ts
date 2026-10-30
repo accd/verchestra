@@ -115,3 +115,19 @@ export function resolveMcpBridgeRelay(moduleUrl: string = import.meta.url): stri
     })
   );
 }
+
+// why: doors 3 and 4 of .specs/features/sqlite-probe-worker/plan.md. The
+// first-party SQLite probe worker is a file `vestra probe worker` copies into a
+// Workspace, so it must be one self-contained bundle in either layout: the
+// builder emits it at `<releaseRoot>/bin/sqlite-probe-worker.mjs`, and a
+// repository checkout builds the same bundle, git-ignored, with
+// `corepack pnpm build:probe-worker`. A checkout that has not built it gets
+// the source path, which does not exist, and the command says how to build it.
+export function resolveSqliteProbeWorker(moduleUrl: string = import.meta.url): string {
+  return firstExisting(
+    releaseLayoutCandidates(moduleUrl, {
+      sealed: "./sqlite-probe-worker.mjs",
+      source: "../dist/sqlite-probe-worker.mjs"
+    })
+  );
+}
