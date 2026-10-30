@@ -52,9 +52,10 @@ tracked evidence it produces is named beside it.
       the verifier `gpt-5.5`, as `.specs/features/live-task-pilot/spec.md`
       section 8 orders it, and record the row in its `validation.md` (exit
       condition X3).
-- [ ] Move npm `latest` to `0.0.0-qualification.9` once it is published
+- [x] Move npm `latest` to `0.0.0-qualification.9` once it is published
       through the workflow and verified live. It is now published and
-      verified live on all five targets (run `41005172967`).
+      verified live on all five targets (run `41005172967`). The owner moved
+      `latest` on 2026-10-30, so both `latest` and `next` now name `.9`.
 - [x] Sign `docs/qualification/qualification-line-exit-record.md`: fill
       `decidedAt`, sign the canonical bytes with the release-decision key
       (`.specs/features/release-decision/prepared-decision.md` §4.3, with the
