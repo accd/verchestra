@@ -60,10 +60,11 @@ tracked evidence it produces is named beside it.
       (`.specs/features/release-decision/prepared-decision.md` §4.3, with the
       record's path), paste the signature, and confirm `pnpm agent:check`
       reports no warning.
-- [ ] Sign the record again for `.9`. Recording `.9` in the ledger moved
+- [x] Sign the record again for `.9`. Recording `.9` in the ledger moved
       `latestRelease` to `0.0.0-qualification.9` and marked X1 met, so the
       2026-10-29 signature no longer covers the record's bytes. Signing works
-      as in the step above.
+      as in the step above. Signed by the owner at 2026-10-30T21:09:54Z, and
+      `pnpm agent:check` reports no warning.
 - [x] Confirm the status of AD-033 in `.specs/STATE.md`: the signed decision
       records it as ratified on 2026-08-28; the status line still reads
       proposed.
