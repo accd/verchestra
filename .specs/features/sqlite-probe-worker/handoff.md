@@ -6,9 +6,9 @@ status: complete
 branch: feat/235-sqlite-probe-worker-2
 baseRevision: 17427ba687e3c0a197b5a1490600d7be3d3a699e
 lastCompletedTask: null
-nextTask: "Owner review of the sqlite-probe-worker build PR; after it lands, the next #235 step (credential delivery for engines other than SQLite) is its own feature and the owner's call."
+nextTask: "None in this feature: #711 landed it on main. Credential delivery for engines other than SQLite is the next #235 step, its own feature and the owner's call."
 lastGate: "Independent Verifier round 1 PASS at 1f31e259 (21/21; Windows: gate:quick, test:architecture 149, named proofs; Linux: gate:quick, test:contract 1040, test:architecture 149, test:build 190, test:integration 1289, test:e2e 366, named proofs, C11-C15 against the real worker); validate_verification exit 0; after the S4036 fix, Windows C7-C8 2/2 and test:architecture 149/149"
-updatedAt: 2026-10-30T11:30:00Z
+updatedAt: 2026-10-30T22:30:00Z
 ---
 
 # Evidence
@@ -22,23 +22,23 @@ component id from two approved environment variables (AD-087).
 
 C1-C21 are built, one builder, on `feat/235-sqlite-probe-worker-2`:
 
-- `22a3c93f` bundles the worker: `apps/vestra-cli/src/probe/sqlite-probe-worker.ts`
+- `88c28b3d` bundles the worker: `apps/vestra-cli/src/probe/sqlite-probe-worker.ts`
   (data-probe's SQLite adapter over the read-only connection, the probe
   protocol's frame codec), the sealed child entry `probe:sqlite-worker`
   (`bin/sqlite-probe-worker.mjs`, `core-code`), `corepack pnpm
   build:probe-worker` (`scripts/build-probe-worker.mjs`, git-ignored output in
   `apps/vestra-cli/dist/`), the two guard edges (C18), and C7, C8, C9 (builder
   half), C10-C12.
-- `f61cfcc2` adds `vestra probe worker` (`apps/vestra-cli/src/probe/probe-worker.ts`)
+- `39cbe766` adds `vestra probe worker` (`apps/vestra-cli/src/probe/probe-worker.ts`)
   on the entry rule `extension add` applies, now shared as
   `resolveWorkspaceFile`, its four refusals in the probe family's registry,
   every pinned command list (lesson L-019), and C1-C6, C9 (sealed half),
   C13-C17.
-- `94fac2fb` adds `docs/probe-quick-start.md`, the two site links and the
+- `4b67eccc` adds `docs/probe-quick-start.md`, the two site links and the
   CHANGELOG entries (C19-C21).
-- `354f7171` names, in C14's diagnostics, the code an unconfigured worker
+- `3eb5c279` names, in C14's diagnostics, the code an unconfigured worker
   fails its run with: `VES_PROBE_WORKER_EXITED`.
-- `de2b80d1` moves the bundle entry to
+- `168cdba3` moves the bundle entry to
   `apps/vestra-cli/closure/sqlite-probe-worker-entry.ts`, beside the launcher
   entries.
 
@@ -81,9 +81,13 @@ The same commits were replayed onto `17427ba6` as
 `feat/235-sqlite-probe-worker-2`, with the two entries under `[Unreleased]`
 (one sentence rewrapped so a code span stays on one line). Apart from
 `CHANGELOG.md`, its diff from `17427ba6` equals #705's diff from `5eb3197b`
-byte for byte, and `checks.md` `## Handoff` cites the replayed ids.
+byte for byte.
+
+#711 landed those commits on main as `f94d61ef..63fb1d47`, each with the same
+patch as on its branch, and the commit ids this file and `checks.md`
+`## Handoff` cite are main's.
 
 # Next exact action
 
-Owner review of the sqlite-probe-worker build PR. After it lands, credential
-delivery for engines other than SQLite is its own feature and the owner's call.
+None in this feature. Credential delivery for engines other than SQLite is the
+next #235 step, its own feature and the owner's call.
