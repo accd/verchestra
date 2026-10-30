@@ -81,3 +81,18 @@ test("no async work occurs before the first capture or after the second", async 
 
   assert.deepEqual(order, ["before-capture", "probe-start", "probe-end", "after-capture"]);
 });
+
+// X5 (.specs/features/doctor-scoped-verdict, doors 1 and 3): the sealed
+// artifact names the payload's schema version, so a verifier reads it as
+// doctor-report@2 under the /v2 predicate rather than as the @1 shape.
+test("the sealed report names doctor-report version 2", async () => {
+  const result = await runDoctor({
+    probes: healthyProbes({ "doctor.sandbox": () => ({ present: false, healthy: false }) }),
+    captureSentinels: () => [],
+    sealer: makeSealer(),
+    now: () => Date.now()
+  });
+  assert.deepEqual(result.artifact.schema, { name: "doctor-report", version: 2 });
+  assert.equal(result.verdict, "PASS");
+  assert.deepEqual(result.payload["doctor.not_offered_capabilities"], ["sandbox.enforced"]);
+});

@@ -7,6 +7,7 @@
 import {
   DOCTOR_CAPABILITY_IDS,
   DOCTOR_CHECK_IDS,
+  DOCTOR_NOT_OFFERED_CHECK_IDS,
   type DoctorCheckFact,
   type DoctorCheckId,
   type DoctorRemediationCode
@@ -49,8 +50,11 @@ export const DOCTOR_PROBE_TIMEOUT_MS = 5_000;
 function observeToFact(checkId: DoctorCheckId, observation: DoctorObservation): DoctorCheckFact {
   const capabilityId = DOCTOR_CAPABILITY_IDS[checkId];
   if (observation.present && observation.healthy) return { checkId, status: "pass", capabilityId };
-  // Absent subsystem -> blocked (the capability cannot run until provisioned);
-  // present but unhealthy -> fail (it is there and wrong).
+  // Absent subsystem -> blocked (the capability cannot run until provisioned),
+  // or not-offered when no product command provisions it (X5); present but
+  // unhealthy -> fail (it is there and wrong), offered or not.
+  if (!observation.present && DOCTOR_NOT_OFFERED_CHECK_IDS.includes(checkId))
+    return { checkId, status: "not-offered", capabilityId };
   return {
     checkId,
     status: observation.present ? "fail" : "blocked",

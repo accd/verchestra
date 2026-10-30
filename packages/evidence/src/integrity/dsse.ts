@@ -52,7 +52,10 @@ const PREDICATE_TYPES_V2 = Object.freeze({
   "execution-package": `${PREDICATE_BASE}/execution-package/v2`,
   "run-capsule": `${PREDICATE_BASE}/run-capsule/v2`,
   "recovery-bundle": `${PREDICATE_BASE}/recovery-bundle/v2`,
-  "support-bundle": `${PREDICATE_BASE}/support-bundle/v2`
+  "support-bundle": `${PREDICATE_BASE}/support-bundle/v2`,
+  // why: doctor-report@2 adds the not-offered status (.specs/features/doctor-scoped-verdict,
+  // door 3); its declared sets are already code-unit ordered (CJ4-05).
+  "doctor-report": `${PREDICATE_BASE}/doctor-report/v2`
 } as const);
 
 export type PredicateSchemaName = keyof typeof PREDICATE_TYPES_V1;

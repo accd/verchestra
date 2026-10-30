@@ -43,6 +43,7 @@ test("registry exposes only declared canonical schema versions", () => {
   assert.deepEqual(registry.list(), [
     "cli-output@1",
     "doctor-report@1",
+    "doctor-report@2",
     "key-lifecycle-error@1",
     "promotion-report@1",
     "protocol-envelope@1",

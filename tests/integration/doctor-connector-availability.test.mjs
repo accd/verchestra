@@ -49,14 +49,14 @@ test("connector's check reads its own fixture, not the driver subsystem's", asyn
   assert.equal(connectorCode(run), "doctor.connector:pass");
 });
 
-test("an absent record reports blocked", async () => {
+test("an absent record reports not-offered", async () => {
   const root = await mkdtemp(join(tmpdir(), "verchestra-doctor-connector-"));
   roots.push(root);
   // Deliberately not provisioned: no .verchestra/connectors/availability.json.
 
   const run = await runDoctorDeep({ controlRoot: root });
 
-  assert.equal(connectorCode(run), "doctor.connector:blocked");
+  assert.equal(connectorCode(run), "doctor.connector:not-offered");
 });
 
 test("a record declaring a different subsystem reports fail (edge case 4)", async () => {

@@ -25,6 +25,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   printed result envelope through the first-party worker, and the site's
   read-only database discovery and SQLite pages link it (#235).
 
+### Changed
+
+- `vestra doctor` reports `PASS` on a healthy installation (X5). Six subsystems this release does not offer, such as connectors, drivers and the sandbox, now report `not-offered` and are listed in `doctor.not_offered_capabilities`; they no longer make the verdict `BLOCKED`. The report is `doctor-report@2`.
+
 ## [0.0.0-qualification.9] - 2026-10-30
 
 Release `release:verchestra:0.0.0-qualification.9:50ae23c84c88`, publication

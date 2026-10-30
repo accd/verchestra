@@ -118,7 +118,7 @@ test("a fully replaced, self-consistent, self-signed bundle reports fail, not pa
   assert.equal(cedarPolicyCode(run), "doctor.cedar-policy:fail");
 });
 
-test("a bundle present without its trust anchor reports blocked, never pass", async () => {
+test("a bundle present without its trust anchor reports not-offered, never pass", async () => {
   const root = await mkdtemp(join(tmpdir(), "verchestra-doctor-cedar-policy-"));
   roots.push(root);
   await provisionDoctorFixtures(root);
@@ -127,17 +127,17 @@ test("a bundle present without its trust anchor reports blocked, never pass", as
 
   const run = await runDoctorDeep({ controlRoot: root });
 
-  assert.equal(cedarPolicyCode(run), "doctor.cedar-policy:blocked");
+  assert.equal(cedarPolicyCode(run), "doctor.cedar-policy:not-offered");
 });
 
-test("an unprovisioned bundle reports blocked, never fail", async () => {
+test("an unprovisioned bundle reports not-offered, never fail", async () => {
   const root = await mkdtemp(join(tmpdir(), "verchestra-doctor-cedar-policy-"));
   roots.push(root);
   // Deliberately not provisioned: no .verchestra/policy/active.bundle exists.
 
   const run = await runDoctorDeep({ controlRoot: root });
 
-  assert.equal(cedarPolicyCode(run), "doctor.cedar-policy:blocked");
+  assert.equal(cedarPolicyCode(run), "doctor.cedar-policy:not-offered");
 });
 
 test("the bundle digest never reaches the sealed report", async () => {

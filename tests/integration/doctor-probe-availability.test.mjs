@@ -50,14 +50,14 @@ test("probe's check reads its own fixture, not another subsystem's", async () =>
   assert.equal(probeCode(run), "doctor.probe:pass");
 });
 
-test("an absent record reports blocked", async () => {
+test("an absent record reports not-offered", async () => {
   const root = await mkdtemp(join(tmpdir(), "verchestra-doctor-probe-"));
   roots.push(root);
   // Deliberately not provisioned: no .verchestra/probe/fixtures/availability.json.
 
   const run = await runDoctorDeep({ controlRoot: root });
 
-  assert.equal(probeCode(run), "doctor.probe:blocked");
+  assert.equal(probeCode(run), "doctor.probe:not-offered");
 });
 
 test("a record declaring a different subsystem reports fail (edge case 4)", async () => {

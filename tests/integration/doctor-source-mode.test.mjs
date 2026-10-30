@@ -33,7 +33,10 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-test("all seven upgraded checks report blocked, never fail, in an unprovisioned checkout", async () => {
+// X5 (.specs/features/doctor-scoped-verdict): of the seven, only
+// secret-presence is something a user provisions, so it alone reports blocked;
+// the six no product command provisions report not-offered. None reports fail.
+test("all seven upgraded checks report blocked or not-offered, never fail, in an unprovisioned checkout", async () => {
   const root = await mkdtemp(join(tmpdir(), "verchestra-doctor-source-mode-"));
   roots.push(root);
   // Deliberately not provisioned: no scripts/provision-doctor-fixtures.mjs
@@ -44,7 +47,8 @@ test("all seven upgraded checks report blocked, never fail, in an unprovisioned 
 
   for (const checkId of UPGRADED_CHECKS) {
     const code = codes.find((entry) => entry.startsWith(`${checkId}:`));
-    assert.equal(code, `${checkId}:blocked`, `expected ${checkId} to report blocked on a bare checkout`);
+    const expected = checkId === "doctor.secret-presence" ? "blocked" : "not-offered";
+    assert.equal(code, `${checkId}:${expected}`, `expected ${checkId} to report ${expected} on a bare checkout`);
   }
   assert.equal(
     codes.some((entry) => entry.endsWith(":fail")),

@@ -73,10 +73,10 @@ test("a healthy but under-provisioned machine reports BLOCKED, not FAIL", async 
   );
   const report = buildDoctorReport(facts, 7);
   assert.equal(report["doctor.verdict"], "BLOCKED");
-  assert.deepEqual(
-    [...report["doctor.blocked_capabilities"]].sort(),
-    [DOCTOR_CAPABILITY_IDS["doctor.cedar-policy"], DOCTOR_CAPABILITY_IDS["doctor.native-asset"]].sort()
-  );
+  // why: X5 (.specs/features/doctor-scoped-verdict) — an absent cedar policy is
+  // not offered by this release, so only the absent native asset blocks.
+  assert.deepEqual(report["doctor.blocked_capabilities"], [DOCTOR_CAPABILITY_IDS["doctor.native-asset"]]);
+  assert.deepEqual(report["doctor.not_offered_capabilities"], [DOCTOR_CAPABILITY_IDS["doctor.cedar-policy"]]);
 });
 
 test("a failing check outranks blocked checks in the verdict", async () => {

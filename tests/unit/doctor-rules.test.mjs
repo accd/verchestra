@@ -196,7 +196,7 @@ test("an out-of-range verdict is rejected", () => {
   });
 });
 
-test("the report fields are exactly the six-field allowlist", () => {
+test("the report fields are exactly the seven-field allowlist", () => {
   assert.deepEqual([...DOCTOR_REPORT_FIELDS].sort(), Object.keys(buildDoctorReport(allPass(), 1)).sort());
 });
 
