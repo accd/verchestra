@@ -281,9 +281,10 @@ test("the docs name task check where a tester first plans", () => {
     assert.ok(check < text.indexOf("npx verchestra task plan"), `${path} runs task check after task plan`);
   }
   assert.match(readme, /^\| 4 +\| .*`task check`.*\|$/mu);
-  const unreleased = read("CHANGELOG.md").split("\n## [")[1] ?? "";
-  assert.ok(
-    unreleased.startsWith("Unreleased]") && unreleased.includes("`vestra task check"),
-    "the CHANGELOG lists task check"
-  );
+  // why: task check shipped in 0.0.0-qualification.9, so its entry moved from
+  // Unreleased to that release's section when the release was recorded.
+  const shipped = read("CHANGELOG.md")
+    .split("\n## [")
+    .find((section) => section.startsWith("0.0.0-qualification.9]"));
+  assert.ok(shipped?.includes("`vestra task check"), "the CHANGELOG lists task check in the release that shipped it");
 });

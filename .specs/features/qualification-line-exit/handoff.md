@@ -34,12 +34,15 @@ Human review of the pull request. Then the owner checklist.
 Each step is one no session can take. Ticking one is the owner's act; the
 tracked evidence it produces is named beside it.
 
-- [ ] Create the `npm-publication` GitHub environment (owner as interim
+- [x] Create the `npm-publication` GitHub environment (owner as interim
       required reviewer, deployment branch `main` only, administrators unable
       to bypass), add the trusted publisher on npmjs.com for
       `.github/workflows/npm-publish.yml` and that environment, and publish
       `0.0.0-qualification.9` through `npm-publish.yml` (#596;
-      `docs/release-custody.md` section 9, O6; exit condition X1).
+      `docs/release-custody.md` section 9, O6; exit condition X1). Done on
+      2026-10-30: run `41004500072` published `.9` with tag `next` and a
+      SLSA provenance attestation. The evidence is in
+      `.specs/features/live-activation-matrix/validation.md`.
 - [x] Dispatch `.github/workflows/t76-refresh-timestamp.yml` from `main`,
       approve it in `tuf-release-signing`, upload the refreshed snapshot and
       timestamp, and append the `role-refresh` entry to
@@ -50,12 +53,17 @@ tracked evidence it produces is named beside it.
       section 8 orders it, and record the row in its `validation.md` (exit
       condition X3).
 - [ ] Move npm `latest` to `0.0.0-qualification.9` once it is published
-      through the workflow and verified live.
+      through the workflow and verified live. It is now published and
+      verified live on all five targets (run `41005172967`).
 - [x] Sign `docs/qualification/qualification-line-exit-record.md`: fill
       `decidedAt`, sign the canonical bytes with the release-decision key
       (`.specs/features/release-decision/prepared-decision.md` §4.3, with the
       record's path), paste the signature, and confirm `pnpm agent:check`
       reports no warning.
+- [ ] Sign the record again for `.9`. Recording `.9` in the ledger moved
+      `latestRelease` to `0.0.0-qualification.9` and marked X1 met, so the
+      2026-10-29 signature no longer covers the record's bytes. Signing works
+      as in the step above.
 - [x] Confirm the status of AD-033 in `.specs/STATE.md`: the signed decision
       records it as ratified on 2026-08-28; the status line still reads
       proposed.

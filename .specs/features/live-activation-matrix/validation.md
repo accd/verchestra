@@ -788,3 +788,95 @@ Verification:
   `Verchestra 0.0.0-qualification.9 (revision 50ae23c84c88)`. The active
   pointer names the manifest's `win32-x64` release digest
   (`sha256:5ee6383c…5f9dd4ec`).
+
+### npm publication of `.9` by the trusted-publishing workflow
+
+The first two `npm-publish.yml` runs failed before reaching the registry.
+Each failure was a defect in the workflow, fixed in a reviewed pull request:
+
+- Run `41000740242` activated `.9` and then looked for the active pointer
+  under a redirected `XDG_STATE_HOME`. The launcher ignores that variable.
+  Fixed in #707.
+- Run `41002512602` passed `dist/<file>.tgz`, which npm reads as a git spec.
+  Fixed in #708.
+
+npm still listed `.8` as the newest version after both runs.
+
+Run `41004500072`, dispatched from `main` with
+`publication_run_id=40999595578` and `dist_tag=next`, published `.9`:
+
+- **Verify job.** It rebuilt the package from the run's release inputs and
+  found it byte-identical to the run's package. It then cold-activated `.9`
+  from the live endpoint on Linux x64.
+- **Publish job.** It was approved in environment `npm-publication` under the
+  owner's account, `accd`, on the owner's standing instruction. It published
+  the verified tarball with `--provenance` through npm trusted publishing
+  (OIDC), with no npm token. The provenance statement is in the Sigstore
+  transparency log at index `3584965977`.
+- **Registry.** It serves `verchestra@0.0.0-qualification.9` with
+  `dist.integrity`
+  `sha512-a1JR2sS66674yz9FwzF+hQVqrze3Zl/VVz0S+aqeK3W0PfLXUQPwshkl8bOUBMnv+8V9v5E+UX3oC9F57w/xfg==`,
+  the integrity the verify job packed, and `dist.shasum`
+  `9e8a09412ba3e6ae2bf2003c0446db3d34cf6ee1`.
+- **Attestation.** `dist.attestations` names the provenance predicate
+  `https://slsa.dev/provenance/v1`, which meets exit condition X1.
+- **Dist-tags.** `next` is `.9`, and `latest` stays `.8` until the owner
+  moves it.
+
+## Live update and rollback `.8` to `.9` on all five targets — run 41005172967 (2026-10-30)
+
+- Workflow: `.github/workflows/live-activation-matrix.yml`
+- Run: <https://github.com/accd/verchestra/actions/runs/41005172967>
+- Dispatched revision: `3cb1e12b14c0910179551d7d32d3496f8275a67b` (`main`)
+- Inputs: `base_version=0.0.0-qualification.8`,
+  `update_version=0.0.0-qualification.9`
+- Started 2026-10-30T04:51:10Z, finished 2026-10-30T04:59:35Z
+
+Every phase exited `0` on every target:
+
+- activate;
+- update;
+- rollback;
+- self-test smoke, with `self_test.verdict: PASS`;
+- recover.
+
+| Target       | after activate and after rollback (`.8`) | after update (`.9`)        |
+| ------------ | ---------------------------------------- | -------------------------- |
+| win32-x64    | `sha256:890e1404…3d14623c`               | `sha256:5ee6383c…5f9dd4ec` |
+| linux-x64    | `sha256:5cffcb68…9dc261b3`               | `sha256:c050c95e…24599640` |
+| linux-arm64  | `sha256:07bd0698…b32a0b89`               | `sha256:cf98afda…6043b198` |
+| darwin-x64   | `sha256:2067bade…ee04ce59`               | `sha256:e7bd299f…1aa4cabb` |
+| darwin-arm64 | `sha256:6a53f238…a6b365fe`               | `sha256:f4aa5aac…dccf7994` |
+
+The evidence was checked by content after downloading the five artifacts:
+
+- On every target, `rollback.active.json` is byte-identical to
+  `activate.active.json`, which names
+  `release:verchestra:0.0.0-qualification.8:d83fc139a846`.
+- `update.active.json` names `release:verchestra:0.0.0-qualification.9:50ae23c84c88`.
+- Each `.9` digest is the `releaseDigest` that the `.9`
+  `publication-manifest.json` records for the same target. The manifest was
+  taken from the `t76-release-metadata` artifact of signing run `40999595578`.
+- The `.8` digests are the ones run 40210962039 recorded after its update to
+  `.8`.
+
+| Target       | Artifact digest (sha256)                                           | `summary.txt` (sha256)                                             |
+| ------------ | ------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| win32-x64    | `f9b62a4c4935595922639eb792aa66efa342d20e729c4fa7c1d7ac4333664ffe` | `5d46ee9b0dedf9e4f5850cdacc13deef5108676b2d8a558b1f3b5a62832ee57e` |
+| linux-x64    | `4902b624b95d42da40ce719f3adf6d5a4e394879e6f035b40386f5da36904a5e` | `584cc5179927d730dc4e3a66d89f6be9df25b387b141cab3fb87151b3a472686` |
+| linux-arm64  | `9bf72730c98b721d4b3191c1152f623e1b0f013eae6ab2e6ef9095066901fdac` | `0b834191a6d548eacee3c3e886b570ae4039abbfff380a9b182660270789bf24` |
+| darwin-x64   | `bc3699548b0f015aced9412e1b23439912d3412d5214dda668984f95395fb626` | `c58c888c43eeb8905f9671496b2ffdecbd41a84716f42c25e50bc520d08f3c10` |
+| darwin-arm64 | `f977e692ee554bea476c003ff7a78a7f1082c97bda6b9c3880f5b51429b9024c` | `cd9520bc398dda436d1838c0f480d5680e744c3a75a3d5ada0ff2cf596f0feb9` |
+
+The artifacts expire on 2026-11-29.
+
+What this run does not prove is unchanged from run 36997576112:
+
+- no source-side roll-forward;
+- no live uninstall;
+- single-operator custody (L8).
+
+It also says nothing about the governed or coordinated task paths, because
+`self-test --profile smoke` does not start a provider. Their real-provider
+evidence is the owner's pilots (#406 and
+`docs/qualification/coordinated-run-pilots.md`), which have not run yet.

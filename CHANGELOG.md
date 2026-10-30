@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.0.0-qualification.9] - 2026-10-30
+
+Release `release:verchestra:0.0.0-qualification.9:50ae23c84c88`, publication
+ledger sequence 10. The first version published to npm by the trusted-publishing
+workflow, with a provenance attestation.
+
 ### Added
 
 - `vestra probe run --database <id> --approval-ref <ref> --request <file>` runs

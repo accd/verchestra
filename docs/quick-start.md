@@ -492,7 +492,7 @@ No node's answer counts as verification.
 > `HUMAN_REVIEW`, and cancel, suspension, resume, and a killed run are
 > exercised. No run with a real subscription has been recorded yet on any
 > platform. They are in the published `0.0.0-qualification.7` and later, so
-> `npx --yes verchestra@0.0.0-qualification.8` runs them; an earlier release
+> `npx --yes verchestra@0.0.0-qualification.9` runs them; an earlier release
 > refuses a v2 request. On Windows a run also needs the
 > [Windows prerequisites](#windows-prerequisites).
 

@@ -1,12 +1,12 @@
 ---
 schema: verchestra-version-line/v1
 line: 0.0.0-qualification
-latestRelease: 0.0.0-qualification.8
+latestRelease: 0.0.0-qualification.9
 decisionInEffect: docs/qualification/release-decision-1.0.0.md
 decisionDigest: sha256:e3b53bd4bc2d076fb7e883ea87e15c0f62e2db0877dae52f8e37f85f317ab11c
 decidedBy: accd
-decidedAt: 2026-10-29T22:43:37Z
-signature: cGAykNcnwF2KN5nPEt5cTXGJ9KyEvsyiRebasKmm-AAKgcRPGerkJYhBBOFYaIm-eZqEFWlXsFUcgu_knC78Dw
+decidedAt: <RFC 3339 UTC instant, set by the owner when signing>
+signature:
 publicKeyRef: docs/qualification/trust/release-decision-public-key.json
 ---
 
@@ -60,7 +60,7 @@ tracked evidence a reviewer opens to check it.
 
 | Condition | Gap | What must be true | Evidence |
 | --- | --- | --- | --- |
-| X1 | #596 | The next publication, `0.0.0-qualification.9`, goes through `npm-publish.yml` from the `npm-publication` environment with npm trusted publishing, and `npm view verchestra@0.0.0-qualification.9 dist.attestations` shows a provenance attestation. Today every published version was published by hand under the owner's 2FA and carries none; the workflow exists and publishes nothing until the owner creates the environment and the trusted publisher (`docs/release-custody.md` section 3.3 and O6). | `.github/workflows/npm-publish.yml`; `docs/release-custody.md:182-212`; `.specs/features/release-custody/handoff.md` |
+| X1 | #596 | The next publication, `0.0.0-qualification.9`, goes through `npm-publish.yml` from the `npm-publication` environment with npm trusted publishing, and `npm view verchestra@0.0.0-qualification.9 dist.attestations` shows a provenance attestation. Met on 2026-10-30: run 41004500072 published `.9` from `npm-publication` through trusted publishing with tag `next`, and `dist.attestations` names the provenance predicate `https://slsa.dev/provenance/v1`. Every earlier version was published by hand under the owner's 2FA and carries none. | `.github/workflows/npm-publish.yml`; `docs/release-custody.md:182-212`; `.specs/features/release-custody/handoff.md` |
 | X2 | F2, #382 | At least one successful `role-refresh` entry in the publication ledger, from a `t76-refresh-timestamp.yml` run dispatched from `main` and approved in `tuf-release-signing`. Met on 2026-10-29: run 40963107506 re-signed the `.8` snapshot and timestamp at version 8, and the ledger records it as `role-refresh` entry 9. That refresh kept the expiry at the publication horizon, so no short online expiry is in force yet; a cadence with a short `timestampExpires` is the F2 work left. | `docs/qualification/tuf-publication-ledger.json`; `docs/release-custody.md:169-183`; `.github/workflows/t76-refresh-timestamp.yml`; `.specs/features/tuf-timestamp-refresh/handoff.md` |
 | X3 | #406 | Pilot P1, attempt 3, on `0.0.0-qualification.8` with the verifier `gpt-5.5`, reaches `HUMAN_REVIEW` and is recorded in the pilot's results table. Attempts 1 and 2 on `.7` stopped before the verifier finished; nothing has yet shown the installed `vestra task` path to its end on a published build. | `.specs/features/live-task-pilot/handoff.md`; `.specs/features/live-task-pilot/validation.md` |
 | X4 | #370, L5 | A `self-test --profile smoke` PASS from a non-elevated Windows home directory, on `.9` or later, re-performed and recorded as a J08 record in a tracked file. Today the only such run is the operational reviewer's PR #523 comment of 2026-10-14 on `.7`, which no tracked file records; the acceptance matrix carries it as reported, not re-performed. | `docs/qualification/acceptance-matrix.md` |
