@@ -49,7 +49,21 @@ export const DOCTOR_CHECK_IDS = Object.freeze([
 
 export type DoctorCheckId = (typeof DOCTOR_CHECK_IDS)[number];
 
-export type DoctorCheckStatus = "pass" | "fail" | "blocked";
+export type DoctorCheckStatus = "pass" | "fail" | "blocked" | "not-offered";
+
+// X5 (.specs/features/doctor-scoped-verdict, door 2): the checks whose
+// subsystem no product command provisions (AD-024 keeps them qualification
+// fixtures). Absent, such a check is `not-offered`: the release's limit, not a
+// user omission, so it carries no remediation and never raises the verdict.
+// Removing an id from this set is how a later release offers that subsystem.
+export const DOCTOR_NOT_OFFERED_CHECK_IDS: readonly DoctorCheckId[] = Object.freeze([
+  "doctor.cedar-policy",
+  "doctor.connector",
+  "doctor.driver",
+  "doctor.probe",
+  "doctor.sandbox",
+  "doctor.sqlite-durable-state"
+]);
 
 // The capability each check gates. A blocked or failing check names its
 // capability so the operator learns exactly what cannot run, never why in raw
@@ -101,7 +115,8 @@ export interface DoctorCheckFact {
   readonly remediationCode?: string;
 }
 
-const STATUSES: ReadonlySet<string> = new Set(["pass", "fail", "blocked"]);
+const STATUSES: ReadonlySet<string> = new Set(["pass", "fail", "blocked", "not-offered"]);
+const NOT_OFFERED_SET: ReadonlySet<string> = new Set(DOCTOR_NOT_OFFERED_CHECK_IDS);
 
 function assertFactShape(fact: DoctorCheckFact): void {
   if (fact === null || typeof fact !== "object")
@@ -116,6 +131,13 @@ function assertFactShape(fact: DoctorCheckFact): void {
 }
 
 function assertFactRemediation(fact: DoctorCheckFact): void {
+  if (fact.status === "not-offered") {
+    if (!NOT_OFFERED_SET.has(fact.checkId))
+      fail("VES_DOCTOR_CHECK_FACT_INVALID", `doctor check ${fact.checkId} is offered and cannot be not-offered`);
+    if (fact.remediationCode !== undefined)
+      fail("VES_DOCTOR_CHECK_FACT_INVALID", `not-offered doctor check ${fact.checkId} must not carry a remediation`);
+    return;
+  }
   if (fact.status === "pass") {
     if (fact.remediationCode !== undefined)
       fail("VES_DOCTOR_CHECK_FACT_INVALID", `passing doctor check ${fact.checkId} must not carry a remediation`);
@@ -161,6 +183,7 @@ export const DOCTOR_REPORT_FIELDS = Object.freeze([
   "doctor.check_codes",
   "doctor.failure_codes",
   "doctor.blocked_capabilities",
+  "doctor.not_offered_capabilities",
   "doctor.remediation_codes",
   "doctor.duration_ms"
 ] as const);
@@ -173,7 +196,9 @@ const VERDICTS: ReadonlySet<string> = new Set(["PASS", "FAIL", "BLOCKED"]);
 // scanning for forbidden words, and it does not false-positive on a legitimate
 // registered id such as "doctor.secret-presence".
 const VALID_CHECK_CODES: ReadonlySet<string> = new Set(
-  DOCTOR_CHECK_IDS.flatMap((checkId) => ["pass", "fail", "blocked"].map((status) => `${checkId}:${status}`))
+  DOCTOR_CHECK_IDS.flatMap((checkId) =>
+    ["pass", "fail", "blocked", "not-offered"].map((status) => `${checkId}:${status}`)
+  )
 );
 const VALID_CAPABILITIES: ReadonlySet<string> = new Set(Object.values(DOCTOR_CAPABILITY_IDS));
 
@@ -185,13 +210,15 @@ function sortedUnique(values: readonly string[]): readonly string[] {
 
 // DOC-05: the single closed payload both renderers project. Fail dominates
 // blocked, so a machine that is both unhealthy and under-provisioned reports the
-// stronger signal.
+// stronger signal. A not-offered check is listed on its own and never raises the
+// verdict: nothing the user could do would move it.
 export function buildDoctorReport(facts: readonly DoctorCheckFact[], durationMs: number): DoctorReportPayload {
   assertDoctorCheckFacts(facts);
   if (!Number.isSafeInteger(durationMs) || durationMs < 0)
     fail("VES_DOCTOR_CHECK_FACT_INVALID", "doctor duration is invalid");
   const failed = facts.filter((fact) => fact.status === "fail");
   const blocked = facts.filter((fact) => fact.status === "blocked");
+  const notOffered = facts.filter((fact) => fact.status === "not-offered");
   let verdict: DoctorVerdict = "PASS";
   if (failed.length > 0) verdict = "FAIL";
   else if (blocked.length > 0) verdict = "BLOCKED";
@@ -200,6 +227,7 @@ export function buildDoctorReport(facts: readonly DoctorCheckFact[], durationMs:
     "doctor.check_codes": sortedUnique(facts.map((fact) => `${fact.checkId}:${fact.status}`)),
     "doctor.failure_codes": sortedUnique(failed.map((fact) => fact.remediationCode as string)),
     "doctor.blocked_capabilities": sortedUnique(blocked.map((fact) => fact.capabilityId)),
+    "doctor.not_offered_capabilities": sortedUnique(notOffered.map((fact) => fact.capabilityId)),
     "doctor.remediation_codes": sortedUnique([...failed, ...blocked].map((fact) => fact.remediationCode as string)),
     "doctor.duration_ms": durationMs
   });
@@ -228,6 +256,7 @@ export function assertDoctorReportPayload(payload: DoctorReportPayload): void {
   inSet(payload["doctor.failure_codes"], REMEDIATION_SET, "failure codes");
   inSet(payload["doctor.remediation_codes"], REMEDIATION_SET, "remediation codes");
   inSet(payload["doctor.blocked_capabilities"], VALID_CAPABILITIES, "blocked capabilities");
+  inSet(payload["doctor.not_offered_capabilities"], VALID_CAPABILITIES, "not-offered capabilities");
   const duration = payload["doctor.duration_ms"];
   if (typeof duration !== "number" || !Number.isSafeInteger(duration) || duration < 0)
     fail("VES_DOCTOR_REPORT_CONTENT_PROHIBITED", "duration is invalid");

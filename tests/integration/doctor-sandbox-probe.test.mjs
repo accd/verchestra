@@ -64,12 +64,12 @@ test("a provisioned sandbox reports pass through the real doctor composition", a
   assert.equal(sandboxCode(run), "doctor.sandbox:pass");
 });
 
-test("an unprovisioned sandbox reports blocked, never fail", async () => {
+test("an unprovisioned sandbox reports not-offered, never fail", async () => {
   const root = await mkdtemp(join(tmpdir(), "verchestra-doctor-sandbox-"));
   roots.push(root);
   // Deliberately not provisioned: no .verchestra/sandbox directory exists.
 
   const run = await runDoctorDeep({ controlRoot: root });
 
-  assert.equal(sandboxCode(run), "doctor.sandbox:blocked");
+  assert.equal(sandboxCode(run), "doctor.sandbox:not-offered");
 });

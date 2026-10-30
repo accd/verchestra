@@ -14,6 +14,14 @@ import { SchemaRegistry } from "../../packages/contracts/src/schema-registry.ts"
 import { DENY_KEYCHAIN_SPAWN } from "../helpers/deny-keychain-spawn.mjs";
 
 const registry = await SchemaRegistry.load(new URL("../../schemas/", import.meta.url));
+const NOT_OFFERED = [
+  "doctor.cedar-policy",
+  "doctor.connector",
+  "doctor.driver",
+  "doctor.probe",
+  "doctor.sandbox",
+  "doctor.sqlite-durable-state"
+];
 const dirs = [];
 
 async function workdir() {
@@ -45,20 +53,30 @@ function jsonReport(at, args = ["doctor", "--deep", "--output", "json"]) {
   return JSON.parse(launch(args, at).stdout).data;
 }
 
-test("doctor --deep emits a JSON report that validates against doctor-report@1", async () => {
+// X5 (.specs/features/doctor-scoped-verdict): the report is doctor-report@2,
+// and the contract-schema check passes only because @2 is registered.
+test("doctor --deep emits a JSON report that validates against doctor-report@2", async () => {
   const at = await workdir();
   const result = launch(["doctor", "--deep", "--output", "json"], at);
   const output = JSON.parse(result.stdout);
   assert.equal(output.command, "doctor");
   assert.equal(output.ok, true);
-  assert.doesNotThrow(() => registry.validate("doctor-report", "1", output.data));
+  assert.doesNotThrow(() => registry.validate("doctor-report", "2", output.data));
+  assert.ok(output.data["doctor.check_codes"].includes("doctor.contract-schema:pass"));
 });
 
 test("a bare source machine reports BLOCKED and exits 4", async () => {
   const at = await workdir();
   const result = launch(["doctor", "--deep", "--output", "json"], at);
-  assert.equal(JSON.parse(result.stdout).data["doctor.verdict"], "BLOCKED");
+  const report = JSON.parse(result.stdout).data;
+  assert.equal(report["doctor.verdict"], "BLOCKED");
   assert.equal(result.status, 4);
+  // why: what keeps a bare directory BLOCKED is an offered check (no Workspace,
+  // so no credential to observe); the six subsystems no product command
+  // provisions are not offered, never blocked.
+  for (const checkId of NOT_OFFERED)
+    assert.ok(report["doctor.check_codes"].includes(`${checkId}:not-offered`), checkId);
+  assert.ok(report["doctor.check_codes"].includes("doctor.secret-presence:blocked"));
 });
 
 test("the human and JSON renderers project the same verdict and checks", async () => {
@@ -67,6 +85,9 @@ test("the human and JSON renderers project the same verdict and checks", async (
   const human = launch(["doctor", "--deep"], at).stdout;
   assert.match(human, new RegExp(`doctor\\.verdict: ${json["doctor.verdict"]}`, "u"));
   for (const code of json["doctor.check_codes"]) assert.ok(human.includes(code), code);
+  assert.ok(json["doctor.check_codes"].some((code) => code.endsWith(":not-offered")));
+  assert.ok(json["doctor.check_codes"].some((code) => code.endsWith(":blocked")));
+  assert.ok(json["doctor.check_codes"].some((code) => code.endsWith(":pass")));
 });
 
 test("a bare doctor runs the same deep diagnostic", async () => {
@@ -87,7 +108,7 @@ test("every reported check belongs to the closed twelve-id catalog", async () =>
   const at = await workdir();
   const codes = jsonReport(at)["doctor.check_codes"];
   assert.equal(codes.length, 12);
-  for (const code of codes) assert.match(code, /^doctor\.[a-z-]+:(pass|blocked|fail)$/u);
+  for (const code of codes) assert.match(code, /^doctor\.[a-z-]+:(pass|blocked|fail|not-offered)$/u);
 });
 
 test("two runs converge to the same check fingerprint", async () => {

@@ -3378,6 +3378,45 @@ note. -->
   (`process-contained`, AD-037). Engines that need a credential still have no
   first-party worker.
 
+### AD-088 — Deep doctor scopes its verdict: a subsystem no product command provisions is `not-offered`, not `blocked`
+
+- **Status:** proposed, human review required, with the plan
+  (`.specs/features/doctor-scoped-verdict/plan.md`, exit condition X5). Its
+  three doors reach past the feature, so they are recorded here. Conforms to
+  AD-024: the six paths stay qualification fixtures and `vestra init` still
+  does not create them.
+- **Context:** on `0.0.0-qualification.9`, `doctor` reports `BLOCKED` (exit
+  4) on every user machine. Six checks observe `.verchestra/` paths that only
+  `scripts/provision-doctor-fixtures.mjs` writes: `cedar-policy`,
+  `connector`, `driver`, `probe`, `sandbox` and `sqlite-durable-state`.
+- **Decision:**
+  1. The report contract becomes `doctor-report@2`. It adds the required
+     `doctor.not_offered_capabilities` and the `not-offered` check status.
+     `@1` stays registered unchanged.
+  2. `DOCTOR_NOT_OFFERED_CHECK_IDS` in
+     `packages/application/src/doctor/doctor.ts` names those six checks:
+     - absent, such a check is `not-offered`, with no remediation and no
+       effect on the verdict;
+     - present, it still reports `pass` or `fail`.
+
+     A later release offers a subsystem by removing its id from that set.
+  3. A version 2 doctor artifact is sealed under the predicate
+     `https://accd.github.io/verchestra/attestation/doctor-report/v2`, with
+     V2 canonicalization.
+- **Alternatives rejected:**
+  - keeping `@1` and dropping the six from the verdict, which would let a
+    `PASS` report carry `blocked` codes;
+  - removing the six checks from the catalog, which would erase the fixtures'
+    `pass` and `fail` evidence;
+  - documenting a provisioning step per check, which would tell users to
+    hand-create fixture files.
+- **Consequences:**
+  - a healthy installation in a Workspace with its Claude Code credential bound
+    reports `PASS`;
+  - `README.md`, `docs/quick-start.md` and the site's install page state it;
+  - whether X5 is met stays the reviewers' call and the owner's signature on
+    the exit record.
+
 ## Handoff
 
 - **Feature:** `strands-subscription-integration` (T1–T10) on `main` through

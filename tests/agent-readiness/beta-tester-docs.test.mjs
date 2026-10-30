@@ -214,7 +214,10 @@ test("the README lists every exit code with what produces it", () => {
 test("the quick-start says doctor is not a setup check", () => {
   const text = lower(read("docs/quick-start.md"));
   assert.ok(text.includes("`vestra doctor` is not a setup check"));
-  assert.match(text, /`blocked` is its expected verdict/u);
+  // why: X5 (.specs/features/doctor-scoped-verdict) makes PASS reachable, so
+  // the guide no longer calls BLOCKED the expected verdict
+  // (tests/agent-readiness/doctor-docs.test.mjs owns that negative).
+  assert.match(text, /a healthy installation reports `pass`/u);
 });
 
 test("the tester bug form requires exactly the five fields", () => {

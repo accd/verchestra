@@ -397,6 +397,7 @@ export {
   DOCTOR_CHECK_IDS,
   DOCTOR_REMEDIATION_CODES,
   DOCTOR_REPORT_FIELDS,
+  DOCTOR_NOT_OFFERED_CHECK_IDS,
   DoctorError,
   assertDoctorCheckFacts,
   assertDoctorReportPayload,

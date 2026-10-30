@@ -68,6 +68,27 @@ test reproduces that layout on every platform; no recorded live run has yet
 started from a default Windows home directory.
 :::
 
+## Health check
+
+`vestra doctor` is a read-only health report of the activated release and of
+this machine. It is not a setup check.
+
+- **`PASS` (exit `0`).** In a Workspace whose Claude Code credential is bound,
+  a healthy installation reports `PASS`.
+- **`not-offered`.** This release does not offer six subsystems, so `doctor`
+  reports each of them as `not-offered`. It lists them under
+  `doctor.not_offered_capabilities`:
+  - `connectors.available`
+  - `drivers.available`
+  - `policy.enforceable`
+  - `probes.available`
+  - `sandbox.enforced`
+  - `state.durable`
+
+  You do not need to do anything for them, and they never change the verdict.
+- **`BLOCKED` (exit `4`).** Something you can set up is missing, such as the
+  Claude Code credential.
+
 ## Managed state, recovery, and cleanup
 
 The launcher keeps its staged releases, its activated install, its trust anchor,

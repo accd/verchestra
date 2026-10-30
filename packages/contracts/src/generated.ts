@@ -30,6 +30,16 @@ export interface DoctorReport {
   "doctor.duration_ms": number;
 }
 
+export interface DoctorReportV2 {
+  "doctor.verdict": DoctorReport["doctor.verdict"];
+  "doctor.check_codes": string[];
+  "doctor.failure_codes": DoctorReport["doctor.failure_codes"];
+  "doctor.blocked_capabilities": DoctorReport["doctor.blocked_capabilities"];
+  "doctor.not_offered_capabilities": string[];
+  "doctor.remediation_codes": DoctorReport["doctor.remediation_codes"];
+  "doctor.duration_ms": DoctorReport["doctor.duration_ms"];
+}
+
 export interface KeyLifecycleError {
   schemaVersion: "1";
   code: "VES_KEYSTORE_INTEGRITY" | "VES_KEY_REVOKED" | "VES_KEY_EXPIRED";

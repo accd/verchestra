@@ -77,12 +77,12 @@ test("a corrupt database reports fail through the real doctor composition", asyn
   assert.equal(sqliteCode(run), "doctor.sqlite-durable-state:fail");
 });
 
-test("an unprovisioned database reports blocked, never fail", async () => {
+test("an unprovisioned database reports not-offered, never fail", async () => {
   const root = await mkdtemp(join(tmpdir(), "verchestra-doctor-sqlite-"));
   roots.push(root);
   // Deliberately not provisioned: no .verchestra/runtime.db exists.
 
   const run = await runDoctorDeep({ controlRoot: root });
 
-  assert.equal(sqliteCode(run), "doctor.sqlite-durable-state:blocked");
+  assert.equal(sqliteCode(run), "doctor.sqlite-durable-state:not-offered");
 });

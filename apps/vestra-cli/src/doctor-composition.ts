@@ -103,7 +103,7 @@ export async function runDoctor(ports: DoctorPorts): Promise<DoctorRunResult> {
     throw new DoctorError("VES_DOCTOR_SENTINEL_MUTATION", "a sentinel changed during the read-only diagnostic");
   const payload = buildDoctorReport(facts, Math.max(0, ports.now() - start));
   const artifact = await ports.sealer.seal(payload, {
-    schema: { name: "doctor-report", version: 1 },
+    schema: { name: "doctor-report", version: 2 },
     purpose: "doctor-report",
     bindingId: "doctor:deep",
     sourceStateDigest: DOCTOR_CODE_DIGEST
@@ -175,7 +175,7 @@ function clockProbe(now: () => number): DoctorObservation {
 }
 
 function schemaProbe(registry: SchemaRegistry | null): DoctorObservation {
-  return registry === null ? present(false) : present(registry.list().includes("doctor-report@1"));
+  return registry === null ? present(false) : present(registry.list().includes("doctor-report@2"));
 }
 
 function subsystemPath(metadataRoot: string, subsystem: keyof typeof SUBSYSTEM_OBSERVATION_PATHS): string {

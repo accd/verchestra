@@ -141,6 +141,8 @@ npx verchestra@0.0.0-qualification.9 --version
 | `secret`       | beta         | Store and inspect Workspace credentials in your OS credential store           |
 | `task`         | experimental | One governed task, macOS first: follow the [quick start](docs/quick-start.md) |
 
+In a Workspace whose Claude Code credential is bound, a healthy installation reports `PASS` and exits `0`. This release does not offer six subsystems, so `doctor` reports each of them as `not-offered` and lists them under `doctor.not_offered_capabilities`: `connectors.available`, `drivers.available`, `policy.enforceable`, `probes.available`, `sandbox.enforced` and `state.durable`. You do not need to do anything for them, and they never change the verdict. `BLOCKED` (exit `4`) means something you can set up is missing, such as that credential.
+
 `task` stays experimental until the supervised live pilot
 ([#406](https://github.com/accd/verchestra/issues/406)) reaches human review
 with real providers. Before you run one, read why

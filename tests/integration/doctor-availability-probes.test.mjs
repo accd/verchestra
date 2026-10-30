@@ -34,17 +34,17 @@ test("a valid, matching, available record reports pass", async () => {
   assert.equal(checkCode(run, "doctor.driver"), "doctor.driver:pass");
 });
 
-test("an absent record reports blocked", async () => {
+test("an absent record reports not-offered", async () => {
   const root = await mkdtemp(join(tmpdir(), "verchestra-doctor-availability-"));
   roots.push(root);
   // Deliberately not provisioned: no .verchestra/drivers/availability.json.
 
   const run = await runDoctorDeep({ controlRoot: root });
 
-  assert.equal(checkCode(run, "doctor.driver"), "doctor.driver:blocked");
+  assert.equal(checkCode(run, "doctor.driver"), "doctor.driver:not-offered");
 });
 
-test("a valid record with available: false reports blocked, not fail", async () => {
+test("a valid record with available: false reports not-offered, not fail", async () => {
   const root = await mkdtemp(join(tmpdir(), "verchestra-doctor-availability-"));
   roots.push(root);
   await provisionDoctorFixtures(root);
@@ -53,7 +53,7 @@ test("a valid record with available: false reports blocked, not fail", async () 
 
   const run = await runDoctorDeep({ controlRoot: root });
 
-  assert.equal(checkCode(run, "doctor.driver"), "doctor.driver:blocked");
+  assert.equal(checkCode(run, "doctor.driver"), "doctor.driver:not-offered");
 });
 
 test("an unparseable record reports fail, not a crash", async () => {
