@@ -135,13 +135,22 @@ jobs:
           '
 
       - name: Activate the release the package pins from its live endpoint
+        env:
+          PACKAGE_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
           # why: the endpoint must serve the release before npm offers a package
-          # that pins it. A fresh state root makes this a cold activation.
-          export XDG_STATE_HOME="$RUNNER_TEMP/verchestra-state"
+          # that pins it. The launcher derives its state root from the home
+          # directory alone (apps/vestra-launcher/README.md): no variable moves
+          # it, so the runner's own root must start empty for a cold activation.
+          STATE_ROOT="$HOME/.local/state/verchestra"
+          test ! -e "$STATE_ROOT"
           node vestra-launcher-package/bin/verchestra.mjs --version
-          test -f "$XDG_STATE_HOME/verchestra/launcher/install/active.json"
+          ACTIVE_POINTER="$STATE_ROOT/launcher/install/active.json" node -e '
+            const active = JSON.parse(require("node:fs").readFileSync(process.env.ACTIVE_POINTER, "utf8"));
+            if (active.semanticVersion !== process.env.PACKAGE_VERSION)
+              throw new Error(`activated ${active.semanticVersion}, not the requested ${process.env.PACKAGE_VERSION}`);
+          '
 
       - name: Pack the verified package
         id: pack
