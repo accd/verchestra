@@ -135,6 +135,36 @@ test("the verify job rebuilds from the publication run, compares byte for byte, 
   assert.doesNotMatch(workflow, /^\s+cache:/mu);
 });
 
+// invariant: the activation is checked where the launcher writes. The published
+// launcher resolves its state root with an empty environment, so the run for
+// 0.0.0-qualification.9 that redirected XDG_STATE_HOME activated in the home
+// directory and then failed to find its pointer under the redirect.
+test("the live activation is checked in the state root the launcher actually uses", () => {
+  const closure = readFileSync(
+    new URL("../../apps/vestra-launcher/closure/node-activation-closure.ts", import.meta.url),
+    "utf8"
+  );
+  assert.match(closure, /resolveStateRoot\(\{ platform: host\.platform, env: \{\}, homeDirectory: homedir\(\) \}\)/u);
+  const body = runBlockLines(jobs.verify).join("\n");
+  assert.doesNotMatch(body, /XDG_STATE_HOME|LOCALAPPDATA/u, "no variable moves the launcher's state root");
+  const order = [
+    'STATE_ROOT="$HOME/.local/state/verchestra"',
+    'test ! -e "$STATE_ROOT"',
+    "node vestra-launcher-package/bin/verchestra.mjs --version",
+    'ACTIVE_POINTER="$STATE_ROOT/launcher/install/active.json"'
+  ].map((command) => body.indexOf(command));
+  assert.ok(
+    order.every((index) => index >= 0),
+    "each step is present"
+  );
+  assert.deepEqual(
+    [...order].sort((left, right) => left - right),
+    order,
+    "an empty root, activation, then its pointer"
+  );
+  assert.match(body, /active\.semanticVersion !== process\.env\.PACKAGE_VERSION/u);
+});
+
 test("dispatch inputs reach the shell only through env", () => {
   const injected = runBlockLines(workflow).filter((line) => /\$\{\{/u.test(line));
   assert.deepEqual(injected, []);
