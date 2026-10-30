@@ -166,6 +166,33 @@ export const PROBE_PUBLIC_ERROR_DEFINITIONS = Object.freeze([
     "external",
     WORKER
   ),
+  // invariant: the refusals of `vestra probe worker`
+  // (.specs/features/sqlite-probe-worker/plan.md, door 1 and door 4). Each is
+  // raised before anything is written.
+  probeDefinition(
+    "VES_PROBE_WORKER_ENGINE_UNSUPPORTED",
+    "validation",
+    "after-change",
+    "Name `--engine sqlite`: SQLite is the only engine Verchestra ships a probe worker for; nothing was written."
+  ),
+  probeDefinition(
+    "VES_PROBE_WORKER_UNAVAILABLE",
+    "state",
+    "after-change",
+    "This checkout has no built probe worker. Run `corepack pnpm build:probe-worker` in the Verchestra checkout, then run the command again; nothing was written."
+  ),
+  probeDefinition(
+    "VES_PROBE_WORKER_TARGET_INVALID",
+    "validation",
+    "after-change",
+    "Name a file path inside the Workspace's Git top level, with no link on it and not a directory; nothing was written."
+  ),
+  probeDefinition(
+    "VES_PROBE_WORKER_TARGET_CONFLICT",
+    "conflict",
+    "after-change",
+    "The file holds other bytes than the worker and was left as it is. Remove it, or name another path, then run the command again."
+  ),
   probeDefinition("VES_PROBE_FAILED", "external", "after-change", "Inspect the named reason, remediate, and retry.", {
     reason: "string"
   })

@@ -28,6 +28,7 @@
 // any of the three is observable.
 
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -39,7 +40,8 @@ import { after, before, test } from "node:test";
 import {
   resolveDurableCrashChild,
   resolveMcpBridgeRelay,
-  resolveSelfTestDriverFake
+  resolveSelfTestDriverFake,
+  resolveSqliteProbeWorker
 } from "../../apps/vestra-cli/src/release-layout.ts";
 import { NodeActivationHealthGate } from "../../packages/platform-node/src/activation-launcher-adapters.ts";
 import { DEFAULT_RUNTIME_MIGRATIONS } from "../../packages/platform-node/src/runtime-store/runtime-migrations.ts";
@@ -75,7 +77,12 @@ const CRASH_CHILD_LOGICAL_PATH = "bin/self-test-full-crash-child.mjs";
 // way as the crash child.
 const RELAY_ID = "mcp:tool-bridge-relay";
 const RELAY_LOGICAL_PATH = "bin/mcp-tool-bridge.mjs";
-const SEALED_BIN_IDS = Object.freeze([...LAUNCHER_IDS, CRASH_CHILD_ID, RELAY_ID]);
+// The first-party SQLite probe worker (AD-087) is the third sibling no launcher
+// can inline: `vestra probe worker` copies its bytes into a Workspace and the
+// probe host runs that copy, so it is bundled and staged the same way.
+const WORKER_ID = "probe:sqlite-worker";
+const WORKER_LOGICAL_PATH = "bin/sqlite-probe-worker.mjs";
+const SEALED_BIN_IDS = Object.freeze([...LAUNCHER_IDS, CRASH_CHILD_ID, RELAY_ID, WORKER_ID]);
 const SEALED_COMMANDS = Object.freeze([
   "init",
   "self-test",
@@ -99,7 +106,8 @@ const SEALED_COMMANDS = Object.freeze([
   "database add",
   "database list",
   "database remove",
-  "probe run"
+  "probe run",
+  "probe worker"
 ]);
 const NATIVE_PLACEHOLDERS = Object.freeze({
   "native/sqlite-vec": Buffer.alloc(4096, 7),
@@ -181,6 +189,8 @@ async function stagedLayout(t, bins) {
     await writeFile(join(releaseRoot, ...CRASH_CHILD_LOGICAL_PATH.split("/")), bins[CRASH_CHILD_ID]);
   if (bins[RELAY_ID] !== undefined)
     await writeFile(join(releaseRoot, ...RELAY_LOGICAL_PATH.split("/")), bins[RELAY_ID]);
+  if (bins[WORKER_ID] !== undefined)
+    await writeFile(join(releaseRoot, ...WORKER_LOGICAL_PATH.split("/")), bins[WORKER_ID]);
   await stageSealedComponents(releaseRoot);
   return releaseRoot;
 }
@@ -614,6 +624,54 @@ test("vestra task is reachable from the sealed bundle and its bridge relay is st
   assert.match(surface.bindingDigest, /^sha256:[a-f0-9]{64}$/u);
   assert.equal(existsSync(join(state, "tasks")), false, "a dry run writes no task state");
   assert.equal(existsSync(join(state, "runtime")), false, "a dry run opens no runtime store");
+});
+
+// invariant: door 3 of .specs/features/sqlite-probe-worker/plan.md (AC 11).
+// The sealed `vestra probe worker`, resolving its worker from the bundle's own
+// layout, writes into the invoking Workspace exactly the bytes the release
+// carries at `bin/sqlite-probe-worker.mjs`.
+test("the sealed worker command writes the sealed worker", async (t) => {
+  const releaseRoot = await stagedLayout(t, sealedBins);
+  const stagedWorker = join(releaseRoot, ...WORKER_LOGICAL_PATH.split("/"));
+  assert.ok(existsSync(stagedWorker), "the candidate must emit the worker as its own sealed artifact");
+  assert.equal(resolveSqliteProbeWorker(pathToFileURL(join(releaseRoot, "bin", "vestra.mjs")).href), stagedWorker);
+  const project = await invokingProject();
+  const home = await mkdtemp(join(SCRATCH_BASE, "home-"));
+  disposable.push(home);
+  const env =
+    process.platform === "win32" ? { HOME: home, USERPROFILE: home, LOCALAPPDATA: join(home, "l") } : { HOME: home };
+  const init = spawnSealed(
+    releaseRoot,
+    "vestra.mjs",
+    [
+      "init",
+      "--workspace-id",
+      "workspace_5d2e3f4a-6b7c-4d8e-9f0a-1b2c3d4e5f6a",
+      "--name",
+      "Sealed worker",
+      "--placement",
+      "colocated"
+    ],
+    { cwd: project, env }
+  );
+  assert.equal(init.status, 0, `${init.stderr}\n${init.stdout.slice(-4096)}`);
+  const result = spawnSealed(
+    releaseRoot,
+    "vestra.mjs",
+    ["probe", "worker", "--engine", "sqlite", "--entry", "probe/sqlite-worker.mjs", "--output", "json"],
+    { cwd: project, env }
+  );
+  assert.equal(result.status, 0, `${result.stderr}\n${result.stdout}`);
+  const data = JSON.parse(result.stdout).data;
+  const written = await readFile(join(project, "probe", "sqlite-worker.mjs"));
+  assert.ok(written.equals(await readFile(stagedWorker)), "the written worker is the release's own bytes");
+  assert.ok(written.equals(sealedBins[WORKER_ID]));
+  assert.deepEqual(data, {
+    path: "probe/sqlite-worker.mjs",
+    engine: "sqlite",
+    digest: `sha256:${createHash("sha256").update(written).digest("hex")}`,
+    written: true
+  });
 });
 
 // invariant: a sealed build names the revision it was sealed at, so a bug

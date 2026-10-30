@@ -41,18 +41,50 @@ function entryInvalid(): never {
   throw extensionError("VES_EXTENSION_ENTRY_INVALID", {}, "The entry is not a regular file inside the Workspace");
 }
 
+function absent(error: unknown): boolean {
+  return (error as { readonly code?: unknown }).code === "ENOENT";
+}
+
 // why: each component from the Workspace root down is read with lstat, so a
-// link anywhere on the path is seen instead of followed.
-async function requireNoLink(root: string, parts: readonly string[]): Promise<void> {
+// link anywhere on the path is seen instead of followed. A component that does
+// not exist ends the walk, since nothing below it exists either.
+async function requireNoLink(root: string, parts: readonly string[], refuse: () => never): Promise<boolean> {
   let current = root;
   for (const [index, part] of parts.entries()) {
     current = join(current, part);
-    const metadata = await lstat(current).catch(() => undefined);
-    if (metadata === undefined || metadata.isSymbolicLink()) entryInvalid();
+    const metadata = await lstat(current).catch((error: unknown) => (absent(error) ? undefined : refuse()));
+    if (metadata === undefined) return false;
+    if (metadata.isSymbolicLink()) refuse();
     const last = index === parts.length - 1;
     const expected = last ? metadata.isFile() && metadata.size <= MAXIMUM_ENTRY_BYTES : metadata.isDirectory();
-    if (!expected) entryInvalid();
+    if (!expected) refuse();
   }
+  return true;
+}
+
+export interface WorkspaceFile {
+  readonly path: string;
+  readonly absolute: string;
+  readonly exists: boolean;
+}
+
+// invariant: AC 3, the one rule for where a Workspace entry may live, shared by
+// the commands that register it and the one that writes it (door 1 of
+// .specs/features/sqlite-probe-worker/plan.md). The path lies strictly inside
+// the Workspace, no component of it from the Workspace root down is a link,
+// each existing directory on it is a directory and an existing file a regular
+// one. Anything else is refused with the caller's own code.
+export async function resolveWorkspaceFile(
+  repositoryRoot: string,
+  entry: string,
+  refuse: () => never
+): Promise<WorkspaceFile> {
+  const absolute = resolve(repositoryRoot, entry);
+  const inside = relative(repositoryRoot, absolute);
+  if (inside === "" || inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)) refuse();
+  const parts = inside.split(sep);
+  const exists = await requireNoLink(repositoryRoot, parts, refuse);
+  return Object.freeze({ path: parts.join("/"), absolute, exists });
 }
 
 // invariant: AC 3. An entry is a regular file strictly inside the Workspace,
@@ -62,12 +94,9 @@ export async function resolveEntry(
   repositoryRoot: string,
   entry: string
 ): Promise<{ readonly path: string; readonly absolute: string; readonly digest: string }> {
-  const absolute = resolve(repositoryRoot, entry);
-  const inside = relative(repositoryRoot, absolute);
-  if (inside === "" || inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)) entryInvalid();
-  const parts = inside.split(sep);
-  await requireNoLink(repositoryRoot, parts);
-  return Object.freeze({ path: parts.join("/"), absolute, digest: fileDigest(await readFile(absolute)) });
+  const { path, absolute, exists } = await resolveWorkspaceFile(repositoryRoot, entry, entryInvalid);
+  if (!exists) entryInvalid();
+  return Object.freeze({ path, absolute, digest: fileDigest(await readFile(absolute)) });
 }
 
 type Row = Readonly<Record<string, unknown>>;

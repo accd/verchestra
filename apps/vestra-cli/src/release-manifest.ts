@@ -315,6 +315,19 @@ export const installedReleaseManifest: InstalledCliManifest = Object.freeze({
         CONFIRM_STDIN,
         KEYCHAIN
       ])
+    }),
+    // invariant: door 1 of .specs/features/sqlite-probe-worker/plan.md. `vestra
+    // probe worker` writes Verchestra's own probe worker into the Workspace; it
+    // neither registers nor approves it, and it never overwrites other bytes.
+    Object.freeze({
+      name: "probe worker",
+      summary: "Write Verchestra's SQLite probe worker into the Workspace for review and registration",
+      supportsJson: true,
+      mutating: true,
+      options: Object.freeze([
+        Object.freeze({ name: "engine", kind: "string" as const }),
+        Object.freeze({ name: "entry", kind: "string" as const })
+      ])
     })
   ])
 });
