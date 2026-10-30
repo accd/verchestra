@@ -253,11 +253,12 @@ test("the plan's independent test", TIMEOUT, async () => {
   assert.equal(sha256(readFileSync(database)), before, "the SQLite file's bytes are unchanged");
 });
 
-test("a worker approved without its database fails the run", TIMEOUT, async () => {
+test("a worker approved without its database fails the run", TIMEOUT, async (t) => {
   if (WIN32) return refusedOnWindows();
   const { fixture, requestPath } = await journey();
   const worker = await another(fixture, "orders-unconfigured", (self) => ({ PROBE_COMPONENT_ID: self.extension }));
   const error = refused(await probeRun(fixture, worker, requestPath), undefined, 5, "a worker without its database");
+  t.diagnostic(`refused with ${error.code}`);
   assert.ok(
     probePublicErrorRegistry.codes.includes(error.code),
     `${error.code} is not a code the probe family's registry declares`
