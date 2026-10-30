@@ -62,10 +62,11 @@ test("no child process starts git or taskkill by bare name", async () => {
 });
 
 // why: SonarCloud S4036 flagged these repository scripts for starting git by
-// bare name; they now resolve it through scripts/git-executable.mjs. The other
-// scripts that still do (agent-eval.mjs, t76-build-candidate.mjs) are a recorded
-// follow-up in .specs/features/sonarcloud-quality, not an exemption.
-test("the gate-selection and agent-readiness scripts start git by absolute path", async () => {
-  for (const script of ["scripts/agent-readiness.mjs", "scripts/select-gates.mjs"])
+// bare name; they, and the probe worker build script, now resolve it through
+// scripts/git-executable.mjs. The other scripts that still do (agent-eval.mjs,
+// t76-build-candidate.mjs) are a recorded follow-up in
+// .specs/features/sonarcloud-quality, not an exemption.
+test("the gate-selection, agent-readiness and probe worker build scripts start git by absolute path", async () => {
+  for (const script of ["scripts/agent-readiness.mjs", "scripts/build-probe-worker.mjs", "scripts/select-gates.mjs"])
     assert.deepEqual(bareStarts(await readFile(join(ROOT, script), "utf8")), [], script);
 });
