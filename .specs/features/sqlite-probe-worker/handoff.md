@@ -5,7 +5,7 @@ issue: 235
 status: verification
 branch: feat/235-sqlite-probe-worker
 baseRevision: d3c64cce1b6cf8eb839809fbf0d7d09adeb7596e
-lastCompletedTask: C1-C21
+lastCompletedTask: null
 nextTask: "Dispatch an independent Verifier over the plan's merge base..HEAD with every check, C1-C21, running the real-worker proofs (C10-C15) and test:e2e and test:build on Linux."
 lastGate: "Linux at 751677ad: gate:quick PASS (unit 3672/3672, agent-readiness 466/466, census 14/14), test:contract 1040/1040, test:architecture 149/149, test:build 190/190, test:integration 1289/1289, test:e2e 366/366, 0 skipped; Windows at 751677ad: gate:quick PASS (unit 3672/3672, agent-readiness 466/466, census 14/14), test:architecture 149/149, sealed-launcher-closure 15/15 with the .claude/ exclude; complexity:check, agent:check, lint and format:check PASS"
 updatedAt: 2026-10-30T02:30:00Z
