@@ -112,7 +112,8 @@ test("the source manifest advertises the composed init, self-test, doctor, secre
       "database add",
       "database list",
       "database remove",
-      "probe run"
+      "probe run",
+      "probe worker"
     ]
   );
   assert.deepEqual(
@@ -315,7 +316,8 @@ test("the database slice takes the options its Surface names", () => {
   );
 });
 
-// invariant: door 5 and the Surface of .specs/features/probe-run/plan.md.
+// invariant: door 5 and the Surface of .specs/features/probe-run/plan.md, and
+// door 1 and the Surface of .specs/features/sqlite-probe-worker/plan.md.
 test("the probe slice takes the options its Surface names", () => {
   const probe = installedReleaseManifest.commands.filter((command) => command.name.startsWith("probe "));
   assert.deepEqual(
@@ -336,6 +338,15 @@ test("the probe slice takes the options its Surface names", () => {
           ["request", "string", false],
           ["confirm-stdin", "boolean", false],
           ["keychain", "string", false]
+        ]
+      ],
+      [
+        "probe worker",
+        true,
+        true,
+        [
+          ["engine", "string", false],
+          ["entry", "string", false]
         ]
       ]
     ]
@@ -739,7 +750,7 @@ function optionLine(option) {
 }
 
 test("every command answers --help with its declared options", async () => {
-  assert.equal(installedReleaseManifest.commands.length, 23);
+  assert.equal(installedReleaseManifest.commands.length, 24);
   for (const command of installedReleaseManifest.commands) {
     const result = await commandHelp(command, "human");
     assert.equal(result.exitCode, 0, command.name);
