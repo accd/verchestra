@@ -305,7 +305,7 @@ export const SEALED_CHILD_ENTRIES = Object.freeze({
   // worker` copies its bytes into a Workspace and the probe host runs that copy,
   // so it is emitted beside the launchers as `bin/sqlite-probe-worker.mjs`
   // (apps/vestra-cli/src/release-layout.ts `resolveSqliteProbeWorker`).
-  "probe:sqlite-worker": "apps/vestra-cli/src/probe/sqlite-probe-worker-main.ts"
+  "probe:sqlite-worker": "apps/vestra-cli/closure/sqlite-probe-worker-entry.ts"
 });
 
 /** Every sealed `bin/` artifact and the tracked entry it is bundled from. */

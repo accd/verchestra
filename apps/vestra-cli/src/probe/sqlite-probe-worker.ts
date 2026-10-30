@@ -5,9 +5,9 @@
 // SqliteReadConnection, so its identity, session and rows are SQLite's own. It
 // receives no credential: the database is the file its approved environment
 // names. It never runs in the CLI's process: the builder bundles it from
-// sqlite-probe-worker-main.ts into one self-contained file, which `vestra probe
-// worker` writes into a Workspace and the probe host runs as an isolated copy
-// (tests/architecture/extension-host-composition.test.mjs and
+// apps/vestra-cli/closure/sqlite-probe-worker-entry.ts into one self-contained
+// file, which `vestra probe worker` writes into a Workspace and the probe host
+// runs as an isolated copy (tests/architecture/extension-host-composition.test.mjs and
 // database-command-composition.test.mjs admit exactly these two imports).
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
