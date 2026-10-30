@@ -17,7 +17,11 @@ import { tmpdir } from "node:os";
 import { after, before, test } from "node:test";
 
 import { canonicalizeJsonV2 } from "../../packages/domain/src/index.ts";
-import { buildReproducibleT76Target, bundleSealedLauncher } from "../../scripts/t76-build-candidate.mjs";
+import {
+  SEALED_CHILD_ENTRIES,
+  buildReproducibleT76Target,
+  bundleSealedLauncher
+} from "../../scripts/t76-build-candidate.mjs";
 import { buildInfoRecord, sealTargetEvidence, sealedJson } from "../../scripts/t76-candidate-evidence.mjs";
 import { createSealedRepositoryReplica } from "../helpers/sealed-repository-fixture.mjs";
 
@@ -190,6 +194,43 @@ test("the real target builder binds exact revision, host assets, and all supply-
     assert.equal(sealed.buildInfoDigest, `sha256:${createHash("sha256").update(buildInfoBytes).digest("hex")}`);
     assert.equal(sealed.releaseDigest, result.bundle.releaseDigest);
     assert.equal(sealed.componentCount, result.bundle.components.length);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+// invariant: door 3 of .specs/features/sqlite-probe-worker/plan.md (AC 11). The
+// first-party SQLite probe worker is a sealed child entry, emitted beside the
+// launchers as `bin/sqlite-probe-worker.mjs` and sealed, like the crash child
+// and the bridge relay, as a portable `core-code` component whose bytes are
+// the deterministic bundle of its tracked entry.
+test("the sealed release carries the SQLite worker as core code", async () => {
+  assert.equal(SEALED_CHILD_ENTRIES["probe:sqlite-worker"], "apps/vestra-cli/src/probe/sqlite-probe-worker-main.ts");
+  const parent = await mkdtemp(join(tmpdir(), "verchestra-t76-build-worker-"));
+  try {
+    const result = await buildReproducibleT76Target(options(join(parent, "candidate")));
+    const workers = result.bundle.components.filter((component) => component.componentId === "probe:sqlite-worker");
+    assert.equal(workers.length, 1);
+    const [worker] = workers;
+    assert.equal(worker.kind, "core-code");
+    assert.equal(worker.logicalPath, "bin/sqlite-probe-worker.mjs");
+    assert.equal(worker.executable, false);
+    assert.equal(worker.platform, "any");
+    assert.equal(worker.arch, "any");
+    const bundled = await bundleSealedLauncher({
+      repository: replica.repository,
+      componentId: "probe:sqlite-worker",
+      semanticVersion: "0.0.0-qualification",
+      revision: replica.revision,
+      nodeVersion: target.nodeVersion
+    });
+    assert.equal(worker.contentDigest, `sha256:${createHash("sha256").update(bundled).digest("hex")}`);
+    // The tracked entry it is bundled from travels as a sealed source too.
+    assert.ok(
+      result.bundle.components.some(
+        (component) => component.logicalPath === "components/apps/vestra-cli/src/probe/sqlite-probe-worker-main.ts"
+      )
+    );
   } finally {
     await rm(parent, { recursive: true, force: true });
   }

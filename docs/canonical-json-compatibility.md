@@ -121,8 +121,9 @@ document, or the census scripts.
 
 The scanner keeps only the following closed scope exclusions for serializations
 that are not product identities: build-time diagnostics, test and fake-driver
-fixtures, an ephemeral Self-Test child handoff, driver protocol frames, and
-diagnostic command output. Each path and reason is declared in
+fixtures, an ephemeral Self-Test child handoff, driver protocol frames,
+diagnostic command output, and the git-ignored probe worker bundle a checkout
+builds from tracked sources the census already reads. Each path and reason is declared in
 `scripts/canonical-json-census.mjs` and asserted by the census security test;
 no trust, persistence, or portable-identity source can enter that exclusion.
 

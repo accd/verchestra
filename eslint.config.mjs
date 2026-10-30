@@ -12,7 +12,10 @@ export default defineConfig(
       "apps/site/dist/**",
       "apps/site/playwright-report/**",
       "apps/site/test-results/**",
-      "apps/site/.lighthouseci/**"
+      "apps/site/.lighthouseci/**",
+      // why: `corepack pnpm build:probe-worker` writes a minified, git-ignored
+      // bundle here; it is build output, never source (AGENTS.md).
+      "apps/vestra-cli/dist/**"
     ]
   },
   ...tseslint.configs.recommended,
