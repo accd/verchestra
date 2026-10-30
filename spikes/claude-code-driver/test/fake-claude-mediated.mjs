@@ -12,7 +12,7 @@
 // with `--json-schema` it answers through the StructuredOutput tool, as the
 // documented CLI does.
 import { spawn } from "node:child_process";
-import { readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { readFileSync, readdirSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve, sep } from "node:path";
 
@@ -144,8 +144,14 @@ function observationPath() {
   if (!target.startsWith(base)) throw new Error("observation directory is outside the child temp directory");
   return target;
 }
+// why: a test polls for this file and reads it once it exists. Written in
+// place, it exists empty before its bytes land, and a read in that gap fails
+// on empty JSON; renaming a complete file makes it appear whole.
 const observe = () => {
-  if (observationDirectory !== undefined) writeFileSync(observationPath(), JSON.stringify(observation));
+  if (observationDirectory === undefined) return;
+  const target = observationPath();
+  writeFileSync(`${target}.partial`, JSON.stringify(observation));
+  renameSync(`${target}.partial`, target);
 };
 
 function mcpClient() {
