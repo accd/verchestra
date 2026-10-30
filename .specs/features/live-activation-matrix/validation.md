@@ -730,3 +730,61 @@ It also says nothing about the governed or coordinated task paths, because
 `self-test --profile smoke` does not start a provider. Their real-provider
 evidence is the owner's pilots on `.8` (#406 and
 `docs/qualification/coordinated-run-pilots.md`), which have not run yet.
+
+## TUF publication of `0.0.0-qualification.9` (2026-10-30)
+
+`.9` is the seventh release on the role-separated root, the first after the
+first role refresh (ledger sequence 9), and the first whose npm package is
+published by `npm-publish.yml` with provenance instead of by hand.
+
+| Fact               | Value                                                                                  |
+| ------------------ | -------------------------------------------------------------------------------------- |
+| Candidate revision | `50ae23c84c889c3546eaa0f2b1c22febab4069c4` (`main`)                                    |
+| Candidate build    | run `40993636962`: five target legs and the five-closure collection passed             |
+| Signing            | run `40999595578`, from `main`, approved in environment `tuf-release-signing`          |
+| Release id         | `release:verchestra:0.0.0-qualification.9:50ae23c84c88`                                |
+| Root digest        | `sha256:949fbce3c56f7a10729750d3d18dc54537eb32f2701aae7eb8370ff06e5dcff7` (unchanged)  |
+| Metadata version   | `9` for targets, snapshot and timestamp                                                |
+| Base URL           | `https://pub-0fa3e4c3f26540e793952fa2c187d536.r2.dev/v9/`                              |
+| Rollback proof     | binds the `.8` candidate `d83fc139a84604de18e8acee416e4b48c237e539`, run `40022535213` |
+
+Two candidate builds before `40993636962` failed, and both failures were in
+the test harness, not in the product:
+
+- Run `40970070895` failed on Windows x64 with "full has incomplete or
+  surviving evidence". The release build refuses any skipped test, and 28
+  Windows cases had become skips after `.8`. #704 makes them assert the
+  platform's real behavior instead.
+- Run `40983763004` failed on Linux glibc x64. A fake provider's observation
+  file was read while it was still empty. #706 writes that file atomically.
+
+Custody, stated as it happened: GitHub records the approval of environment
+`tuf-release-signing` for run `40999595578` under the owner's account,
+`accd`, given by the agent on the owner's standing instruction for this
+publication. The posture is single-operator custody (acceptance matrix L8,
+RR10).
+
+The ledger entry is the `ledger-entry.json` the publication run derived
+(`admitRelease`, AD-042), appended verbatim as sequence 10.
+
+Verification:
+
+- **Assembly.** All 1675 objects (25 metadata, 1650 targets, 335 per
+  platform) were hashed locally against `publication-manifest.json`, by
+  digest, before upload. The manifest's `path` agreed with `remoteKey` for
+  every asset. All 1675 matched, and the tree holds no other file.
+- **Upload.** `v9/` was empty before the upload. 1675 objects were uploaded
+  under `v9/` with `rclone copy --checksum`, the `.ts` sources in a second
+  pass with `Content-Type: video/mp2t`. `rclone check` reported 1675
+  matching files and 0 differences, and `v9/` holds exactly 1675 objects.
+- **Live endpoint.** All 1675 objects, fetched through the public base URL
+  at 4 in parallel with backoff, answered `200` with no redirect and with the
+  manifest's sha256 and size. Each of the 1650 targets answered a mid-file
+  `Range` request with `206`, the exact `Content-Range`, and the same bytes
+  as the local file. `timestamp.json` is served with no `cache-control` and
+  no `content-encoding`, as `v8/` is.
+- **Activation, Windows x64, against the live endpoint.** The verification
+  launcher run with `--version` printed
+  `Verchestra 0.0.0-qualification.9 (revision 50ae23c84c88)`. The active
+  pointer names the manifest's `win32-x64` release digest
+  (`sha256:5ee6383c…5f9dd4ec`).
