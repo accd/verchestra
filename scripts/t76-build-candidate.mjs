@@ -299,7 +299,13 @@ export const SEALED_CHILD_ENTRIES = Object.freeze({
   // through `--mcp-config`, so like the crash child it cannot be inlined and
   // is emitted beside the launchers as `bin/mcp-tool-bridge.mjs`
   // (apps/vestra-cli/src/release-layout.ts `resolveMcpBridgeRelay`).
-  "mcp:tool-bridge-relay": "packages/agent-runtime/src/execution/mcp-tool-bridge-main.ts"
+  "mcp:tool-bridge-relay": "packages/agent-runtime/src/execution/mcp-tool-bridge-main.ts",
+  // why: door 3 of .specs/features/sqlite-probe-worker/plan.md (AD-087). The
+  // first-party SQLite probe worker is never imported by the CLI: `vestra probe
+  // worker` copies its bytes into a Workspace and the probe host runs that copy,
+  // so it is emitted beside the launchers as `bin/sqlite-probe-worker.mjs`
+  // (apps/vestra-cli/src/release-layout.ts `resolveSqliteProbeWorker`).
+  "probe:sqlite-worker": "apps/vestra-cli/src/probe/sqlite-probe-worker-main.ts"
 });
 
 /** Every sealed `bin/` artifact and the tracked entry it is bundled from. */
@@ -503,6 +509,14 @@ const hostDescriptors = async (inputRoot, options) => {
       kind: "core-code",
       logicalPath: "bin/mcp-tool-bridge.mjs",
       sourcePath: "bin/mcp-tool-bridge.mjs",
+      bundled: true,
+      portable: true
+    },
+    {
+      componentId: "probe:sqlite-worker",
+      kind: "core-code",
+      logicalPath: "bin/sqlite-probe-worker.mjs",
+      sourcePath: "bin/sqlite-probe-worker.mjs",
       bundled: true,
       portable: true
     }
