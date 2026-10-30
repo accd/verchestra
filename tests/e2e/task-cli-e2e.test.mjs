@@ -13,8 +13,8 @@
 //
 // They run on macOS (the fake keychain) and on Linux (the fake Secret Service,
 // #599). Windows runs its journey over the named pipe in
-// tests/e2e/task-windows-e2e.test.mjs, so here it skips each journey by name and
-// asserts that the task path reports not configured.
+// tests/e2e/task-windows-e2e.test.mjs, so here each journey asserts that the
+// task path reports not configured before any effect.
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { rm, writeFile, mkdir, symlink, rename } from "node:fs/promises";
@@ -52,9 +52,10 @@ const TIMEOUT = { timeout: 300_000 };
 // invariant: #599 (TST-002). The single-session journeys run wherever the task
 // path's credential store can be stood in for: the macOS keychain fake, and on
 // Linux the Secret Service fake. Windows runs its own journey over the named
-// pipe, so a journey here is skipped there by name, never passed silently.
+// pipe, so a journey here asserts there that the task path reports not
+// configured: never a silent pass, and never a skip, which the release build's
+// sealed counters refuse.
 const JOURNEYS = DARWIN || LINUX;
-const WINDOWS_JOURNEY = "Windows runs the single-session journey in tests/e2e/task-windows-e2e.test.mjs";
 // why: a run's reported usage is the implementer's and the verifier's. The
 // fake implementer reports 11 input and 7 output tokens in one usage event and
 // the fake verifier 5 and 3 in one, so a run that verifies once has spent
@@ -199,7 +200,7 @@ test(
 );
 
 test("a governed task is planned, approved, implemented, gated, verified, and accepted", TIMEOUT, async (t) => {
-  if (!JOURNEYS) return t.skip(WINDOWS_JOURNEY);
+  if (!JOURNEYS) return notConfiguredWithoutJourneys(t);
   const fixture = await taskFixture();
   const before = checkout(fixture);
   const plan = await planned(fixture);
@@ -339,7 +340,7 @@ test("a governed task is planned, approved, implemented, gated, verified, and ac
 });
 
 test("a write outside the change scope is denied while in-scope work is committed", TIMEOUT, async (t) => {
-  if (!JOURNEYS) return t.skip(WINDOWS_JOURNEY);
+  if (!JOURNEYS) return notConfiguredWithoutJourneys(t);
   const fixture = await taskFixture({ request: { instructions: "Set the value. scenario:outside" } });
   const plan = await approved(fixture);
   const run = ok(start(fixture, plan.runId), "start");
@@ -354,7 +355,7 @@ test("a write outside the change scope is denied while in-scope work is committe
 });
 
 test("a Workspace forbid policy denies the start before any worktree or provider call", TIMEOUT, async (t) => {
-  if (!JOURNEYS) return t.skip(WINDOWS_JOURNEY);
+  if (!JOURNEYS) return notConfiguredWithoutJourneys(t);
   const fixture = await taskFixture();
   await mkdir(join(fixture.repository, ".verchestra", "policy"), { recursive: true });
   await writeFile(
@@ -391,7 +392,7 @@ function assertNothingStarted(fixture, runId) {
 // invariant: the API keys are bound here and the token is not. A subscription
 // run names the token it needs and never falls back to a key that is present.
 test("a missing credential is not configured before any transition, worktree, or provider call", TIMEOUT, async (t) => {
-  if (!JOURNEYS) return t.skip(WINDOWS_JOURNEY);
+  if (!JOURNEYS) return notConfiguredWithoutJourneys(t);
   const fixture = await taskFixture({ credentials: MODE_CREDENTIALS["api-key"] });
   const plan = await approved(fixture);
   const error = refused(start(fixture, plan.runId), "VES_TASK_NOT_CONFIGURED", "start");
@@ -401,7 +402,7 @@ test("a missing credential is not configured before any transition, worktree, or
 });
 
 test("in API-key mode a missing API key is not configured before any effect", TIMEOUT, async (t) => {
-  if (!JOURNEYS) return t.skip(WINDOWS_JOURNEY);
+  if (!JOURNEYS) return notConfiguredWithoutJourneys(t);
   const { "anthropic-api-key": omitted, ...rest } = CREDENTIALS;
   assert.ok(omitted);
   const fixture = await taskFixture({ mode: "api-key", credentials: rest });
@@ -421,7 +422,7 @@ test("in API-key mode a missing API key is not configured before any effect", TI
 });
 
 test("in API-key mode a task runs bare with the two keys and reports a dollar cost", TIMEOUT, async (t) => {
-  if (!JOURNEYS) return t.skip(WINDOWS_JOURNEY);
+  if (!JOURNEYS) return notConfiguredWithoutJourneys(t);
   const fixture = await taskFixture({ mode: "api-key" });
   const plan = await approved(fixture);
   assert.deepEqual(plan.providerAuth, { "claude-code": "api-key", codex: "api-key" });
@@ -468,7 +469,7 @@ test(
   "a Codex login that is missing is not configured, and the one-time command unblocks the same run",
   TIMEOUT,
   async (t) => {
-    if (!JOURNEYS) return t.skip(WINDOWS_JOURNEY);
+    if (!JOURNEYS) return notConfiguredWithoutJourneys(t);
     const fixture = await taskFixture({ codexLogin: null });
     const plan = await approved(fixture);
     const refusedStart = start(fixture, plan.runId);
@@ -493,7 +494,7 @@ test(
 );
 
 test("an API-key Codex login cannot stand in for the subscription", TIMEOUT, async (t) => {
-  if (!JOURNEYS) return t.skip(WINDOWS_JOURNEY);
+  if (!JOURNEYS) return notConfiguredWithoutJourneys(t);
   const fixture = await taskFixture({ codexLogin: "api-key" });
   const plan = await approved(fixture);
   assert.equal(
@@ -504,7 +505,7 @@ test("an API-key Codex login cannot stand in for the subscription", TIMEOUT, asy
 });
 
 test("a malformed provider setting is not configured at plan time and at start", TIMEOUT, async (t) => {
-  if (!JOURNEYS) return t.skip(WINDOWS_JOURNEY);
+  if (!JOURNEYS) return notConfiguredWithoutJourneys(t);
   const broken = await taskFixture({ providers: "{not json" });
   const plan = broken.launch([
     "task",
@@ -532,7 +533,7 @@ test("a malformed provider setting is not configured at plan time and at start",
 });
 
 test("one provider on a subscription and the other on a key is metered as mixed", TIMEOUT, async (t) => {
-  if (!JOURNEYS) return t.skip(WINDOWS_JOURNEY);
+  if (!JOURNEYS) return notConfiguredWithoutJourneys(t);
   const fixture = await taskFixture({
     providers: { schemaVersion: 1, providers: { codex: { auth: "api-key" } } },
     credentials: { ...MODE_CREDENTIALS.subscription, "openai-api-key": CREDENTIALS["openai-api-key"] },
@@ -565,7 +566,7 @@ test("one provider on a subscription and the other on a key is metered as mixed"
 });
 
 test("an exhausted budget stops the implementer and fails the run as a budget outcome", TIMEOUT, async (t) => {
-  if (!JOURNEYS) return t.skip(WINDOWS_JOURNEY);
+  if (!JOURNEYS) return notConfiguredWithoutJourneys(t);
   const fixture = await taskFixture({ request: { instructions: "Spend. scenario:budget" } });
   const plan = await approved(fixture);
   const run = start(fixture, plan.runId);
@@ -580,7 +581,7 @@ test("an exhausted budget stops the implementer and fails the run as a budget ou
 });
 
 test("cancel stops a running task from another process and aborts the run", TIMEOUT, async (t) => {
-  if (!JOURNEYS) return t.skip(WINDOWS_JOURNEY);
+  if (!JOURNEYS) return notConfiguredWithoutJourneys(t);
   const fixture = await taskFixture({ request: { instructions: "Work slowly. scenario:slow" } });
   const plan = await approved(fixture);
   const child = fixture.launchAsync(startArguments(fixture, plan.runId));
@@ -611,7 +612,7 @@ test("cancel stops a running task from another process and aborts the run", TIME
 });
 
 test("an interrupted run resumes at its gate without repeating the implementer's effects", TIMEOUT, async (t) => {
-  if (!JOURNEYS) return t.skip(WINDOWS_JOURNEY);
+  if (!JOURNEYS) return notConfiguredWithoutJourneys(t);
   const fixture = await taskFixture();
   const plan = await approved(fixture);
   assert.equal((await killedAtHeldGate(fixture, plan)).signal, "SIGKILL");
@@ -697,7 +698,7 @@ test(
 );
 
 test("a malformed state file fails closed before any effect", TIMEOUT, async (t) => {
-  if (!JOURNEYS) return t.skip(WINDOWS_JOURNEY);
+  if (!JOURNEYS) return notConfiguredWithoutJourneys(t);
   const fixture = await taskFixture();
   const plan = await approved(fixture);
   const path = join(fixture.stateRoot, "tasks", plan.runId, "plan.json");
@@ -717,7 +718,7 @@ test("a malformed state file fails closed before any effect", TIMEOUT, async (t)
 });
 
 test("a rejected review aborts the run and keeps the task branch for inspection", TIMEOUT, async (t) => {
-  if (!JOURNEYS) return t.skip(WINDOWS_JOURNEY);
+  if (!JOURNEYS) return notConfiguredWithoutJourneys(t);
   const fixture = await taskFixture();
   const plan = await approved(fixture);
   const run = ok(start(fixture, plan.runId), "start");
@@ -731,7 +732,7 @@ test("a rejected review aborts the run and keeps the task branch for inspection"
 });
 
 test("cancel with no process driving the run removes its worktree, frees the lease, and aborts", TIMEOUT, async (t) => {
-  if (!JOURNEYS) return t.skip(WINDOWS_JOURNEY);
+  if (!JOURNEYS) return notConfiguredWithoutJourneys(t);
   const fixture = await taskFixture();
   const plan = await approved(fixture);
   await killedAtHeldGate(fixture, plan);
@@ -751,7 +752,7 @@ test("cancel with no process driving the run removes its worktree, frees the lea
 // and a second run is implemented, gated, committed, verified through a
 // scratch checkout, and accepted into a sealed Run Capsule.
 test("a SHA-256 repository is cancelled when idle and delivered through acceptance", TIMEOUT, async (t) => {
-  if (!JOURNEYS) return t.skip(WINDOWS_JOURNEY);
+  if (!JOURNEYS) return notConfiguredWithoutJourneys(t);
   const fixture = await taskFixture({ objectFormat: "sha256" });
   assert.match(fixture.revision, /^[a-f0-9]{64}$/u);
   const before = checkout(fixture);
@@ -1557,7 +1558,7 @@ test(
   "a v1 verifier on an API key whose model the account does not offer fails the run with that cause",
   TIMEOUT,
   async (t) => {
-    if (!JOURNEYS) return t.skip(WINDOWS_JOURNEY);
+    if (!JOURNEYS) return notConfiguredWithoutJourneys(t);
     const fixture = await taskFixture({ mode: "api-key" });
     const plan = await approved(fixture);
     await writeFile(join(fixture.scratch, "codex-model-missing"), "");
