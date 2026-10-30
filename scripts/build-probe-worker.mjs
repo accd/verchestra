@@ -11,6 +11,7 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { gitExecutable } from "./git-executable.mjs";
 import { bundleSealedLauncherWithMetafile } from "./t76-build-candidate.mjs";
 
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -22,7 +23,7 @@ export const PROBE_WORKER_OUTPUT = "apps/vestra-cli/dist/sqlite-probe-worker.mjs
 // (`engines.node`), which is the Node a release carries.
 async function bundleIdentity(repository) {
   const manifest = JSON.parse(await readFile(join(repository, "package.json"), "utf8"));
-  const revision = execFileSync("git", ["rev-parse", "HEAD"], {
+  const revision = execFileSync(gitExecutable(), ["rev-parse", "HEAD"], {
     cwd: repository,
     encoding: "utf8",
     windowsHide: true

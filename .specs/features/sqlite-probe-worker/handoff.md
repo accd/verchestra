@@ -7,8 +7,8 @@ branch: feat/235-sqlite-probe-worker
 baseRevision: 5eb3197b526247aef1af0b97cb79082320d15814
 lastCompletedTask: null
 nextTask: "Owner review of the sqlite-probe-worker build PR; after it lands, the next #235 step (credential delivery for engines other than SQLite) is its own feature and the owner's call."
-lastGate: "Independent Verifier round 1 PASS at 1f31e259 (21/21; Windows: gate:quick, test:architecture 149, named proofs; Linux: gate:quick, test:contract 1040, test:architecture 149, test:build 190, test:integration 1289, test:e2e 366, named proofs, C11-C15 against the real worker); validate_verification exit 0"
-updatedAt: 2026-10-30T09:00:00Z
+lastGate: "Independent Verifier round 1 PASS at 1f31e259 (21/21; Windows: gate:quick, test:architecture 149, named proofs; Linux: gate:quick, test:contract 1040, test:architecture 149, test:build 190, test:integration 1289, test:e2e 366, named proofs, C11-C15 against the real worker); validate_verification exit 0; after the S4036 fix, Windows C7-C8 2/2 and test:architecture 149/149"
+updatedAt: 2026-10-30T10:30:00Z
 ---
 
 # Evidence
@@ -64,6 +64,14 @@ notes are two precision gaps in the checks' wording (C9 names the sealed child
 entries where the descriptor holds the `bin/` path; C17 gives no explicit
 position), now lessons L-020 and L-021, and the pre-rebase commit ids this
 file and `checks.md` cited, now replaced by their rebased ids.
+
+After verification, SonarCloud's quality gate on the PR failed its security
+rating on one finding, S4036: `scripts/build-probe-worker.mjs` started `git` by
+bare name. It now starts git through `scripts/git-executable.mjs`, as the
+gate-selection and agent-readiness scripts do, and
+`tests/architecture/absolute-child-executables.test.mjs` pins it among them;
+that test fails on the bare name. C7 and C8, the proofs over the build script,
+and `test:architecture` re-ran green on Windows.
 
 # Next exact action
 
