@@ -205,7 +205,7 @@ test("the real target builder binds exact revision, host assets, and all supply-
 // and the bridge relay, as a portable `core-code` component whose bytes are
 // the deterministic bundle of its tracked entry.
 test("the sealed release carries the SQLite worker as core code", async () => {
-  assert.equal(SEALED_CHILD_ENTRIES["probe:sqlite-worker"], "apps/vestra-cli/src/probe/sqlite-probe-worker-main.ts");
+  assert.equal(SEALED_CHILD_ENTRIES["probe:sqlite-worker"], "apps/vestra-cli/closure/sqlite-probe-worker-entry.ts");
   const parent = await mkdtemp(join(tmpdir(), "verchestra-t76-build-worker-"));
   try {
     const result = await buildReproducibleT76Target(options(join(parent, "candidate")));
@@ -228,7 +228,7 @@ test("the sealed release carries the SQLite worker as core code", async () => {
     // The tracked entry it is bundled from travels as a sealed source too.
     assert.ok(
       result.bundle.components.some(
-        (component) => component.logicalPath === "components/apps/vestra-cli/src/probe/sqlite-probe-worker-main.ts"
+        (component) => component.logicalPath === "components/apps/vestra-cli/closure/sqlite-probe-worker-entry.ts"
       )
     );
   } finally {

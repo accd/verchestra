@@ -23,7 +23,7 @@ function build() {
 
 test("the worker bundle imports only node modules", async () => {
   assert.equal(PROBE_WORKER_OUTPUT, "apps/vestra-cli/dist/sqlite-probe-worker.mjs");
-  assert.equal(SEALED_CHILD_ENTRIES[PROBE_WORKER_COMPONENT], "apps/vestra-cli/src/probe/sqlite-probe-worker-main.ts");
+  assert.equal(SEALED_CHILD_ENTRIES[PROBE_WORKER_COMPONENT], "apps/vestra-cli/closure/sqlite-probe-worker-entry.ts");
   build();
   const { bytes, metafile } = await bundleProbeWorker();
   assert.ok(bytes.equals(await readFile(BUNDLE)), "the record describes the bundle the build wrote");
