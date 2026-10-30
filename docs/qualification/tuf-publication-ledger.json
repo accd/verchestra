@@ -197,6 +197,28 @@
       "evidence": [
         ".specs/features/tuf-role-separation/republish-v3-runbook.md"
       ]
+    },
+    {
+      "sequence": 10,
+      "previousEntryDigest": "sha256:21ab93e715d2abe20899c993cd523e5c01a70b3a943d9aa13997683b332d7bb9",
+      "kind": "release",
+      "releaseId": "release:verchestra:0.0.0-qualification.9:50ae23c84c88",
+      "semanticVersion": "0.0.0-qualification.9",
+      "baseUrl": "https://pub-0fa3e4c3f26540e793952fa2c187d536.r2.dev/",
+      "urlPrefix": "v9/",
+      "rootDigest": "sha256:949fbce3c56f7a10729750d3d18dc54537eb32f2701aae7eb8370ff06e5dcff7",
+      "rootDigestPrefix": null,
+      "roles": {
+        "root": 1,
+        "snapshot": 9,
+        "targets": 9,
+        "timestamp": 9
+      },
+      "publicationRunId": "40999595578",
+      "evidence": [
+        ".specs/features/live-activation-matrix/validation.md",
+        ".specs/features/tuf-role-separation/republish-v3-runbook.md"
+      ]
     }
   ]
 }
