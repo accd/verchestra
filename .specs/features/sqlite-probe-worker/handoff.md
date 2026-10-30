@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: sqlite-probe-worker
 issue: 235
-status: verification
+status: complete
 branch: feat/235-sqlite-probe-worker
 baseRevision: 5eb3197b526247aef1af0b97cb79082320d15814
 lastCompletedTask: null
-nextTask: "Dispatch an independent Verifier over 5eb3197b..HEAD (the plan as landed on main by #703) with every check, C1-C21, running the real-worker proofs (C10-C15) and test:e2e and test:build on Linux."
-lastGate: "Linux at 751677ad: gate:quick PASS (unit 3672/3672, agent-readiness 466/466, census 14/14), test:contract 1040/1040, test:architecture 149/149, test:build 190/190, test:integration 1289/1289, test:e2e 366/366, 0 skipped; Windows at 751677ad: gate:quick PASS (unit 3672/3672, agent-readiness 466/466, census 14/14), test:architecture 149/149, sealed-launcher-closure 15/15 with the .claude/ exclude; complexity:check, agent:check, lint and format:check PASS"
-updatedAt: 2026-10-30T02:30:00Z
+nextTask: "Owner review of the sqlite-probe-worker build PR; after it lands, the next #235 step (credential delivery for engines other than SQLite) is its own feature and the owner's call."
+lastGate: "Independent Verifier round 1 PASS at 1f31e259 (21/21; Windows: gate:quick, test:architecture 149, named proofs; Linux: gate:quick, test:contract 1040, test:architecture 149, test:build 190, test:integration 1289, test:e2e 366, named proofs, C11-C15 against the real worker); validate_verification exit 0"
+updatedAt: 2026-10-30T09:00:00Z
 ---
 
 # Evidence
@@ -22,23 +22,23 @@ component id from two approved environment variables (AD-087).
 
 C1-C21 are built, one builder, on `feat/235-sqlite-probe-worker`:
 
-- `610c9d41` bundles the worker: `apps/vestra-cli/src/probe/sqlite-probe-worker.ts`
+- `69fc8a12` bundles the worker: `apps/vestra-cli/src/probe/sqlite-probe-worker.ts`
   (data-probe's SQLite adapter over the read-only connection, the probe
   protocol's frame codec), the sealed child entry `probe:sqlite-worker`
   (`bin/sqlite-probe-worker.mjs`, `core-code`), `corepack pnpm
   build:probe-worker` (`scripts/build-probe-worker.mjs`, git-ignored output in
   `apps/vestra-cli/dist/`), the two guard edges (C18), and C7, C8, C9 (builder
   half), C10-C12.
-- `7baae2f2` adds `vestra probe worker` (`apps/vestra-cli/src/probe/probe-worker.ts`)
+- `84d6a704` adds `vestra probe worker` (`apps/vestra-cli/src/probe/probe-worker.ts`)
   on the entry rule `extension add` applies, now shared as
   `resolveWorkspaceFile`, its four refusals in the probe family's registry,
   every pinned command list (lesson L-019), and C1-C6, C9 (sealed half),
   C13-C17.
-- `01712335` adds `docs/probe-quick-start.md`, the two site links and the
+- `ff225bbb` adds `docs/probe-quick-start.md`, the two site links and the
   CHANGELOG entries (C19-C21).
-- `5eb5bef4` names, in C14's diagnostics, the code an unconfigured worker
+- `d4623a77` names, in C14's diagnostics, the code an unconfigured worker
   fails its run with: `VES_PROBE_WORKER_EXITED`.
-- `751677ad` moves the bundle entry to
+- `64c3c761` moves the bundle entry to
   `apps/vestra-cli/closure/sqlite-probe-worker-entry.ts`, beside the launcher
   entries.
 
@@ -54,10 +54,18 @@ coverage over `tests/unit/sqlite-probe-worker.test.mjs` and
 `sqlite-probe-worker.ts` 100% of lines and branches; the bundle entry is in
 `closure/`, which SonarCloud excludes from coverage like the launcher entries.
 
+# Verification
+
+An independent Verifier passed every check, C1-C21, at `1f31e259` over
+`5eb3197b..1f31e259`, profile `light` (`verification.md`). The real-worker
+proofs (C11-C15) ran on Linux; on Windows they assert the platform refusal, and
+macOS runs only in the nightly platform matrix after merge. Its non-failing
+notes are two precision gaps in the checks' wording (C9 names the sealed child
+entries where the descriptor holds the `bin/` path; C17 gives no explicit
+position), now lessons L-020 and L-021, and the pre-rebase commit ids this
+file and `checks.md` cited, now replaced by their rebased ids.
+
 # Next exact action
 
-Dispatch an independent Verifier over `5eb3197b..HEAD`, the plan as #703 landed it, with
-every check, C1-C21. The real-worker proofs (C11-C15) assert the platform
-refusal on Windows, so the Verifier runs them, test:e2e, test:build and
-test:integration on Linux; macOS runs only in the nightly platform matrix
-after merge.
+Owner review of the sqlite-probe-worker build PR. After it lands, credential
+delivery for engines other than SQLite is its own feature and the owner's call.
