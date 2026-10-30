@@ -142,7 +142,7 @@ defensibly have been two rows:
 | J05 | I hand in-flight work to another machine without handing over my machine's authority. | Proven |
 | J06 | Work I started under one AI backend finishes under a different one, unchanged. | Proven |
 | J07 | A sealed Execution Package survives a move between machines with different local keys. | Proven |
-| J08 | I can prove my installation actually works, without a repository checkout. | Proven; the recorded defect (#370) is fixed from `.3` on, but no live run has started from a default Windows home directory |
+| J08 | I can prove my installation actually works, without a repository checkout. | Proven; the recorded defect (#370) is fixed from `.3` on. A live run from a default Windows home directory is recorded on `.9` (section 2.8, J08 record of 2026-10-30) |
 | J09 | I ask what is wrong with this machine and get an actionable, path-free report. | Proven — secret presence observable on macOS, Linux, and Windows since #379 (AD-034, AD-041); no full `PASS` recorded |
 | J10 | I restore a machine from an encrypted bundle, and send diagnostics without leaking my paths. | Proven deterministically; live recovery from a wiped state root recorded on all 5 (runs 33087399859, 36997576112, 37047903756, 37152404760) |
 | J11 | I turn a revision into a signed, reproducible release a stranger can verify from a public endpoint. | Proven deterministically; performed live by T76, then by ledger sequences 3–6 |
@@ -336,6 +336,29 @@ release, but they start it from the runner's working directory, where the #370
 path does not fire (`.specs/features/live-activation-matrix/validation.md:33-36`).
 No recorded live run has started `self-test` from a default Windows home
 directory.
+
+**J08 record, 2026-10-30: `self-test` from a default Windows home directory on
+`.9` (exit condition X4).** This record is re-performed, not reported. On the
+owner's Windows 11 Pro PC, from a non-elevated PowerShell 7.6 session whose
+user is not in the Administrators role:
+
+- **Working directory.** It was the default home directory, `$HOME`. The OS
+  temporary directory (`[IO.Path]::GetTempPath()`) lies inside it, which is
+  the #370 condition.
+- **Runtime.** Node `v24.14.0` and npm `11.9.0`.
+- **`--version`.** `npx --yes verchestra@0.0.0-qualification.9 --version`
+  printed `Verchestra 0.0.0-qualification.9 (revision 50ae23c84c88)` and
+  exited `0`.
+- **Smoke profile.**
+  `npx --yes verchestra@0.0.0-qualification.9 self-test --profile smoke --output json`
+  exited `0` with `ok: true`, `self_test.verdict: PASS`,
+  `self_test.check_count: 6`, `self_test.failure_codes: []` and
+  `self_test.redaction_count: 0`. The run ended at 2026-10-30T21:35:49Z.
+- **Active release.** The launcher's active pointer named
+  `release:verchestra:0.0.0-qualification.9:50ae23c84c88` with release digest
+  `sha256:5ee6383c…5f9dd4ec`, which is the `win32-x64` digest in the `.9`
+  publication manifest
+  (`.specs/features/live-activation-matrix/validation.md`).
 
 ### 2.9 J09 — Diagnose a machine with deep doctor
 
@@ -847,6 +870,12 @@ and named the `.3` republication as the condition
 (`docs/qualification/release-decision-1.0.0.md`, "Corrections to the record").
 This update does not move L5 out of the Qualifying group; whether the
 republication clears it is for the reviewers who escalated it.
+
+**Update (2026-10-30).** A live `self-test --profile smoke` started from a
+default Windows home directory is now recorded. The run was non-elevated, on
+the published `0.0.0-qualification.9`, and reached `PASS` (section 2.8, J08
+record of 2026-10-30). That is the evidence exit condition X4 asks for. As
+above, whether it clears L5 is for the reviewers.
 
 **Update (2026-10-29, reported evidence, not re-performed):** on 2026-10-14
 the operational reviewer reported on PR #523 a `self-test --profile smoke` PASS
