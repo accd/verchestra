@@ -54,6 +54,18 @@ Seen once or not yet corroborated. Tracked, not trusted.
 - evidence: tests/e2e/cli-launchers-e2e.test.mjs:45; tests/build/sealed-launcher-closure.test.mjs:79 (apps/vestra-cli)
 - last seen: 2026-10-28T21:02:34Z
 
+### L-020 - A check about the release builder names the structure it asserts: SEALED_CHILD_ENTRIES maps a component id to its tracked entry file, while the host descriptor holds its bin/ logical path and kind.
+- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `scripts/t76-build-candidate` · harmful: 0
+- features: sqlite-probe-worker
+- evidence: verification round 1 C9, tests/build/reproducible-target-build.test.mjs:216 (scripts/t76-build-candidate)
+- last seen: 2026-10-30T01:39:29Z
+
+### L-021 - A check about a line's place in exact CLI output gives an explicit order (after which line, or last), never a position between neighbours.
+- signal: `spec_precision_gap` · recurrence: 1 feature(s) · scope: `apps/vestra-cli` · harmful: 0
+- features: sqlite-probe-worker
+- evidence: verification round 1 C17, tests/e2e/cli-launchers-e2e.test.mjs:60 (apps/vestra-cli)
+- last seen: 2026-10-30T01:39:29Z
+
 ## Quarantined (failed when applied - ignore)
 
 A confirmed lesson that recurred alongside failure. Kept for the maintainer to review.
