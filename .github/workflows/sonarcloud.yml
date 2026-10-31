@@ -57,7 +57,7 @@ jobs:
           JS
           export NODE_OPTIONS="--import=/tmp/pid-probe.mjs"
           for round in 1 2 3; do
-          for stage in test:contract test:security test:unit; do
+          for stage in test:security; do
             rm -rf /tmp/v8cov /tmp/pids.log; mkdir -p /tmp/v8cov
             NODE_V8_COVERAGE=/tmp/v8cov pnpm run "$stage" 2>&1 | tee /tmp/$stage.log | grep --line-buffered -E "^ℹ (tests|fail)|Could not report"; echo "RESULT round=$round $stage exit=${PIPESTATUS[0]}"
             grep "Could not report" /tmp/$stage.log && echo "HIT round=$round $stage"
@@ -69,9 +69,9 @@ jobs:
                 try { JSON.parse(t); } catch {
                   const urls=[...new Set([...t.matchAll(/"url":"(file:[^"]+)"/g)].map(m=>m[1]).filter(u=>!u.includes("node_modules")))].slice(0,12);
                   const me=pids.get(n.split("-")[1]); const parent=me&&pids.get(String(me.ppid)); const gp=parent&&pids.get(String(parent.ppid));
-                  console.log("TRUNCATED", n, t.length);
+                  console.log("TRUNCATED", n, t.length, JSON.stringify(urls).replaceAll("file:///home/runner/work/verchestra/verchestra/",""));
                   const pid=Number(n.split("-")[1]);
-                  for (const [k,r] of pids) if (Number(k)>=pid-40 && Number(k)<=pid+3) console.log("  NEAR", k, "ppid", r.ppid, JSON.stringify(r.argv).replaceAll("/home/runner/work/verchestra/verchestra/","").slice(0,300));
+                  for (const [k,r] of [...pids].filter(([k,r])=>Number(k)<pid && Number(k)>pid-3000 && JSON.stringify(r.argv).includes("tests/")).slice(-4)) console.log("  NEAR", k, "ppid", r.ppid, JSON.stringify(r.argv).replaceAll("/home/runner/work/verchestra/verchestra/","").slice(0,300));
                 }
               }'
           done
