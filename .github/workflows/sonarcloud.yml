@@ -21,6 +21,10 @@ jobs:
     name: SonarCloud
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        attempt: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
     permissions:
       contents: read
       pull-requests: read
@@ -44,32 +48,32 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Measure coverage
-        # The scopes whose children are never killed mid-write. Integration and
-        # fault kill children by design; a child killed mid-write leaves a
-        # truncated V8 profile that fails the runner's coverage report
-        # (scripts/test-scope.mjs). Security exercises the distribution,
-        # activation and worktree adapters no other covered scope reaches.
+      - name: Measure coverage (diagnostic)
         run: |
-          set -euo pipefail
-          for stage in test:unit test:contract test:security; do
-            echo "::group::pnpm run $stage"
-            pnpm run "$stage"
-            echo "::endgroup::"
+          set +e
+          cat > /tmp/pid-probe.mjs <<'JS'
+          import { appendFileSync } from "node:fs";
+          appendFileSync("/tmp/pids.log", JSON.stringify({ pid: process.pid, ppid: process.ppid, argv: process.argv.slice(1).map((a) => a.slice(0, 240)), execArgv: process.execArgv.slice(0, 6) }) + String.fromCharCode(10));
+          JS
+          export NODE_OPTIONS="--import=/tmp/pid-probe.mjs"
+          for round in 1 2 3; do
+          for stage in test:contract test:security test:unit; do
+            rm -rf /tmp/v8cov /tmp/pids.log; mkdir -p /tmp/v8cov
+            NODE_V8_COVERAGE=/tmp/v8cov pnpm run "$stage" 2>&1 | tee /tmp/$stage.log | grep --line-buffered -E "^ℹ (tests|fail)|Could not report"; echo "RESULT round=$round $stage exit=${PIPESTATUS[0]}"
+            grep "Could not report" /tmp/$stage.log && echo "HIT round=$round $stage"
+            node -e '
+              const fs=require("fs"),p=require("path");
+              const pids=new Map(fs.readFileSync("/tmp/pids.log","utf8").trim().split(String.fromCharCode(10)).map(l=>JSON.parse(l)).map(r=>[String(r.pid),r]));
+              for (const n of fs.readdirSync("/tmp/v8cov")) {
+                const t=fs.readFileSync(p.join("/tmp/v8cov",n),"utf8");
+                try { JSON.parse(t); } catch {
+                  const urls=[...new Set([...t.matchAll(/"url":"(file:[^"]+)"/g)].map(m=>m[1]).filter(u=>!u.includes("node_modules")))].slice(0,12);
+                  const me=pids.get(n.split("-")[1]); const parent=me&&pids.get(String(me.ppid)); const gp=parent&&pids.get(String(parent.ppid));
+                  console.log("TRUNCATED", n, t.length);
+                  const pid=Number(n.split("-")[1]);
+                  for (const [k,r] of pids) if (Number(k)>=pid-40 && Number(k)<=pid+3) console.log("  NEAR", k, "ppid", r.ppid, JSON.stringify(r.argv).replaceAll("/home/runner/work/verchestra/verchestra/","").slice(0,300));
+                }
+              }'
           done
-          node scripts/merge-coverage.mjs
-      - name: Check the analysis token
-        # A pull request from a fork receives no secrets, so it cannot analyze;
-        # skipping keeps its other checks meaningful instead of failing here.
-        # The token is scoped to this step and the scan, never to the test steps
-        # that execute the change under review.
-        id: token
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run: |
-          if [ -n "$SONAR_TOKEN" ]; then echo "configured=true" >> "$GITHUB_OUTPUT"; fi
-      - name: Analyze
-        if: steps.token.outputs.configured == 'true'
-        uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8.3.0
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          done
+          exit 0

@@ -15,7 +15,9 @@ export const relayEntry = fileURLToPath(
 
 const roots = [];
 const controllers = [];
-const children = [];
+const relays = [];
+// A relay that has not exited this long after its input ends is hung, not exiting.
+const RELAY_EXIT_BOUND_MS = 10_000;
 
 export async function bridgeWorktree() {
   const root = await mkdtemp(join(tmpdir(), "verchestra-bridge-"));
@@ -68,7 +70,6 @@ export function startRelay(environment) {
     stdio: ["pipe", "pipe", "pipe"],
     windowsHide: true
   });
-  children.push(child);
   // why: a relay that refuses an oversized frame closes stdin mid-write.
   child.stdin.on("error", () => undefined);
   const waiting = new Map();
@@ -92,6 +93,7 @@ export function startRelay(environment) {
     }
   });
   const exited = new Promise((resolve) => child.once("close", (code) => resolve(code)));
+  relays.push({ child, exited });
   // hazard: a relay that exits, for one when it is refused or its own
   // five-second authentication wait ends, answers nothing more, so a request
   // still waiting then is rejected with its exit code and refusal line
@@ -142,8 +144,24 @@ export function startRelay(environment) {
   };
 }
 
+// invariant: cleanup stops a relay the way Claude Code does, by ending its
+// input, and kills only a relay still running past the bound. A relay whose
+// exit code is not yet set may already be exiting, and in a coverage run Node
+// writes the child's V8 profile on the way out: a signal then leaves a
+// truncated profile, and the runner fails the whole scope reading it.
+async function stopRelay({ child, exited }) {
+  child.stdin.end();
+  let timer;
+  const hung = new Promise((resolve) => (timer = setTimeout(resolve, RELAY_EXIT_BOUND_MS, true)));
+  if ((await Promise.race([exited.then(() => false), hung])) === true) {
+    child.kill("SIGKILL");
+    await exited;
+  }
+  clearTimeout(timer);
+}
+
 export async function cleanupBridges() {
-  for (const child of children.splice(0)) if (child.exitCode === null) child.kill();
+  await Promise.all(relays.splice(0).map(stopRelay));
   await Promise.all(controllers.splice(0).map((controller) => controller.close()));
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 }
