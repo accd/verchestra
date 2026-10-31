@@ -13,3 +13,17 @@
 | `pnpm site:test` | Not runnable here: Astro refuses Node 22.22.0 |
 
 The full `gate:quick` and `site:test` must run on the pinned Node 24.14.0 in CI.
+
+## T2: self-test recording (2026-10-31)
+
+The GIF records a real run of the published package, not a mock-up. It was
+recorded with vhs from `docs/assets/self-test.tape` on Linux x64 with Node
+24.14.0, after an off-camera warm-up activated the release.
+
+- `npx verchestra@0.0.0-qualification.9 --version` printed
+  `Verchestra 0.0.0-qualification.9 (revision 50ae23c84c88)`.
+- `npx verchestra@0.0.0-qualification.9 self-test --profile smoke` exited 0
+  with `self_test.check_count: 6`, `self_test.failure_codes: []` and
+  `self_test.verdict: PASS`.
+- The frames show no home directory, user name or machine-local path.
+- `docs/assets/self-test.gif` is about 106 KB.

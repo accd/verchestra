@@ -72,6 +72,10 @@ npx verchestra --help
 npx verchestra self-test --profile smoke
 ```
 
+<p align="center">
+  <img src="docs/assets/self-test.gif" alt="A terminal runs npx verchestra --version, then self-test --profile smoke, which ends with self_test.verdict: PASS" width="760" />
+</p>
+
 `self_test.verdict: PASS` means your machine downloaded, verified, and activated a signed release and ran its own self-test. The first run takes a couple of minutes; later runs take seconds. The package installs two equivalent binaries, `verchestra` and `vestra`.
 
 <details>
