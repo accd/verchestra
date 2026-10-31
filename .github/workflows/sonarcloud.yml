@@ -51,18 +51,25 @@ jobs:
       - name: Measure coverage (diagnostic)
         run: |
           set +e
+          cat > /tmp/pid-probe.mjs <<'JS'
+          import { appendFileSync } from "node:fs";
+          appendFileSync("/tmp/pids.log", JSON.stringify({ pid: process.pid, ppid: process.ppid, argv: process.argv.slice(1).map((a) => a.slice(0, 240)), execArgv: process.execArgv.slice(0, 6) }) + String.fromCharCode(10));
+          JS
+          export NODE_OPTIONS="--import=/tmp/pid-probe.mjs"
           for round in 1 2 3; do
-          for stage in test:unit test:contract; do
-            rm -rf /tmp/v8cov; mkdir -p /tmp/v8cov
+          for stage in test:contract; do
+            rm -rf /tmp/v8cov /tmp/pids.log; mkdir -p /tmp/v8cov
             NODE_V8_COVERAGE=/tmp/v8cov pnpm run "$stage" 2>&1 | tee /tmp/$stage.log | grep --line-buffered -E "^ℹ (tests|fail)|Could not report"; echo "RESULT round=$round $stage exit=${PIPESTATUS[0]}"
             grep "Could not report" /tmp/$stage.log && echo "HIT round=$round $stage"
             node -e '
               const fs=require("fs"),p=require("path");
+              const pids=new Map(fs.readFileSync("/tmp/pids.log","utf8").trim().split(String.fromCharCode(10)).map(l=>JSON.parse(l)).map(r=>[String(r.pid),r]));
               for (const n of fs.readdirSync("/tmp/v8cov")) {
                 const t=fs.readFileSync(p.join("/tmp/v8cov",n),"utf8");
                 try { JSON.parse(t); } catch {
                   const urls=[...new Set([...t.matchAll(/"url":"(file:[^"]+)"/g)].map(m=>m[1]).filter(u=>!u.includes("node_modules")))].slice(0,12);
-                  console.log("TRUNCATED", n, t.length, JSON.stringify(urls), JSON.stringify(t.slice(-200)));
+                  const me=pids.get(n.split("-")[1]); const parent=me&&pids.get(String(me.ppid)); const gp=parent&&pids.get(String(parent.ppid));
+                  console.log("TRUNCATED", n, t.length, JSON.stringify(urls), JSON.stringify({me,parent,gp}));
                 }
               }'
           done
