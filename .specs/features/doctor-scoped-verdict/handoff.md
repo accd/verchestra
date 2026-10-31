@@ -4,7 +4,7 @@ feature: doctor-scoped-verdict
 issue: null
 status: verification
 branch: plan/x5-doctor-remediation
-baseRevision: f7f7c633a037db21f72449c055733dc83aa7c688
+baseRevision: fcbf126b8f417e20abb7ded43d89e492445baf56
 lastCompletedTask: T1
 nextTask: "Independent verification (verification.md), then human review of the pull request. Whether a scoped PASS meets exit condition X5 is the reviewers' call, recorded when the owner next signs docs/qualification/qualification-line-exit-record.md."
 lastGate: "gate:quick, test:contract, test:integration, test:e2e, test:security, test:architecture and agent-readiness on win32-x64 (see checks.md Handoff)"
