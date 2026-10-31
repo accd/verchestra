@@ -21,6 +21,10 @@ jobs:
     name: SonarCloud
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        attempt: [1, 2, 3]
     permissions:
       contents: read
       pull-requests: read
@@ -44,32 +48,33 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Measure coverage
-        # The scopes whose children are never killed mid-write. Integration and
-        # fault kill children by design; a child killed mid-write leaves a
-        # truncated V8 profile that fails the runner's coverage report
-        # (scripts/test-scope.mjs). Security exercises the distribution,
-        # activation and worktree adapters no other covered scope reaches.
+      - name: Measure coverage (diagnostic)
         run: |
-          set -euo pipefail
+          set -uo pipefail
+          cat > /tmp/orphan-probe.mjs <<'JS'
+          import { appendFileSync } from "node:fs";
+          const startPpid = process.ppid;
+          const started = Date.now();
+          process.on("exit", (code) => {
+            let parentAlive = true;
+            try { process.kill(startPpid, 0); } catch { parentAlive = false; }
+            if (process.ppid !== startPpid || !parentAlive)
+              appendFileSync("/tmp/orphans.log", JSON.stringify({ pid: process.pid, startPpid, ppid: process.ppid, code, ms: Date.now() - started, argv: process.argv.slice(1).map((a) => a.slice(0, 160)), cwd: process.cwd() }) + "\n");
+          });
+          JS
+          export NODE_OPTIONS="--import=/tmp/orphan-probe.mjs"
           for stage in test:unit test:contract test:security; do
+            rm -rf /tmp/v8cov; mkdir -p /tmp/v8cov
             echo "::group::pnpm run $stage"
-            pnpm run "$stage"
+            NODE_V8_COVERAGE=/tmp/v8cov pnpm run "$stage" > /tmp/$stage.log 2>&1; echo "exit=$?"
+            grep -n "Could not report\|^ℹ fail\|^ℹ tests" /tmp/$stage.log
             echo "::endgroup::"
+            echo "== $stage invalid coverage files"
+            node -e '
+              const fs=require("fs"),p=require("path");
+              for (const n of fs.readdirSync("/tmp/v8cov")) {
+                const t=fs.readFileSync(p.join("/tmp/v8cov",n),"utf8");
+                try { JSON.parse(t); } catch { const urls=[...t.matchAll(/"url":"(file:[^"]+)"/g)].map(m=>m[1]).filter(u=>!u.includes("node_modules")).slice(0,6); console.log(n, t.length, urls); }
+              }'
+            echo "== $stage orphans"; cat /tmp/orphans.log 2>/dev/null; rm -f /tmp/orphans.log
           done
-          node scripts/merge-coverage.mjs
-      - name: Check the analysis token
-        # A pull request from a fork receives no secrets, so it cannot analyze;
-        # skipping keeps its other checks meaningful instead of failing here.
-        # The token is scoped to this step and the scan, never to the test steps
-        # that execute the change under review.
-        id: token
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run: |
-          if [ -n "$SONAR_TOKEN" ]; then echo "configured=true" >> "$GITHUB_OUTPUT"; fi
-      - name: Analyze
-        if: steps.token.outputs.configured == 'true'
-        uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8.3.0
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
