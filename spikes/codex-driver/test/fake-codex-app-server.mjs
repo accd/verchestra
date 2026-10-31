@@ -11,6 +11,15 @@ if (process.argv.includes("--version")) {
 // protocol `codex app-server generate-ts` produces for 0.159.3 (Account,
 // GetAccountRateLimitsResponse, RateLimitSnapshot, CodexErrorInfo,
 // ItemCompletedNotification). It never contacts a provider.
+// why: the driver ends an App Server once its turn completes, so its
+// termination can land while this fake is already exiting. In a coverage run
+// Node is then writing the fake's V8 profile, and the signal left it truncated
+// and failed the whole test scope reading it. A fake on its way out ignores
+// that termination and finishes exiting; one that lingers still obeys it.
+function exit(code) {
+  process.on("SIGTERM", () => undefined);
+  process.exit(code);
+}
 const mode = process.env.FAKE_CODEX_MODE ?? "success";
 // why: the account the fake reports, and the rate limits it reads, as JSON the
 // test spells; the defaults are a ChatGPT Plus login with no credits. Each
@@ -49,7 +58,7 @@ const agentMessage = (text, phase = "final_answer") =>
   emit({ method: "item/completed", params: { threadId: "private-thread-id", turnId: "private-turn-id", completedAtMs: 1, item: { type: "agentMessage", id: `msg-${text.length}`, text, phase, memoryCitation: null, delivery: null, questions: null } } });
 const completeTurn = () => {
   emit({ method: "turn/completed", params: { threadId: "private-thread-id", turn: { id: "private-turn-id", status: "completed" }, usage: { inputTokens: 5, outputTokens: 3 } } });
-  process.exit(0);
+  exit(0);
 };
 // why: the App Server answers a schema in its final message; without one the
 // final message is prose, so a driver that did not send the schema gets prose.
@@ -69,7 +78,7 @@ lines.on("line", (line) => {
   const message = JSON.parse(line);
   if (message.method === "initialize" && mode === "exit-on-initialize") {
     // why: an App Server that ends before it answers its first request.
-    process.exit(3);
+    exit(3);
   } else if (message.method === "initialize") {
     emit({ id: message.id, result: { userAgent: "fake-codex", codexHome: "private", platformFamily: "windows", platformOs: "windows" } });
   } else if (message.method === "model/list" && mode === "model-list-invalid") {
@@ -109,29 +118,29 @@ lines.on("line", (line) => {
     } else if (mode === "error") {
       emit({ method: "error", params: { threadId: "private-thread-id", turnId: "private-turn-id", error: { message: "provider failed" } } });
       emit({ method: "turn/completed", params: { threadId: "private-thread-id", turn: { id: "private-turn-id", status: "failed", error: { message: "provider failed" } } } });
-      process.exit(0);
+      exit(0);
     } else if (mode === "large") {
       for (let index = 0; index < 20; index += 1) emit({ method: "item/agentMessage/delta", params: { threadId: "private-thread-id", turnId: "private-turn-id", itemId: "msg-1", delta: "x".repeat(100) } });
     } else if (mode === "secret") {
       process.stderr.write(`debug:${process.env.TEST_SECRET}\n`);
       emit({ method: "item/agentMessage/delta", params: { threadId: "private-thread-id", turnId: "private-turn-id", itemId: "msg-1", delta: `value:${process.env.TEST_SECRET}` } });
       emit({ method: "turn/completed", params: { threadId: "private-thread-id", turn: { id: "private-turn-id", status: "completed" }, usage: { inputTokens: 1, outputTokens: 1 } } });
-      process.exit(0);
+      exit(0);
     } else if (mode === "usage") {
       // why: a provider whose completed turn reports the usage FAKE_CODEX_USAGE
       // spells as JSON, whatever its counts are.
       emit({ method: "turn/completed", params: { threadId: "private-thread-id", turn: { id: "private-turn-id", status: "completed" }, usage: JSON.parse(process.env.FAKE_CODEX_USAGE) } });
-      process.exit(0);
+      exit(0);
     } else if (mode === "end-without-turn") {
       // why: a provider that exits cleanly without ever completing its turn.
-      process.exit(0);
+      exit(0);
     } else if (mode === "crash") {
       // why: a provider that ends with a failure before its turn completes.
-      process.exit(3);
+      exit(3);
     } else if (mode === "exit-after-result") {
       // why: a provider that completes its turn and then exits with a failure.
       emit({ method: "turn/completed", params: { threadId: "private-thread-id", turn: { id: "private-turn-id", status: "completed" }, usage: { inputTokens: 1, outputTokens: 1 } } });
-      process.exit(1);
+      exit(1);
     } else if (mode === "primitive-lines") {
       // why: a provider that writes a number, a boolean and an array, then
       // completes its turn, all in one write, and does not exit.
@@ -175,7 +184,7 @@ lines.on("line", (line) => {
     } else if (mode === "usage-limit") {
       emit({ method: "error", params: { threadId: "private-thread-id", turnId: "private-turn-id", willRetry: false, error: { message: "You've hit your usage limit. Upgrade to Pro", codexErrorInfo: "usageLimitExceeded", additionalDetails: null, misalignment: null } } });
       emit({ method: "turn/completed", params: { threadId: "private-thread-id", turn: { id: "private-turn-id", status: "failed" }, usage: { inputTokens: 1, outputTokens: 0 } } });
-      process.exit(0);
+      exit(0);
     } else if (mode === "rate-limit-reached") {
       // why: a transient rate limit first, which is not quota, then the
       // allowance running out twice; the turn still completes, as the
@@ -188,16 +197,16 @@ lines.on("line", (line) => {
     } else if (mode !== "hang") {
       emit({ method: "item/agentMessage/delta", params: { threadId: "private-thread-id", turnId: "private-turn-id", itemId: "msg-1", delta: `echo:${prompt}` } });
       emit({ method: "turn/completed", params: { threadId: "private-thread-id", turn: { id: "private-turn-id", status: "completed" }, usage: { inputTokens: 7, outputTokens: 4 } } });
-      process.exit(0);
+      exit(0);
     }
   } else if (message.id === 60) {
     process.stderr.write(`tool-response-success:${message.result.success}\n`);
     emit({ method: "turn/completed", params: { threadId: "private-thread-id", turn: { id: "private-turn-id", status: "completed" }, usage: { inputTokens: 3, outputTokens: 2 } } });
-    process.exit(0);
+    exit(0);
   } else if (message.id === 61) {
     process.stderr.write(`approval-decision:${message.result.decision}\n`);
     emit({ method: "turn/completed", params: { threadId: "private-thread-id", turn: { id: "private-turn-id", status: "completed" }, usage: { inputTokens: 3, outputTokens: 2 } } });
-    process.exit(0);
+    exit(0);
   } else if (message.method === "turn/interrupt") {
     process.stderr.write("interrupt-received\n");
     emit({ id: message.id, result: {} });
