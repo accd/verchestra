@@ -61,9 +61,25 @@ install asks the registry for an unrelated package named `vestra`, which
 Verchestra does not own.
 
 `vestra doctor` is not a setup check. It reports the health of the activated
-release and of this machine, read-only, and on a machine set up only for
-`task`, `BLOCKED` is its expected verdict. Each `task` command names a missing
-requirement itself.
+release and of this machine, read-only.
+
+- **`PASS` (exit `0`).** In a Workspace whose Claude Code credential is bound,
+  a healthy installation reports `PASS`.
+- **`not-offered`.** This release does not offer six subsystems, so `doctor`
+  reports each of them as `not-offered`. It lists them under
+  `doctor.not_offered_capabilities`:
+  - `connectors.available`
+  - `drivers.available`
+  - `policy.enforceable`
+  - `probes.available`
+  - `sandbox.enforced`
+  - `state.durable`
+
+  You do not need to do anything for them, and they never change the verdict.
+- **`BLOCKED` (exit `4`).** Something you can set up is missing, such as the
+  Claude Code credential.
+
+Each `task` command names a missing requirement itself.
 
 ## 2. Initialize the Workspace
 
