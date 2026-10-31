@@ -50,7 +50,7 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Measure coverage (diagnostic)
         run: |
-          set -uo pipefail
+          set +e
           cat > /tmp/orphan-probe.mjs <<'JS'
           import { appendFileSync } from "node:fs";
           const startPpid = process.ppid;
@@ -67,7 +67,7 @@ jobs:
             rm -rf /tmp/v8cov; mkdir -p /tmp/v8cov
             echo "::group::pnpm run $stage"
             NODE_V8_COVERAGE=/tmp/v8cov pnpm run "$stage" > /tmp/$stage.log 2>&1; echo "exit=$?"
-            grep -n "Could not report\|^ℹ fail\|^ℹ tests" /tmp/$stage.log
+            grep -n "Could not report\|^ℹ fail\|^ℹ tests" /tmp/$stage.log || true
             echo "::endgroup::"
             echo "== $stage invalid coverage files"
             node -e '
@@ -76,5 +76,6 @@ jobs:
                 const t=fs.readFileSync(p.join("/tmp/v8cov",n),"utf8");
                 try { JSON.parse(t); } catch { const urls=[...t.matchAll(/"url":"(file:[^"]+)"/g)].map(m=>m[1]).filter(u=>!u.includes("node_modules")).slice(0,6); console.log(n, t.length, urls); }
               }'
-            echo "== $stage orphans"; cat /tmp/orphans.log 2>/dev/null; rm -f /tmp/orphans.log
+            echo "== $stage orphans"; cat /tmp/orphans.log 2>/dev/null || echo none; rm -f /tmp/orphans.log
           done
+          exit 0
