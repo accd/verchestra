@@ -24,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        attempt: [1, 2, 3]
+        attempt: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     permissions:
       contents: read
       pull-requests: read
@@ -51,31 +51,26 @@ jobs:
       - name: Measure coverage (diagnostic)
         run: |
           set +e
-          cat > /tmp/orphan-probe.mjs <<'JS'
+          cat > /tmp/pid-probe.mjs <<'JS'
           import { appendFileSync } from "node:fs";
-          const startPpid = process.ppid;
-          const started = Date.now();
-          process.on("exit", (code) => {
-            let parentAlive = true;
-            try { process.kill(startPpid, 0); } catch { parentAlive = false; }
-            if (process.ppid !== startPpid || !parentAlive)
-              appendFileSync("/tmp/orphans.log", JSON.stringify({ pid: process.pid, startPpid, ppid: process.ppid, code, ms: Date.now() - started, argv: process.argv.slice(1).map((a) => a.slice(0, 160)), cwd: process.cwd() }) + "\n");
-          });
+          appendFileSync("/tmp/pids.log", JSON.stringify({ pid: process.pid, ppid: process.ppid, argv: process.argv.slice(1).map((a) => a.slice(0, 200)) }) + "\n");
           JS
-          export NODE_OPTIONS="--import=/tmp/orphan-probe.mjs"
+          export NODE_OPTIONS="--import=/tmp/pid-probe.mjs"
+          for round in 1 2; do
           for stage in test:unit test:contract test:security; do
-            rm -rf /tmp/v8cov; mkdir -p /tmp/v8cov
-            echo "::group::pnpm run $stage"
-            NODE_V8_COVERAGE=/tmp/v8cov pnpm run "$stage" > /tmp/$stage.log 2>&1; echo "exit=$?"
-            grep -n "Could not report\|^ℹ fail\|^ℹ tests" /tmp/$stage.log || true
-            echo "::endgroup::"
-            echo "== $stage invalid coverage files"
+            rm -rf /tmp/v8cov /tmp/pids.log; mkdir -p /tmp/v8cov
+            NODE_V8_COVERAGE=/tmp/v8cov pnpm run "$stage" > /tmp/$stage.log 2>&1; echo "RESULT round=$round $stage exit=$?"
+            grep "Could not report" /tmp/$stage.log && echo "HIT round=$round $stage"
             node -e '
               const fs=require("fs"),p=require("path");
+              const pids=new Map(fs.readFileSync("/tmp/pids.log","utf8").trim().split("\n").map(l=>JSON.parse(l)).map(r=>[String(r.pid),r]));
               for (const n of fs.readdirSync("/tmp/v8cov")) {
                 const t=fs.readFileSync(p.join("/tmp/v8cov",n),"utf8");
-                try { JSON.parse(t); } catch { const urls=[...t.matchAll(/"url":"(file:[^"]+)"/g)].map(m=>m[1]).filter(u=>!u.includes("node_modules")).slice(0,6); console.log(n, t.length, urls); }
+                try { JSON.parse(t); } catch {
+                  const pid=n.split("-")[1]; const me=pids.get(pid); const parent=me&&pids.get(String(me.ppid)); const gp=parent&&pids.get(String(parent.ppid));
+                  console.log("TRUNCATED", n, t.length, JSON.stringify({me, parent, gp}));
+                }
               }'
-            echo "== $stage orphans"; cat /tmp/orphans.log 2>/dev/null || echo none; rm -f /tmp/orphans.log
+          done
           done
           exit 0
