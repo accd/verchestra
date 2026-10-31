@@ -56,7 +56,7 @@ jobs:
           appendFileSync("/tmp/pids.log", JSON.stringify({ pid: process.pid, ppid: process.ppid, argv: process.argv.slice(1).map((a) => a.slice(0, 240)), execArgv: process.execArgv.slice(0, 6) }) + String.fromCharCode(10));
           JS
           export NODE_OPTIONS="--import=/tmp/pid-probe.mjs"
-          for round in 1 2 3; do
+          for round in 1 2 3 4 5; do
           for stage in test:security; do
             rm -rf /tmp/v8cov /tmp/pids.log; mkdir -p /tmp/v8cov
             NODE_V8_COVERAGE=/tmp/v8cov pnpm run "$stage" 2>&1 | tee /tmp/$stage.log | grep --line-buffered -E "^ℹ (tests|fail)|Could not report"; echo "RESULT round=$round $stage exit=${PIPESTATUS[0]}"
