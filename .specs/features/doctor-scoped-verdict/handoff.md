@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: doctor-scoped-verdict
 issue: null
-status: verification
+status: complete
 branch: plan/x5-doctor-remediation
 baseRevision: fcbf126b8f417e20abb7ded43d89e492445baf56
 lastCompletedTask: T1
-nextTask: "Independent verification (verification.md), then human review of the pull request. Whether a scoped PASS meets exit condition X5 is the reviewers' call, recorded when the owner next signs docs/qualification/qualification-line-exit-record.md."
-lastGate: "gate:quick, test:contract, test:integration, test:e2e, test:security, test:architecture and agent-readiness on win32-x64 (see checks.md Handoff)"
-updatedAt: 2026-10-30T23:30:00Z
+nextTask: "None in this feature. Owner-held: decide whether the scoped PASS meets exit condition X5, and record it when next signing docs/qualification/qualification-line-exit-record.md; a .10 publication ships the change to users."
+lastGate: "PR #714 CI PASS (Quality gate, Site quality, SonarCloud, CodeQL); independent verification PASS 16/16 (verification.md)"
+updatedAt: 2026-10-31T12:00:00Z
 ---
 
 # Scope
@@ -36,5 +36,6 @@ of documenting fixture files for users to create. The checks are in
 
 # Next Exact Action
 
-Dispatch the independent Verifier over the feature range, with every check
-C1-C16. Then open the pull request for human review.
+Merged to `main` through #714. Nothing is left in this feature. The owner
+decides whether the scoped `PASS` meets X5 and records that on the next
+signature of the exit record. A `.10` publication ships the change to users.
