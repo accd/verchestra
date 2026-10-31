@@ -57,7 +57,7 @@ jobs:
           JS
           export NODE_OPTIONS="--import=/tmp/pid-probe.mjs"
           for round in 1 2 3; do
-          for stage in test:contract; do
+          for stage in test:contract test:security test:unit; do
             rm -rf /tmp/v8cov /tmp/pids.log; mkdir -p /tmp/v8cov
             NODE_V8_COVERAGE=/tmp/v8cov pnpm run "$stage" 2>&1 | tee /tmp/$stage.log | grep --line-buffered -E "^ℹ (tests|fail)|Could not report"; echo "RESULT round=$round $stage exit=${PIPESTATUS[0]}"
             grep "Could not report" /tmp/$stage.log && echo "HIT round=$round $stage"
