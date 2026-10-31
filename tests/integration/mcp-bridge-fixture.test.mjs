@@ -6,13 +6,7 @@ import { mkdir, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import {
-  cleanupBridges,
-  linkDirectory,
-  linkFile,
-  openController,
-  startRelay
-} from "../helpers/mcp-bridge-fixture.mjs";
+import { cleanupBridges, linkDirectory, linkFile, openController, startRelay } from "../helpers/mcp-bridge-fixture.mjs";
 import { WIN32_HOST, windowsMediationPath } from "../helpers/mediation-platform.mjs";
 import { temporaryDirectory } from "../helpers/temporary-directory.mjs";
 
