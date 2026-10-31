@@ -3,7 +3,7 @@ schema: verchestra-feature-handoff/v1
 feature: readme-overhaul
 issue: null
 status: verification
-branch: claude/inspiring-bohr-9uogw1
+branch: claude/readme-self-test-gif
 baseRevision: 549074498b0cab3eaaeb7e4f4efef0574ad01b7a
 lastCompletedTask: T2
 nextTask: "Human review of the rendered self-test GIF on GitHub, then CI on Node 24.14.0."
