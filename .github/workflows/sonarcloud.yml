@@ -24,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        attempt: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        attempt: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
     permissions:
       contents: read
       pull-requests: read
@@ -51,8 +51,8 @@ jobs:
       - name: Measure coverage (diagnostic)
         run: |
           set +e
-          for round in 1 2; do
-          for stage in test:unit test:contract test:security; do
+          for round in 1 2 3; do
+          for stage in test:unit test:contract; do
             rm -rf /tmp/v8cov; mkdir -p /tmp/v8cov
             NODE_V8_COVERAGE=/tmp/v8cov pnpm run "$stage" 2>&1 | tee /tmp/$stage.log | grep --line-buffered -E "^ℹ (tests|fail)|Could not report"; echo "RESULT round=$round $stage exit=${PIPESTATUS[0]}"
             grep "Could not report" /tmp/$stage.log && echo "HIT round=$round $stage"
