@@ -54,7 +54,7 @@ jobs:
           for round in 1 2; do
           for stage in test:unit test:contract test:security; do
             rm -rf /tmp/v8cov; mkdir -p /tmp/v8cov
-            NODE_V8_COVERAGE=/tmp/v8cov pnpm run "$stage" > /tmp/$stage.log 2>&1; echo "RESULT round=$round $stage exit=$?"
+            NODE_V8_COVERAGE=/tmp/v8cov pnpm run "$stage" 2>&1 | tee /tmp/$stage.log | grep --line-buffered -E "^ℹ (tests|fail)|Could not report"; echo "RESULT round=$round $stage exit=${PIPESTATUS[0]}"
             grep "Could not report" /tmp/$stage.log && echo "HIT round=$round $stage"
             node -e '
               const fs=require("fs"),p=require("path");
