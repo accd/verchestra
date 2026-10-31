@@ -41,11 +41,15 @@ const SHARED_CACHE = "node-compile-cache";
 // never from the command line, so no caller-supplied text reaches a path.
 // why: the tests import `.ts` sources directly, so Node's own coverage maps
 // straight to the files SonarCloud analyses, with no instrumenting dependency.
-// Only scopes that never kill a Node child are covered: Node hands every child
-// NODE_V8_COVERAGE, a child killed mid-write leaves a truncated profile, and the
-// runner then fails the whole scope reading it (integration, fault and e2e do
-// this). Security passes measured, and it alone reaches the distribution,
-// activation and worktree adapters, so it is covered beside unit and contract.
+// Only scopes that never kill a Node child mid-exit are covered: Node hands
+// every child NODE_V8_COVERAGE and writes its profile as it exits, a signal in
+// that window leaves a truncated profile, and the runner then fails the whole
+// scope reading it (integration, fault and e2e kill children by design). A
+// covered test that ends a child which may already be exiting lets it finish:
+// the bridge fixture ends a relay's input, and the fake Codex App Server ignores
+// a termination once it is on its way out. Security passes measured, and it
+// alone reaches the distribution, activation and worktree adapters, so it is
+// covered beside unit and contract.
 const COVERED_SOURCES = ["packages/**/src/**", "apps/vestra-cli/src/**", "apps/vestra-launcher/src/**"];
 // why: without an explicit exclude, Node drops every file named like a test
 // (`*-test.*`, `test-*`), which silently removed product sources such as
