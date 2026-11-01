@@ -1,0 +1,105 @@
+<!doctype html>
+<!--
+  Source of the README banner. Colors and type follow apps/site/src/styles/global.css.
+  Render after `pnpm install`, at 1280x320 with device scale factor 2:
+    docs/assets/banner.html?theme=light  ->  docs/assets/banner-light.png
+    docs/assets/banner.html?theme=dark   ->  docs/assets/banner-dark.png
+  Then fill the transparent corners with GitHub's page color (#ffffff light,
+  #0d1117 dark) and quantize to 256 colors with dithering to keep each file small.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Verchestra banner</title>
+    <style>
+      @font-face {
+        font-family: "Manrope Variable";
+        font-weight: 200 800;
+        src: url("../../apps/site/node_modules/@fontsource-variable/manrope/files/manrope-latin-wght-normal.woff2")
+          format("woff2");
+      }
+      :root {
+        --bg: #070a12;
+        --surface: #0e1424;
+        --text: #f3efe6;
+        --muted: #aab3c5;
+        --accent: #8a7cff;
+        --cyan: #45d6d0;
+        --line: rgba(170, 179, 197, 0.18);
+      }
+      :root[data-theme="light"] {
+        --bg: #f7f4ed;
+        --surface: #ffffff;
+        --text: #121525;
+        --muted: #555d70;
+        --accent: #5b4fd8;
+        --cyan: #087f7a;
+        --line: rgba(18, 21, 37, 0.15);
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+      }
+      html,
+      body {
+        width: 1280px;
+        height: 320px;
+        overflow: hidden;
+      }
+      body {
+        display: flex;
+        align-items: center;
+        gap: 44px;
+        padding: 0 88px;
+        background:
+          radial-gradient(620px 320px at 92% 0%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 70%),
+          radial-gradient(520px 300px at 70% 120%, color-mix(in srgb, var(--cyan) 16%, transparent), transparent 70%),
+          var(--bg);
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        color: var(--text);
+        font-family: "Manrope Variable", system-ui, sans-serif;
+      }
+      img {
+        width: 148px;
+        height: 148px;
+        flex: none;
+      }
+      h1 {
+        font-size: 76px;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        line-height: 1;
+      }
+      p {
+        margin-top: 16px;
+        font-size: 28px;
+        font-weight: 500;
+        color: var(--muted);
+      }
+      p strong {
+        color: var(--text);
+        font-weight: 700;
+      }
+      .rule {
+        margin-top: 22px;
+        width: 120px;
+        height: 4px;
+        border-radius: 2px;
+        background: linear-gradient(90deg, var(--accent), var(--cyan));
+      }
+    </style>
+    <script>
+      document.documentElement.dataset.theme =
+        new URLSearchParams(location.search).get("theme") === "light" ? "light" : "dark";
+    </script>
+  </head>
+  <body>
+    <img src="../../apps/site/src/assets/brand/verchestra-mark.png" alt="" />
+    <div>
+      <h1>Verchestra</h1>
+      <p><strong>Verified AI software delivery</strong>, not vibe coding.</p>
+      <div class="rule"></div>
+    </div>
+  </body>
+</html>

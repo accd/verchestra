@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: readme-overhaul
 issue: null
-status: verification
-branch: claude/readme-self-test-gif
-baseRevision: 549074498b0cab3eaaeb7e4f4efef0574ad01b7a
-lastCompletedTask: T2
-nextTask: "Human review of the rendered self-test GIF on GitHub, then CI on Node 24.14.0."
-lastGate: "README-bound tests pass locally; full gates need Node 24.14.0 (see validation.md)"
-updatedAt: 2026-10-31T12:30:00Z
+status: complete
+branch: claude/readme-banner
+baseRevision: 6e435e95fd93c49fe0dbcc5d56508409387483e6
+lastCompletedTask: T3
+nextTask: "None in this feature. It closes when the T3 pull request merges."
+lastGate: "T1 merged in #713 and T2 in #723 with Quality gate, Site quality and CodeQL green; T3 README-bound and site unit tests pass locally"
+updatedAt: 2026-11-01T09:10:00Z
 ---
 
 # Scope
@@ -17,6 +17,7 @@ The root `README.md` only, as `spec.md` states it (RDM-01 to RDM-06).
 
 # Next action
 
-Review the rendered page on the branch. To regenerate the GIF, run
-`vhs docs/assets/self-test.tape` from the repository root. Possible follow-up,
-not started: a light and dark banner asset.
+None. T1 to T3 are done, and the feature closes when the T3 pull request
+merges. To regenerate the assets: run `vhs docs/assets/self-test.tape` from the
+repository root for the GIF, and render `docs/assets/banner.html` as its header
+comment says for the banners.

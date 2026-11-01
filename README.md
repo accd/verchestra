@@ -2,7 +2,11 @@
 
 <p align="center">
   <a href="https://accd.github.io/verchestra/">
-    <img src="apps/site/src/assets/brand/verchestra-mark.png" alt="Verchestra mark" width="112" />
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="docs/assets/banner-dark.png" />
+      <source media="(prefers-color-scheme: light)" srcset="docs/assets/banner-light.png" />
+      <img src="docs/assets/banner-light.png" alt="Verchestra: verified AI software delivery, not vibe coding" width="100%" />
+    </picture>
   </a>
 </p>
 
