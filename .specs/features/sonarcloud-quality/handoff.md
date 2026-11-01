@@ -3,12 +3,12 @@ schema: verchestra-feature-handoff/v1
 feature: sonarcloud-quality
 issue: null
 status: in_progress
-branch: ci/sonar-ignore-s7503-s9382
-baseRevision: 02b50ba88bea5d8917f9cdcfd03a2d82df9ba878
+branch: ci/sonar-workflow-rules
+baseRevision: 0dbf61745677a0b41c709529f7e1a8905a14afdd
 lastCompletedTask: T8
 nextTask: T8
 lastGate: pnpm gate:quick plus pnpm test:architecture
-updatedAt: 2026-10-29T00:00:00Z
+updatedAt: 2026-11-01T00:00:00Z
 ---
 
 # Scope
@@ -500,23 +500,27 @@ issues; 179 bugs, 32 vulnerabilities, 924 code smells; quality gate ERROR.
 
 # Next Exact Action
 
-Every mechanical family is done (counts from the `main` analysis of
-`02b50ba8`):
+Confirm on the first `main` analysis after the GitHub Actions change lands
+that open issues read 0 (11 Accepted). Then T8 is complete: set `status` to
+`complete` and `nextTask` to `null`, and close the feature.
 
-- S7503 (211) and S9382 (125 TypeScript + 60 JavaScript) are ignored for every
-  file by `sonar-project.properties` (owner decision, 2026-10-29; reasons in
-  `validation.md`). Confirm on the first `main` analysis after that change
-  lands that both rules read 0.
-- The owner marks the 8 S3735 and 3 long-tail issues in `validation.md` as
-  Accepted.
-- S4043 at `apps/vestra-cli/src/database/database-registration-file.ts:259`
-  arrived with database-registration slice 2a (`8633ef0b`); the Beta session
-  owns that file and fixes it with `toSorted` in the slice 2b change.
-- S4323 and S6582 from probe-host slice 1 were fixed by the Beta session in
-  #682 (`937d1fe6`); both read 0 on the `main` analysis of `ce9d6bba`.
+State before that change (the `main` analysis of `0dbf6174`, 2026-10-31):
 
-When open issues read 0 with the 11 Accepted, T8 is complete: set `status` and
-`nextTask` accordingly and close the feature.
+- S7503 and S9382 read 0 since #689 (`d2f6de85`) ignored them in
+  `sonar-project.properties` (owner decision, 2026-10-29; reasons in
+  `validation.md`).
+- The 11 issues in `validation.md` are Accepted (owner, 2026-10-29, through the
+  Web API).
+- S4043 from database-registration slice 2a reads 0; the Beta session fixed it
+  with `toSorted`.
+- Six GitHub Actions issues, raised on existing workflow code once SonarCloud
+  analysed workflow shell, were the only open ones: S131 (a `case` without a
+  default arm) in `npm-publish.yml` and `live-activation-matrix.yml`, and S7679
+  (a positional parameter read directly) four times in the live matrix's
+  `record_pointer` and `pointer_of`. The change adds the `*) ;;` arms and binds
+  `local phase="$1"`; `tests/agent-readiness/workflow-shell-style.test.mjs`
+  requires a default arm on every workflow `case` and the named local in both
+  helpers, and fails against the previous workflows (0 pass, 2 fail).
 
 # Blockers
 
