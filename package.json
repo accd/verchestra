@@ -69,7 +69,7 @@
     "@earendil-works/pi-ai": "1.4.0",
     "@opencode-ai/sdk": "1.19.4",
     "@tufjs/canonical-json": "2.0.0",
-    "@types/node": "24.19.0",
+    "@types/node": "24.19.2",
     "esbuild": "0.28.2",
     "eslint": "10.11.0",
     "jose": "6.2.13",
