@@ -2,9 +2,13 @@
 // fixture still builds its directory link, as a junction, and a file link it
 // cannot build fails with one message that names the fix, not a bare EPERM.
 import assert from "node:assert/strict";
+import { mkdir, realpath } from "node:fs/promises";
+import { join } from "node:path";
 import { test } from "node:test";
 
-import { linkDirectory, linkFile } from "../helpers/mcp-bridge-fixture.mjs";
+import { cleanupBridges, linkDirectory, linkFile, openController, startRelay } from "../helpers/mcp-bridge-fixture.mjs";
+import { WIN32_HOST, windowsMediationPath } from "../helpers/mediation-platform.mjs";
+import { temporaryDirectory } from "../helpers/temporary-directory.mjs";
 
 const EPERM = () => Object.assign(new Error("operation not permitted"), { code: "EPERM" });
 
@@ -43,4 +47,27 @@ test("a file link EPERM names Windows Developer Mode", async () => {
     linked += 1;
   });
   assert.equal(linked, 1);
+});
+
+// invariant: cleanup lets a relay exit on its own instead of signalling it. A
+// signal that lands while the relay writes its V8 profile on the way out
+// leaves a truncated profile that fails a whole coverage scope.
+test("cleanup ends a live relay by closing its input, never by a signal", async (t) => {
+  if (WIN32_HOST) return windowsMediationPath(t);
+  const worktree = await realpath(await temporaryDirectory(t, "verchestra-relay-"));
+  await mkdir(join(worktree, "src"));
+  const { controller } = await openController(worktree);
+  const relay = startRelay(controller.environment);
+  await relay.initialize();
+  await cleanupBridges();
+  assert.equal(relay.child.signalCode, null);
+  assert.equal(relay.child.exitCode, 0);
+});
+
+test("cleanup waits out a relay that is already exiting instead of signalling it", async () => {
+  // A relay with no channel is refused and exits on its own.
+  const relay = startRelay({});
+  await cleanupBridges();
+  assert.equal(relay.child.signalCode, null);
+  assert.equal(relay.child.exitCode, 1);
 });
