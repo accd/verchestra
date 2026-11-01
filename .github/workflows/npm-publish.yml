@@ -57,6 +57,7 @@ jobs:
           set -euo pipefail
           case "$PUBLICATION_RUN_ID" in
             "" | *[!0-9]*) echo "publication run id must be digits" >&2; exit 1 ;;
+            *) ;;
           esac
           printf '%s' "$PACKAGE_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$' || {
             echo "version must be a semantic version" >&2; exit 1; }
