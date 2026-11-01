@@ -27,3 +27,16 @@ recorded with vhs from `docs/assets/self-test.tape` on Linux x64 with Node
   `self_test.verdict: PASS`.
 - The frames show no home directory, user name or machine-local path.
 - `docs/assets/self-test.gif` is about 106 KB.
+
+## T3: light and dark banner (2026-11-01)
+
+- `docs/assets/banner.html` was rendered with Playwright's Chromium at
+  1280x320 and device scale factor 2. Manrope came from
+  `@fontsource-variable/manrope`, which is already in the lockfile; the font
+  check reported it loaded in both themes. The colors are the site's tokens
+  from `apps/site/src/styles/global.css`.
+- After corner fill and quantization, `banner-light.png` is about 128 KB and
+  `banner-dark.png` about 131 KB. Both renders were reviewed by eye.
+- `# Verchestra` stays the first line and the pitch stays the first prose
+  paragraph after it, so the llms title and description are unchanged.
+- PR accd/verchestra#723 (T2) merged to `main` as `6e435e9` before this task.
