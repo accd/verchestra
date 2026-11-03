@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: readme-rewrite
 issue: null
-status: verification
+status: complete
 branch: docs/readme-rewrite-linear
 baseRevision: c3b11647909b66903957594f9be34bb735cbf5cc
 lastCompletedTask: T3
-nextTask: Human review and rebase-merge of the linear pull request that replaced #694 (its merge commit could not be rebased)
+nextTask: "None. Merged by the owner on 2026-10-29 as 1c1f6897 (#695), the linear pull request that replaced #694, after the required checks passed on the exact head; no independent review is recorded (#553)."
 lastGate: README pin tests 21/21; site unit 64/64; agent:check PASS; site build + check:built PASS (135 pages); gate:quick PASS
-updatedAt: 2026-10-29T19:50:00Z
+updatedAt: 2026-11-03T15:50:00Z
 ---
 
 # Scope
@@ -37,3 +37,13 @@ T1 and T2 complete; see `validation.md`.
    and the handoff sequence diagram into
    `workflows/cross-environment-handoff.md`; it selects `gate:build` and
    Prettier, which is why it is not in this change.
+
+# Reconciliation (2026-11-03)
+
+Merged to `main` through #695 on 2026-10-29 as `1c1f6897`, by rebase
+through the maintainer bypass, after every required check passed on the
+exact head `aa8885a2`. The owner's is the only review; #553 governs a
+post-merge independent review. Nothing is left in this feature.
+
+It replaced #694, whose merge commit could not be rebased. The two
+relocated passages landed in #696 (`readme-relocations-site`).
