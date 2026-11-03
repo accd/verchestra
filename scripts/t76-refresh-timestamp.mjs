@@ -72,6 +72,10 @@ export const REFRESH_UPLOAD_STEPS = Object.freeze([
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/u;
 const INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
+// invariant: the quarterly cadence ceiling (#382, F2). An online expiry later than this after
+// the refresh is a freeze window longer than the policy states, so the run stops before it signs.
+export const REFRESH_MAX_WINDOW_DAYS = 90;
+const DAY_MILLISECONDS = 24 * 60 * 60 * 1000;
 const RUN_ID = /^\d{1,20}$/u;
 const OFFLINE_FILE = Object.freeze({
   targets: /^([1-9]\d*)\.targets\.json$/u,
@@ -113,6 +117,18 @@ const protectedEnvironmentOf = (value) => {
   return environment;
 };
 
+// why: the window is measured from the instant of the refresh. It runs after the signing step has
+// checked the role expiry order, so an expiry past the offline targets keeps its own code, and
+// before any output byte exists. The clock is injectable for tests only.
+const assertWithinWindow = (options) => {
+  const limit = options.now() + REFRESH_MAX_WINDOW_DAYS * DAY_MILLISECONDS;
+  if (Date.parse(options.timestampExpires) > limit)
+    fail(
+      "VES_T76_REFRESH_EXPIRY_WINDOW",
+      `timestampExpires must be at most ${REFRESH_MAX_WINDOW_DAYS} days after the refresh (limit ${new Date(limit).toISOString()})`
+    );
+};
+
 const validateOptions = (value) => {
   if (!isRecord(value)) fail("VES_T76_PUBLISH_INPUT_INVALID", "refresh options must be an object");
   return Object.freeze({
@@ -127,7 +143,9 @@ const validateOptions = (value) => {
     releaseAnchorPath: optionalPath(value.releaseAnchorPath, "releaseAnchorPath"),
     timestampAnchorPath: optionalPath(value.timestampAnchorPath, "timestampAnchorPath"),
     // why: tests only; the workflow reads the live endpoint itself.
-    fetch: value.fetch === undefined ? globalThis.fetch : functionOption(value.fetch, "fetch")
+    fetch: value.fetch === undefined ? globalThis.fetch : functionOption(value.fetch, "fetch"),
+    // why: tests only; the workflow and the command line read the real clock.
+    now: value.now === undefined ? Date.now : functionOption(value.now, "now")
   });
 };
 
@@ -431,6 +449,7 @@ export async function refreshT76Timestamp(rawOptions) {
   for (const { refresh } of refreshed)
     if (refresh.versions.targets !== targetsVersion)
       fail("VES_T76_REFRESH_TARGETS_CHANGED", "a published targets file is not named by its own version");
+  assertWithinWindow(options);
   const refreshManifest = refreshManifestFor(manifest, options, anchors, refreshed);
   await assertOutputAbsent(options.outputDirectory, "refresh");
   await mkdir(options.outputDirectory, { recursive: false, mode: 0o700 });

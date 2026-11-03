@@ -470,6 +470,26 @@ test("refuses an online window that is past or outlives the offline targets", as
   await refused(await refreshOptions(value, { timestampExpires: "2030-01-01" }), "VES_T76_PUBLISH_INPUT_INVALID");
 });
 
+test("refuses an online window longer than the 90 day policy", async () => {
+  const value = await sharedLineage();
+  const now = Date.now();
+  const options = await refreshOptions(value, { now: () => now, timestampExpires: iso(now + 90 * DAY + 1) });
+  await refused(options, "VES_T76_REFRESH_EXPIRY_WINDOW", /90 days/u);
+});
+
+test("accepts an online window of exactly 90 days", async () => {
+  const value = await sharedLineage();
+  const now = Date.now();
+  const options = await refreshOptions(value, { now: () => now, timestampExpires: iso(now + 90 * DAY) });
+  const { manifest } = await refreshT76Timestamp(options);
+  assert.equal(manifest.timestampExpires, iso(now + 90 * DAY));
+  const produced = join(options.outputDirectory, "publication", "win32-x64", "metadata");
+  const timestamp = signedOf(await readFile(join(produced, "timestamp.json")));
+  assert.equal(timestamp.signed.expires, iso(now + 90 * DAY));
+  const snapshot = signedOf(await readFile(join(produced, "2.snapshot.json")));
+  assert.equal(snapshot.signed.expires, iso(now + 90 * DAY));
+});
+
 test("the emitted ledger entry appends verbatim and bounds the next refresh", async () => {
   const value = await sharedLineage();
   const options = await refreshOptions(value);
