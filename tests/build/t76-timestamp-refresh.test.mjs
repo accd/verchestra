@@ -489,8 +489,23 @@ test("refuses a clock that is not a finite number instead of switching the windo
 
 test("the command line offers no way to set the clock", async () => {
   const source = await readFile(new URL("../../scripts/t76-refresh-timestamp.mjs", import.meta.url), "utf8");
-  assert.doesNotMatch(source, /argument\(args, "--now"\)/u);
-  assert.doesNotMatch(source, /now: argument/u);
+  const call = /await refreshT76Timestamp\(\{\n((?: {4}.*\n)+?) {2}\}\);/u.exec(
+    source.slice(source.indexOf("const runCli"))
+  );
+  assert.ok(call, "runCli passes one options object to refreshT76Timestamp");
+  // why: the exact key set, so no value form (argument, environment, constant) can add a clock.
+  const keys = [...call[1].matchAll(/^ {4}(\w+):/gmu)].map((match) => match[1]);
+  assert.deepEqual(keys, [
+    "currentDirectory",
+    "outputDirectory",
+    "metadataVersion",
+    "timestampExpires",
+    "publicationRunId",
+    "ledgerPath",
+    "releaseAnchorPath",
+    "timestampAnchorPath",
+    "protectedEnvironment"
+  ]);
 });
 
 test("accepts an online window of exactly 90 days", async () => {
