@@ -1,4 +1,10 @@
-import { LogicalPath, StableId, canonicalizeJsonV2 } from "@verchestra/domain";
+import {
+  DomainValueError,
+  LogicalPath,
+  StableId,
+  canonicalizeJsonV2,
+  compareSemanticVersions
+} from "@verchestra/domain";
 
 import { SyncError } from "./sync-errors.ts";
 
@@ -119,14 +125,15 @@ export interface WorkspaceReconcileResult {
 const SUPPORTED_SCHEMA_VERSION = 1;
 const GENERATION_KEYS = ["release", "config", "skills", "data", "integrations"] as const;
 
-function compareVersions(left: string, right: string): number {
-  const a = left.split(".").map(Number);
-  const b = right.split(".").map(Number);
-  for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
-    const difference = (a[index] ?? 0) - (b[index] ?? 0);
-    if (difference !== 0) return difference;
+// why: an installed CLI is also too old when either version cannot be ordered, so the check fails
+// closed instead of passing on a value no comparison can read.
+function olderThanMinimum(installed: string, minimum: string): boolean {
+  try {
+    return compareSemanticVersions(installed, minimum) < 0;
+  } catch (error) {
+    if (error instanceof DomainValueError) return true;
+    throw error;
   }
-  return 0;
 }
 
 // Code-unit comparison, not localeCompare: every sorted ID here (project,
@@ -181,7 +188,7 @@ function assertCompatible(input: WorkspaceReconcileInput): void {
       minimumCompatibleRelease: "2.0.0"
     });
   }
-  if (compareVersions(input.installedCliVersion, configuration.minimumCliVersion) < 0) {
+  if (olderThanMinimum(input.installedCliVersion, configuration.minimumCliVersion)) {
     throw new SyncError("VES_SYNC_CONFIG_INCOMPATIBLE", "Installed CLI is older than canonical configuration", {
       minimumCompatibleRelease: configuration.minimumCliVersion
     });

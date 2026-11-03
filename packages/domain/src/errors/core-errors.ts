@@ -63,6 +63,12 @@ export const CORE_PUBLIC_ERROR_DEFINITIONS = Object.freeze([
     "validation",
     "never",
     "Use the canonical VES-AAA-000 requirement ID format."
+  ),
+  definition(
+    "VES_SEMVER_INVALID",
+    "validation",
+    "never",
+    "Use a version of the form major.minor.patch with optional dot-separated pre-release identifiers."
   )
 ]);
 

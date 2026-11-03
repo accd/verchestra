@@ -1,6 +1,11 @@
 import type { CliCommand, CliOptionValue, CommandBus, InvocationContext } from "@verchestra/application";
 import type { CliOutput } from "@verchestra/contracts";
-import { PublicErrorException, type PublicErrorEnvelope } from "@verchestra/domain";
+import {
+  DomainValueError,
+  PublicErrorException,
+  compareSemanticVersions,
+  type PublicErrorEnvelope
+} from "@verchestra/domain";
 
 import { cliError, cliPublicErrorRegistry } from "./cli-errors.ts";
 
@@ -70,14 +75,15 @@ function argumentError(argument: string, message: string): PublicErrorException 
   return cliError("VES_CLI_ARGUMENT_INVALID", { argument }, message);
 }
 
-function compareVersions(left: string, right: string): number {
-  const a = left.split(/[.-]/u).slice(0, 3).map(Number);
-  const b = right.split(/[.-]/u).slice(0, 3).map(Number);
-  for (let index = 0; index < 3; index += 1) {
-    const difference = (a[index] ?? 0) - (b[index] ?? 0);
-    if (difference !== 0) return difference;
+// why: an installed release is also too old when either version cannot be ordered, so the check fails
+// closed instead of passing on a value no comparison can read.
+function olderThanMinimum(installed: string, minimum: string): boolean {
+  try {
+    return compareSemanticVersions(installed, minimum) < 0;
+  } catch (error) {
+    if (error instanceof DomainValueError) return true;
+    throw error;
   }
-  return 0;
 }
 
 const REVISION = /^[0-9a-f]{40}$/u;
@@ -348,7 +354,7 @@ export async function runCli(options: CliRunOptions): Promise<number> {
     assertManifest(options.installedManifest);
     if (
       options.installedCliVersion !== options.installedManifest.semanticVersion ||
-      compareVersions(options.installedCliVersion, options.installedManifest.minimumCliVersion) < 0
+      olderThanMinimum(options.installedCliVersion, options.installedManifest.minimumCliVersion)
     ) {
       throw cliError(
         "VES_CLI_RELEASE_INCOMPATIBLE",

@@ -89,6 +89,47 @@ for (const [name, configuration] of [
   });
 }
 
+test("a pre-release minimum newer than the installed CLI fails before state load or mutation", async () => {
+  const store = new MemorySyncStore();
+  const { service } = createService(WorkspaceReconcileService, store);
+  await assert.rejects(
+    service.execute(
+      input(canonical({ minimumCliVersion: "0.0.0-qualification.10" }), {
+        installedCliVersion: "0.0.0-qualification.9"
+      })
+    ),
+    { code: "VES_SYNC_CONFIG_INCOMPATIBLE", minimumCompatibleRelease: "0.0.0-qualification.10" }
+  );
+  assert.equal(store.loads, 0);
+  assert.equal(store.writes, 0);
+  // why: an equal or newer installed CLI, including the release after its pre-release, is compatible.
+  for (const installed of ["0.0.0-qualification.10", "0.0.0-qualification.11", "0.1.0"]) {
+    const { service: compatible } = createService(WorkspaceReconcileService);
+    const result = await compatible.execute(
+      input(canonical({ minimumCliVersion: "0.0.0-qualification.10" }), { installedCliVersion: installed })
+    );
+    assert.equal(result.status, "reconciled", installed);
+  }
+});
+
+test("an unparseable CLI version fails closed before state load or mutation", async () => {
+  for (const [installed, minimum] of [
+    ["1.0.0", "1.0.0-a..b"],
+    ["1.0.0-a..b", "1.0.0"],
+    ["1.0.0", "not-a-version"]
+  ]) {
+    const store = new MemorySyncStore();
+    const { service } = createService(WorkspaceReconcileService, store);
+    await assert.rejects(
+      service.execute(input(canonical({ minimumCliVersion: minimum }), { installedCliVersion: installed })),
+      { code: "VES_SYNC_CONFIG_INCOMPATIBLE" },
+      `${installed} against ${minimum}`
+    );
+    assert.equal(store.loads, 0);
+    assert.equal(store.writes, 0);
+  }
+});
+
 for (const [name, configuration] of [
   ["duplicate Project IDs", canonical({ projects: [project("orders", "a"), project("orders", "b")] })],
   ["duplicate logical paths", canonical({ projects: [project("a", "same"), project("b", "same")] })],

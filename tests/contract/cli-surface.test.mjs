@@ -557,6 +557,40 @@ test("incompatible installed release fails before mutable dispatch", async () =>
   assert.match(result.streams.stderr[0], /VES_CLI_RELEASE_INCOMPATIBLE/u);
 });
 
+test("the CLI orders a pre-release minimum against the installed release", async () => {
+  const run = async (installed, minimum) =>
+    await execute(["init", "--dry-run"], {
+      installedCliVersion: installed,
+      installedManifest: manifest({ semanticVersion: installed, minimumCliVersion: minimum })
+    });
+  // why: `.9` is older than `.10` by value; the previous comparison ignored the suffix and accepted it.
+  const older = await run("0.0.0-qualification.9", "0.0.0-qualification.10");
+  assert.equal(older.exitCode, 3);
+  assert.equal(older.bus.calls.length, 0);
+  assert.match(older.streams.stderr[0], /VES_CLI_RELEASE_INCOMPATIBLE/u);
+  for (const [installed, minimum] of [
+    ["0.0.0-qualification.10", "0.0.0-qualification.10"],
+    ["0.0.0-qualification.10", "0.0.0-qualification.9"],
+    ["0.1.0", "0.0.0-qualification.10"]
+  ]) {
+    const accepted = await run(installed, minimum);
+    assert.equal(accepted.exitCode, 0, `${installed} against ${minimum}`);
+    assert.equal(accepted.bus.calls.length, 1);
+  }
+  const prerelease = await run("0.0.0-qualification.10", "0.0.0");
+  assert.equal(prerelease.exitCode, 3, "a pre-release is older than the release that is its minimum");
+});
+
+test("the CLI fails closed on an unparseable minimum", async () => {
+  // why: `1.0.0-a..b` passes the manifest's own SEMVER pattern, so only the comparison can refuse it.
+  const result = await execute(["init", "--dry-run"], {
+    installedManifest: manifest({ minimumCliVersion: "1.0.0-a..b" })
+  });
+  assert.equal(result.exitCode, 3);
+  assert.equal(result.bus.calls.length, 0);
+  assert.match(result.streams.stderr[0], /VES_CLI_RELEASE_INCOMPATIBLE/u);
+});
+
 test("installed CLI identity must exactly match the manifest it executes", async () => {
   const result = await execute(["init", "--dry-run"], { installedCliVersion: "1.0.1" });
   assert.equal(result.exitCode, 3);
