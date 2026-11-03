@@ -129,7 +129,9 @@ jobs:
             echo "timestamp_expires must be a UTC instant with milliseconds" >&2
             exit 1
           }
-          # why: the quarterly cadence ceiling (F2). The script enforces the same limit again.
+          # why: the quarterly cadence ceiling (F2). The script enforces the same limit again and is the
+          # authority: this limit is taken here, truncated to the second, so it can sit a few seconds
+          # below the script's. That is the safe direction.
           LIMIT="$(date -u -d "+90 days" +%Y-%m-%dT%H:%M:%S.000Z)"
           [[ ! "$TIMESTAMP_EXPIRES" > "$LIMIT" ]] || {
             echo "timestamp_expires must be at most 90 days after this run (limit $LIMIT)" >&2

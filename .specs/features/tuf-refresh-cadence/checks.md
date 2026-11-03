@@ -16,7 +16,7 @@ the moment of the refresh, and the custody documents state a quarterly cadence u
 It does not make F2 an operating control: that needs a real refresh run with a short expiry, which
 only the owner can approve in `tuf-release-signing`.
 
-5 checks in 1 slice · 0 one-way doors · 1 open, 0 block
+7 checks in 1 slice · 0 one-way doors · 1 open, 0 block
 
 ## Checks
 
@@ -35,7 +35,13 @@ Proof: run refresh | ✔ refuses an online window that is past or outlives the o
 Proof: run refresh | ✔ the timestamp window of 90 days is named and enforced before the refresh runs
 
 **C5** - The custody documents state the 90-day ceiling and the quarterly cadence, and say F2 is not an operating control until a refresh runs with it
-Proof: `grep -q "90 days" docs/release-custody.md && grep -q "VES_T76_REFRESH_EXPIRY_WINDOW" docs/release-custody.md && grep -q "90 days" .specs/features/tuf-role-separation/republish-v3-runbook.md && ! grep -qi "monthly online refresh" .specs/features/tuf-role-separation/republish-v3-runbook.md`
+Proof: `grep -q "at most 90 days" docs/release-custody.md && grep -q "VES_T76_REFRESH_EXPIRY_WINDOW" docs/release-custody.md && grep -q "quarterly" docs/release-custody.md && grep -q "operating control until a refresh has run" docs/release-custody.md && grep -q "quarterly cadence under a 90-day ceiling" .specs/features/tuf-role-separation/republish-v3-runbook.md && grep -q "no later than 15 days before" .specs/features/tuf-role-separation/republish-v3-runbook.md && ! grep -qi "monthly online refresh" .specs/features/tuf-role-separation/republish-v3-runbook.md`
+
+**C6** - A clock that is not a finite number is refused with `VES_T76_PUBLISH_INPUT_INVALID` instead of switching the window off
+Proof: run refresh | ✔ refuses a clock that is not a finite number instead of switching the window off
+
+**C7** - The command line offers no way to set the clock
+Proof: run refresh | ✔ the command line offers no way to set the clock
 
 ## Coverage
 

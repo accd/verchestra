@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
@@ -127,13 +128,26 @@ test("the timestamp window of 90 days is named and enforced before the refresh r
   const block = /^ {6}timestamp_expires:\n(?: {8}.*\n)+/mu.exec(workflow)?.[0] ?? "";
   assert.match(block, /90 days/u, "the input description names the policy window");
   // why: the shell guard fails the run before any key is read; the script enforces it again.
-  const guard = /date -u -d "\+90 days" \+%Y-%m-%dT%H:%M:%S\.000Z/u.exec(workflow);
-  assert.ok(guard, "the step derives the 90 day limit from the run clock");
-  assert.match(workflow, /"\$TIMESTAMP_EXPIRES" > "\$LIMIT"/u);
+  const guard =
+    /^ {10}LIMIT="\$\(date -u -d "\+90 days" \+%Y-%m-%dT%H:%M:%S\.000Z\)"\n(?: {10}.*\n)+?(?= {10}\[\[ "\$\(node --version\)")/mu.exec(
+      workflow
+    );
+  assert.ok(guard, "the step derives the 90 day limit from the run clock and refuses a later expiry");
   assert.ok(
     workflow.indexOf(guard[0]) < workflow.indexOf("node scripts/t76-refresh-timestamp.mjs"),
     "the guard runs before the refresh command"
   );
+  // why: run the extracted guard, so a flipped operator or a missing exit fails here.
+  const instant = (days) => new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+  const run = (expires) =>
+    spawnSync("bash", ["-c", guard[0].replace(/^ {10}/gmu, "")], {
+      env: { ...process.env, TIMESTAMP_EXPIRES: expires }
+    });
+  assert.equal(run(instant(89)).status, 0, "an expiry inside the window passes");
+  assert.equal(run(instant(1)).status, 0, "a near expiry passes");
+  const refused = run(instant(91));
+  assert.equal(refused.status, 1, "an expiry past the window exits 1");
+  assert.match(refused.stderr.toString(), /at most 90 days after this run/u);
 });
 
 test("the published metadata comes from the exact publish run's artifact", () => {

@@ -477,6 +477,22 @@ test("refuses an online window longer than the 90 day policy", async () => {
   await refused(options, "VES_T76_REFRESH_EXPIRY_WINDOW", /90 days/u);
 });
 
+test("refuses a clock that is not a finite number instead of switching the window off", async () => {
+  const value = await sharedLineage();
+  for (const clock of [() => Number.NaN, () => Number.POSITIVE_INFINITY, () => "now"])
+    await refused(
+      await refreshOptions(value, { now: clock, timestampExpires: iso(Date.now() + 200 * DAY) }),
+      "VES_T76_PUBLISH_INPUT_INVALID",
+      /finite/u
+    );
+});
+
+test("the command line offers no way to set the clock", async () => {
+  const source = await readFile(new URL("../../scripts/t76-refresh-timestamp.mjs", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /argument\(args, "--now"\)/u);
+  assert.doesNotMatch(source, /now: argument/u);
+});
+
 test("accepts an online window of exactly 90 days", async () => {
   const value = await sharedLineage();
   const now = Date.now();

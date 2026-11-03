@@ -37,7 +37,7 @@ it: the online expiry is at most 90 days after the refresh, renewed quarterly.
 
 - A 90-day ceiling with a refresh every 90 days leaves no margin. The runbook says
   to dispatch no later than 15 days before the current expiry. The owner may prefer a
-  shorter window; the constant is `REFRESH_MAX_WINDOW_DAYS`.
+  shorter window; the constant is `REFRESH_MAX_WINDOW_DAYS` in the script.
 - The window is measured from the instant of the refresh (assumption `n` in
   `checks.md`).
 
