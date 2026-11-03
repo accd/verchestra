@@ -417,7 +417,8 @@ test("core public error catalog has every T13 construction failure", () => {
     "VES_ID_KIND_MISMATCH",
     "VES_INSTANT_INVALID",
     "VES_LOGICAL_PATH_INVALID",
-    "VES_REQUIREMENT_ID_INVALID"
+    "VES_REQUIREMENT_ID_INVALID",
+    "VES_SEMVER_INVALID"
   ]);
 });
 
