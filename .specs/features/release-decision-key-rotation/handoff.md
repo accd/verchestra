@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: release-decision-key-rotation
 issue: null
-status: verification
+status: complete
 branch: feat/release-decision-key-rotation
 baseRevision: 8e46231aac45c4aaad05396205c5f27946a8d30e
 lastCompletedTask: T2
-nextTask: "Human review and merge. The owner rotated the key and signed the exit record on 2026-10-29; the new private key is held by the owner outside the repository index."
+nextTask: "None. Merged by the owner on 2026-10-29 as d3c64cce (#701) after the required checks passed on the exact head; no independent review is recorded (#553). The owner signed the exit record again for .9 with the new key on 2026-10-30."
 lastGate: "gate:quick and agent:check PASS before the owner run; dry run with a throwaway key verified the record and the 1.0.0 decision"
-updatedAt: 2026-10-29T23:00:00Z
+updatedAt: 2026-11-03T15:50:00Z
 ---
 
 # Scope
@@ -55,3 +55,15 @@ new key.
   compromised, and a decision only takes effect through a reviewed pull
   request. This is the same bound T75 accepts for a retired evidence key.
 - No independent reviewer exists (L1); the owner reviews and merges.
+
+# Reconciliation (2026-11-03)
+
+Merged to `main` through #701 on 2026-10-29 as `d3c64cce`, by rebase
+through the maintainer bypass, after every required check passed on the
+exact head `e10ad10e`. The owner's is the only review; #553 governs a
+post-merge independent review. Nothing is left in this feature.
+
+The owner signed `docs/qualification/qualification-line-exit-record.md`
+again for `.9` with the new key at 2026-10-30T21:09:54Z. On `031e032d`,
+`pnpm agent:check` verifies the record under the active key and the 1.0.0
+decision under the retired one, with no warning.

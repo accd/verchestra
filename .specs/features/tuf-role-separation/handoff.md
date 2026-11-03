@@ -6,9 +6,9 @@ status: blocked
 branch: feat/408-protected-signing-environments
 baseRevision: 4e95805586c321a56bcd7b6587a3408e0c175ec3
 lastCompletedTask: null
-nextTask: "The .3 republication is done: .3 to .8 are ledger sequences 3 to 8 on the role-separated root 949fbce3, each from a candidate built on main after the custody change. What remains of F1 and F2 is owner-gated: detached signing of the root threshold (T6, docs/release-custody.md section 3.1, RR5) and people separation (custodian #2, O1; none named on 2026-10-02), plus the first successful role-refresh run with its ledger entry (docs/qualification/qualification-line-exit-record.md, X2; the only run so far, 36779932633, failed)."
+nextTask: "The .3 republication is done: .3 to .8 are ledger sequences 3 to 8 on the role-separated root 949fbce3, each from a candidate built on main after the custody change. What remains of F1 and F2 is owner-gated: detached signing of the root threshold (T6, docs/release-custody.md section 3.1, RR5) and people separation (custodian #2, O1; none named on 2026-10-02). F2's first refresh ran on 2026-10-29 (run 40963107506, role-refresh entry 9 in the ledger, exit condition X2 met), but it kept the publication-horizon expiry, so a short online window is not yet in force."
 lastGate: "gate:quick, gate:build, gate:security, gate:release, agent:check PASS (feat/408-protected-signing-environments)"
-updatedAt: 2026-10-29T12:00:00Z
+updatedAt: 2026-11-03T15:50:00Z
 ---
 
 # TUF role separation (#18, F1 + F2)

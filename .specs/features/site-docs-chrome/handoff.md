@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: site-docs-chrome
 issue: null
-status: verification
+status: complete
 branch: site/docs-chrome
 baseRevision: d2f6de855089e1496a6d9a95c01c54975da1120e
 lastCompletedTask: T6
-nextTask: Human review and merge decision of the PR
+nextTask: "None. Merged by the owner on 2026-10-29 as d76c3395 (#693) after the required checks, Site quality included, passed on the exact head; no independent review is recorded (#553)."
 lastGate: unit 68, build 135 pages, check:built, e2e 63/63 on three browsers, gate:quick, architecture 148, agent:check; astro check and lhci autorun left to CI (validation.md)
-updatedAt: 2026-10-29T00:00:00Z
+updatedAt: 2026-11-03T15:50:00Z
 ---
 
 # Scope
@@ -98,3 +98,14 @@ None.
   the hand-written guides, and the product region of `global.css` (PR-A and
   PR-B), except the one `min-height` line.
 - Dependency manifests and the lockfile.
+
+# Reconciliation (2026-11-03)
+
+Merged to `main` through #693 on 2026-10-29 as `d76c3395`, by rebase
+through the maintainer bypass, after every required check passed on the
+exact head `0197290d`. The owner's is the only review; #553 governs a
+post-merge independent review. Nothing is left in this feature.
+
+The two gates the authoring machine could not complete ran there: Site
+quality runs `pnpm site:test`, which is `astro check`, the end-to-end tests
+and `lhci autorun`, and it passed.

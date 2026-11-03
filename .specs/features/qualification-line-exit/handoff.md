@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: qualification-line-exit
 issue: null
-status: verification
+status: complete
 branch: docs/qualification-line-exit-record
 baseRevision: d2f6de855089e1496a6d9a95c01c54975da1120e
 lastCompletedTask: T6
-nextTask: "Human review of the pull request, then the owner checklist below: every remaining step is owner-only. No session signs the record, fills decidedAt, confirms AD-033, or publishes."
+nextTask: "None in this feature. Merged by the owner on 2026-10-29 as c3b11647 (#691), and the record was signed for .9 on 2026-10-30. Two owner checklist items stay open where they are tracked: P1 attempt 3 (exit condition X3, live-task-pilot) and custodian #2 (O1, release-custody)."
 lastGate: "gate:quick, agent:check (record unsigned, a warning), release-decision and version-line-record tests, agent:context (T77 complete; the declared chain is fully verified), site unit tests, build, and check:built PASS on win32-x64; astro check not runnable on this host, covered by CI (validation.md)"
-updatedAt: 2026-10-29T12:00:00Z
+updatedAt: 2026-11-03T15:50:00Z
 ---
 
 # Scope
@@ -108,3 +108,22 @@ and does not block review.
 - The record's line references (`docs/release-custody.md:182-212`, `:169-177`,
   `:385-431`) are locations as of this change; the validator resolves the path,
   not the lines.
+
+# Reconciliation (2026-11-03)
+
+Merged to `main` through #691 on 2026-10-29 as `c3b11647`, by rebase
+through the maintainer bypass, after every required check passed on the
+exact head `f1d93e50`. The owner's is the only review; #553 governs a
+post-merge independent review. Nothing is left in this feature.
+
+The record was signed for `.9` at 2026-10-30T21:09:54Z. Two items of the
+owner checklist stay open, each where it is tracked: P1 attempt 3 (exit
+condition X3, `.specs/features/live-task-pilot/`) and custodian #2 (O1,
+`.specs/features/release-custody/`).
+
+Two rows have new evidence on `main` since the signature. The X4 run is
+recorded in `docs/qualification/acceptance-matrix.md` (J08 record of
+2026-10-30), and the scoped `doctor` verdict for X5 landed in #714
+(`.specs/features/doctor-scoped-verdict/`). Whether they clear their rows
+is the owner's and the reviewers' call. Editing a row changes the signed
+bytes, so the table changes when the owner next signs the record.

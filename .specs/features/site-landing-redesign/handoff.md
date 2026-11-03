@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: site-landing-redesign
 issue: null
-status: verification
+status: complete
 branch: site/landing-redesign
 baseRevision: d76c339557edae488e9ea68f6c0a8ea52e89cad6
 lastCompletedTask: T6
-nextTask: Human review and merge decision of the PR
+nextTask: "None. Merged by the owner on 2026-10-29 as 6ce57bc7 (#697) after the required checks, Site quality included, passed on the exact head; no independent review is recorded (#553)."
 lastGate: see validation.md; astro check and lhci autorun left to CI
-updatedAt: 2026-10-29T22:00:00Z
+updatedAt: 2026-11-03T15:50:00Z
 ---
 
 # Scope
@@ -100,3 +100,14 @@ None.
   the hand-written guides, `productStatus`.
 - The Starlight region and the light-token block of `global.css` (PR-C).
 - Dependency manifests and the lockfile.
+
+# Reconciliation (2026-11-03)
+
+Merged to `main` through #697 on 2026-10-29 as `6ce57bc7`, by rebase
+through the maintainer bypass, after every required check passed on the
+exact head `8700aed2`. The owner's is the only review; #553 governs a
+post-merge independent review. Nothing is left in this feature.
+
+The two gates the authoring machine could not complete ran there: Site
+quality runs `pnpm site:test`, which is `astro check`, the end-to-end tests
+and `lhci autorun`, and it passed.
