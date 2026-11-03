@@ -2,12 +2,12 @@
 schema: verchestra-feature-handoff/v1
 feature: semver-boundary-x6
 issue: 393
-status: in_progress
+status: verification
 branch: claude/clever-lamport-7h2in4
 baseRevision: 7c9c64a2c4f9742f7527d86bc6b8eff8600bea23
 lastCompletedTask: T1
-nextTask: "Independent verification of C1-C10 by a fresh sub-agent, then review and merge. After a release carries this change, the owner publishes a 0.x candidate, dispatches live-activation-matrix.yml with base_version 0.0.0-qualification.N and update_version the candidate, and records the five legs in a validation.md; X6 stays open until then."
-lastGate: "node --test on the three suites: 105 pass, 0 fail; tsc, eslint, prettier and complexity PASS; test:architecture 149/149; test:contract and test:integration fail on the same 9 and 36 tests with and without this change (Node 22, root container); test:unit differs from main by none after the catalog list is updated"
+nextTask: "Human review and merge. After a release carries this change, the owner publishes a 0.x candidate, dispatches live-activation-matrix.yml with base_version 0.0.0-qualification.N and update_version the candidate, and records the five legs in a validation.md; X6 stays open until then."
+lastGate: "independent verification PASS 13/13 (verification.md, three findings closed); check_proofs 16 pass 0 fail at db71df5; tsc, eslint, prettier and complexity PASS; test:architecture 149/149; test:contract and test:integration fail on the same 9 and 36 tests with and without this change (Node 22, root container); eight mutants of the comparator and its callers are each killed by a test"
 updatedAt: 2026-11-03T20:00:00Z
 ---
 
@@ -35,6 +35,14 @@ not order them. `checks.md` holds the ten checks and the intent.
   `VES_SEMVER_INVALID`, because the catalog gained that code in this commit.
 - Sensors, each killed by a test: pre-release ignored, numeric identifiers compared as
   text, the CLI failing open on an unparseable version, reconcile failing open.
+
+# Verification
+
+A fresh sub-agent found three low findings, all closed: the chain and antisymmetry
+assertions covered only neighbours and the sign, the comparator is stricter than the
+CLI's own `SEMVER` pattern (a version such as `1.0.0-01` passes the pattern but fails
+closed here), and four rules had no check (non-string input, build metadata, code-unit
+order, values beyond 2^53). Checks C11 to C13 were appended for them.
 
 # Open
 
