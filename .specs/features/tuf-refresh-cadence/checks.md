@@ -73,7 +73,7 @@ Proof: `grep -q "90 days" docs/release-custody.md && grep -q "VES_T76_REFRESH_EX
 ## Handoff
 
 - **Settled mid-build:** window 90 days, quarterly, code and policy only (user, 2026-11-03)
-- **Dispatched:** none yet
-- **Boundary:** none
+- **Dispatched:** Verifier, round 1, at the HEAD of the commit that carries this line; not yet returned
+- **Boundary:** C1-C5 closed at 63d6590
 - **Abandoned:** none
 - **Walked:** n/a - no screen
