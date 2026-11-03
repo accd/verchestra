@@ -6,9 +6,9 @@ status: blocked
 branch: feat/408-protected-signing-environments
 baseRevision: 4e95805586c321a56bcd7b6587a3408e0c175ec3
 lastCompletedTask: T7
-nextTask: "The owner configures the npm-publication environment and the npm trusted publisher for npm-publish.yml (O6, T7 landed on 2026-10-28), then publishes the next version through it. Otherwise none while no custodian #2 exists. The owner decided on 2026-10-02 to name none (O1); #408 is closed as not planned. If the owner later names a second accountable human, resume from O1 in docs/release-custody.md section 9."
+nextTask: "O6 is done except its last step. On 2026-10-30 run 41004500072 published 0.0.0-qualification.9 through npm-publish.yml from the npm-publication environment with a provenance attestation (exit condition X1); the owner still enables Require two-factor authentication and disallow tokens on npmjs.com (docs/release-custody.md section 9, O6 step 4). Otherwise none while no custodian #2 exists. The owner decided on 2026-10-02 to name none (O1); #408 is closed as not planned. If the owner later names a second accountable human, resume from O1 in docs/release-custody.md section 9."
 lastGate: "gate:quick, gate:build, gate:security, gate:release, agent:check PASS (feat/408-protected-signing-environments)"
-updatedAt: 2026-10-29T12:00:00Z
+updatedAt: 2026-11-03T15:50:00Z
 ---
 
 # Scope
@@ -76,12 +76,13 @@ trusted-publishing workflow `npm-publish.yml` (T7) landed on 2026-10-28, and
 it publishes nothing until O6 is done. Every remaining step needs an owner
 decision or action that an agent cannot take:
 
-- **O6, the owner's next action.** Create the `npm-publication` environment
-  (owner as interim reviewer, `main` only, admin bypass off), add the trusted
-  publisher on npmjs.com for `npm-publish.yml` and that environment, publish
-  `0.0.0-qualification.9` through the workflow, check its attestation, then
-  disallow tokens (`docs/release-custody.md` section 9, O6; #596; exit
-  condition X1 in `docs/qualification/qualification-line-exit-record.md`).
+- **O6, the owner's next action.** Done on 2026-10-30 except its last step:
+  the `npm-publication` environment and the trusted publisher exist, and run
+  `41004500072` published `0.0.0-qualification.9` through `npm-publish.yml`
+  with a SLSA provenance attestation (exit condition X1 in
+  `docs/qualification/qualification-line-exit-record.md`). Left: enable
+  "Require two-factor authentication and disallow tokens" on npmjs.com
+  (`docs/release-custody.md` section 9, O6 step 4; #596).
 - **O1.** Name custodian #2, and a distinct ratifying reviewer. This is
   human-only. Decided on 2026-10-02 as "none named".
 - **O2 reviewer switch.** Once custodian #2 exists, make them the required
@@ -99,8 +100,9 @@ decision or action that an agent cannot take:
 
 # Next action
 
-The owner does O6: the `npm-publication` environment, the npm trusted
-publisher for `npm-publish.yml`, the `.9` publication through the workflow,
-and the attestation check. The merge, the `.3` re-sign, and the secret
-deletion this section used to ask for are done (see Blockers). Nothing else
-moves until a custodian #2 is named.
+The owner finishes O6 by disallowing tokens on npmjs.com. The
+`npm-publication` environment, the npm trusted publisher, the `.9`
+publication through the workflow, and its attestation are done
+(2026-10-30). The merge, the `.3` re-sign, and the secret deletion this
+section used to ask for are done too (see Blockers). Nothing else moves
+until a custodian #2 is named.

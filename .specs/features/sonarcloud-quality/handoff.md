@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: sonarcloud-quality
 issue: null
-status: in_progress
-branch: ci/sonar-ignore-s7503-s9382
-baseRevision: 02b50ba88bea5d8917f9cdcfd03a2d82df9ba878
+status: complete
+branch: main
+baseRevision: 6a90d0215bfe386b4653bf46e4adf27329ebe1c9
 lastCompletedTask: T8
-nextTask: T8
-lastGate: pnpm gate:quick plus pnpm test:architecture
-updatedAt: 2026-10-29T00:00:00Z
+nextTask: "None in this feature. A new SonarCloud issue on main is fixed in the change that raised it, or accepted with its reason in validation.md."
+lastGate: "SonarCloud main analysis of 6a90d021 (run 41292975724): quality gate OK, 0 open issues, 11 Accepted, 90.6 % coverage"
+updatedAt: 2026-11-01T00:00:00Z
 ---
 
 # Scope
@@ -19,6 +19,18 @@ sources. Phases B (bugs, vulnerabilities) and C (code smells) follow in their
 own changes, one rule family each, as listed in `tasks.md`.
 
 # Completed Evidence
+
+Feature complete, 2026-11-01. The `main` analysis of `6a90d021` (after #725)
+reads quality gate OK, 0 open issues (0 bugs, 0 vulnerabilities, 0 code
+smells), 11 Accepted and 90.6 % coverage, against 1,135 open issues and no
+coverage at the start (2026-10-26). The last steps:
+
+- #689 (`d2f6de85`): S7503 and S9382 ignored in `sonar-project.properties`;
+  the plan refuses a custom quality profile.
+- The owner accepted the 11 issues in `validation.md` through the Web API.
+- The Beta session fixed the S4043 from database-registration slice 2a.
+- #725 (`6a90d021`): six GitHub Actions issues (S131 ×2, S7679 ×4) in
+  existing workflow shell, with `tests/agent-readiness/workflow-shell-style.test.mjs`.
 
 T8 third round of 2026-10-28, merged by content (rebase + admin bypass). The
 `main` analysis of `8a6e7c62` reads gate OK, 0 bugs, 0 vulnerabilities, 409
@@ -500,23 +512,22 @@ issues; 179 bugs, 32 vulnerabilities, 924 code smells; quality gate ERROR.
 
 # Next Exact Action
 
-Every mechanical family is done (counts from the `main` analysis of
-`02b50ba8`):
+None in this feature; it is complete. Keep `main` at 0 open issues: a
+SonarCloud issue a pull request raises is fixed in that pull request, or, when
+the fix would change behaviour, accepted in SonarCloud with its reason recorded
+in `validation.md`. Turning a rule off for the project goes through
+`sonar.issue.ignore.multicriteria` in `sonar-project.properties`, which
+`tests/agent-readiness/sonarcloud-workflow.test.mjs` pins.
 
-- S7503 (211) and S9382 (125 TypeScript + 60 JavaScript) are ignored for every
-  file by `sonar-project.properties` (owner decision, 2026-10-29; reasons in
-  `validation.md`). Confirm on the first `main` analysis after that change
-  lands that both rules read 0.
-- The owner marks the 8 S3735 and 3 long-tail issues in `validation.md` as
-  Accepted.
-- S4043 at `apps/vestra-cli/src/database/database-registration-file.ts:259`
-  arrived with database-registration slice 2a (`8633ef0b`); the Beta session
-  owns that file and fixes it with `toSorted` in the slice 2b change.
-- S4323 and S6582 from probe-host slice 1 were fixed by the Beta session in
-  #682 (`937d1fe6`); both read 0 on the `main` analysis of `ce9d6bba`.
-
-When open issues read 0 with the 11 Accepted, T8 is complete: set `status` and
-`nextTask` accordingly and close the feature.
+How #725 closed the last six (the `main` analysis of `0dbf6174`,
+2026-10-31): S131 (a `case` without a default arm) in `npm-publish.yml` and
+`live-activation-matrix.yml`, and S7679 (a positional parameter read directly)
+four times in the live matrix's `record_pointer` and `pointer_of`, raised on
+existing workflow code once SonarCloud analysed workflow shell. It adds the
+`*) ;;` arms and binds `local phase="$1"`;
+`tests/agent-readiness/workflow-shell-style.test.mjs` requires a default arm
+on every workflow `case` and the named local in both helpers, and fails
+against the previous workflows (0 pass, 2 fail).
 
 # Blockers
 

@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: canonical-json-t4-completion
 issue: 58
-status: verification
+status: complete
 branch: test/558-locale-allowlist-dedupe
 baseRevision: 8056d41b5ab615ce7dc536db400e09f136565c61
 lastCompletedTask: T21
-nextTask: "Owner review and merge of the T21 change (issue #558); its pull-request CI run is the close-out gate, since T22 and T23 stay superseded by #58's closure."
+nextTask: "None. T21 was merged by the owner on 2026-10-23 as cb3d4b0f (#559), and its pull-request CI run, the close-out gate, passed on the exact head; no independent review is recorded (#553). T22 and T23 stay superseded by #58's closure."
 lastGate: "T21 branch on Windows 11, Node 24.18.0: gate:quick static stages pass, test:unit 2991/2993 and test:security 1346/1359, every failure an environment case already recorded (#555 named-pipe helper and elevated ACL proof, symbolic-link privilege, tmpdir under the home directory); the pull request's CI run is the clean gate"
-updatedAt: 2026-10-14T07:41:00Z
+updatedAt: 2026-11-03T15:50:00Z
 ---
 
 # Scope
@@ -122,3 +122,13 @@ None. The defect found while planning (duplicate keys in `MATRIX_CEILINGS`,
 later values winning, `gate-commit.ts` effectively ratcheted at 1 and
 `cedar-policy.ts` at 2 while the matrix records both as "tightened to 0") is
 fixed by T21 under issue #558; see the Reconciliation section.
+
+# Reconciliation (2026-11-03)
+
+Merged to `main` through #559 on 2026-10-23 as `cb3d4b0f`, by rebase
+through the maintainer bypass, after every required check passed on the
+exact head `6f37cf54`. The owner's is the only review; #553 governs a
+post-merge independent review. Nothing is left in this feature.
+
+That CI run is the close-out gate this handoff names, and #558 closed with
+it. T22 and T23 stay superseded by #58's closure.

@@ -183,7 +183,9 @@ test("new versions wait three days before install and before a Dependabot propos
 
 // invariant: the lockfile resolves no version an open advisory names. fast-uri
 // reaches agent-runtime through the Strands and MCP SDKs and ajv; body-parser
-// 1.x reaches the site's Lighthouse CI through express 4.
+// 1.x reaches the site's Lighthouse CI through express 4; body-parser 2.x and
+// ip-address reach agent-runtime's installed tree through the MCP SDK's express
+// 5 server helpers, which the sealed launchers do not bundle.
 function lockedVersions(lockfile, name) {
   return [...lockfile.matchAll(new RegExp(`^ {2}'?${name}@(\\d+)\\.(\\d+)\\.(\\d+)'?:`, "gmu"))].map((match) =>
     match.slice(1, 4).map(Number)
@@ -195,7 +197,7 @@ function below(version, floor) {
   return false;
 }
 
-test("the lockfile resolves the patched fast-uri and body-parser 1.x", () => {
+test("the lockfile resolves the patched fast-uri, body-parser and ip-address", () => {
   const lockfile = read("pnpm-lock.yaml");
   const fastUri = lockedVersions(lockfile, "fast-uri");
   assert.ok(fastUri.length > 0, "fast-uri is no longer resolved; update this test");
@@ -205,12 +207,26 @@ test("the lockfile resolves the patched fast-uri and body-parser 1.x", () => {
       false,
       `fast-uri@${version.join(".")} is below 3.1.9 (GHSA-w74x-v6f9-j3xg)`
     );
-  const bodyParser = lockedVersions(lockfile, "body-parser").filter((version) => version[0] === 1);
-  for (const version of bodyParser)
+  const bodyParser = lockedVersions(lockfile, "body-parser");
+  for (const version of bodyParser.filter((candidate) => candidate[0] === 1))
     assert.equal(
       below(version, [1, 20, 9]),
       false,
       `body-parser@${version.join(".")} is below 1.20.9 (GHSA-27r3-jxmh-p828)`
+    );
+  for (const version of bodyParser.filter((candidate) => candidate[0] === 2))
+    assert.equal(
+      below(version, [2, 4, 0]),
+      false,
+      `body-parser@${version.join(".")} is below 2.4.0 (GHSA-27r3-jxmh-p828)`
+    );
+  const ipAddress = lockedVersions(lockfile, "ip-address");
+  assert.ok(ipAddress.length > 0, "ip-address is no longer resolved; update this test");
+  for (const version of ipAddress)
+    assert.equal(
+      below(version, [10, 7, 4]),
+      false,
+      `ip-address@${version.join(".")} is below 10.7.4 (GHSA-rxp7-6hxx-x8q5)`
     );
 });
 

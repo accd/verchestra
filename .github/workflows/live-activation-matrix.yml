@@ -125,6 +125,7 @@ jobs:
           for v in "$BASE_VERSION" "$UPDATE_VERSION"; do
             case "$v" in
               "" | *[!A-Za-z0-9.-]*) echo "invalid version selector: '$v'" >&2; exit 1 ;;
+              *) ;;
             esac
           done
 
@@ -140,14 +141,18 @@ jobs:
           # Copies the launcher's active-release pointer into the transcript after
           # a phase, so the lifecycle is verified by the pointer, not by exit codes.
           record_pointer() {
+            local phase="$1"
             if [ -f "$ACTIVE_POINTER" ]; then
-              cp "$ACTIVE_POINTER" "transcript/$1.active.json"
-              printf '%s active=%s\n' "$1" "$(cat "$ACTIVE_POINTER")" | tee -a transcript/summary.txt
+              cp "$ACTIVE_POINTER" "transcript/$phase.active.json"
+              printf '%s active=%s\n' "$phase" "$(cat "$ACTIVE_POINTER")" | tee -a transcript/summary.txt
             else
-              printf '%s active=none\n' "$1" | tee -a transcript/summary.txt
+              printf '%s active=none\n' "$phase" | tee -a transcript/summary.txt
             fi
           }
-          pointer_of() { cat "transcript/$1.active.json" 2>/dev/null || printf 'none'; }
+          pointer_of() {
+            local phase="$1"
+            cat "transcript/$phase.active.json" 2>/dev/null || printf 'none'
+          }
           run_phase() {
             name="$1"; shift
             echo "::group::$name"

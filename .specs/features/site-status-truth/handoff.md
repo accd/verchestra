@@ -2,13 +2,13 @@
 schema: verchestra-feature-handoff/v1
 feature: site-status-truth
 issue: null
-status: verification
+status: complete
 branch: site/status-truth
 baseRevision: d2f6de855089e1496a6d9a95c01c54975da1120e
 lastCompletedTask: T5
-nextTask: Human review and merge of the pull request; then PR-B (site/landing-redesign) and PR-C (site/docs-chrome) rebase on the merged main
+nextTask: "None. Merged by the owner on 2026-10-29 as 2d0beb54 (#692) after the required checks passed on the exact head; no independent review is recorded (#553). PR-B (#697) and PR-C (#693) were rebased on it and merged the same day."
 lastGate: gate:quick PASS; site unit 66/66; architecture 148/148; agent:check PASS; site build + check:built PASS (135 pages); e2e 54/54 on three browsers; Lighthouse audits within budget but the gate itself fails on a Windows temp-cleanup EPERM; astro check not runnable on this Windows machine (emnapi alpha WASM crash, same on main)
-updatedAt: 2026-10-29T17:20:00Z
+updatedAt: 2026-11-03T15:50:00Z
 ---
 
 # Scope
@@ -45,3 +45,14 @@ fallback and the import crashes before the checker starts, on `main` as well.
 The CI `site` job runs it on Ubuntu, where the native binaries are used. A
 lockfile re-resolution of `@emnapi/runtime` would need the dependency-upgrade
 approval `AGENTS.md` requires; it is outside this change.
+
+# Reconciliation (2026-11-03)
+
+Merged to `main` through #692 on 2026-10-29 as `2d0beb54`, by rebase
+through the maintainer bypass, after every required check passed on the
+exact head `605a2a53`. The owner's is the only review; #553 governs a
+post-merge independent review. Nothing is left in this feature.
+
+Site quality, which runs `astro check`, the end-to-end tests and Lighthouse,
+passed in that run. PR-B (`site/landing-redesign`, #697) and PR-C
+(`site/docs-chrome`, #693) were rebased on it and merged the same day.
