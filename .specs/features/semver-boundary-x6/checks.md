@@ -95,7 +95,7 @@ Proof: run semver | ✔ an unparseable CLI version fails closed before state loa
 ## Handoff
 
 - **Settled mid-build:** correct the comparator and prove the boundary in code (user, 2026-11-03)
-- **Dispatched:** none yet
-- **Boundary:** none
+- **Dispatched:** Verifier, round 1, at the HEAD of the commit that carries this line; not yet returned
+- **Boundary:** C1-C10 closed at ccc6306
 - **Abandoned:** none
 - **Walked:** n/a - no screen
