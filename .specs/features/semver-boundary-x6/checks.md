@@ -17,7 +17,7 @@ When this ships, one semver 2.0.0 comparator in `packages/domain` orders those v
 callers use it, and an invalid version fails closed instead of passing. It does not close X6: that
 needs the live run on five targets, which only the owner can publish a candidate for and dispatch.
 
-10 checks in 1 slice · 0 one-way doors · 1 open, 0 block
+13 checks in 1 slice · 0 one-way doors · 1 open, 0 block
 
 ## Checks
 
@@ -38,7 +38,7 @@ Proof: run semver | ✔ orders the qualification line against the 0.x boundary
 **C5** - Equal versions compare 0, and the order is antisymmetric over every pair of the chain
 Proof: run semver | ✔ is reflexive and antisymmetric over the chain
 
-**C6** - A version that is not `major.minor.patch` with optional dot-separated pre-release identifiers is refused with `VES_SEMVER_INVALID`
+**C6** - A version that is not `major.minor.patch` with optional dot-separated pre-release identifiers, or that carries a leading-zero or empty identifier or build metadata, is refused with `VES_SEMVER_INVALID`
 Proof: run semver | ✔ refuses a version outside the grammar
 
 **C7** - The CLI refuses an installed release older than a pre-release minimum with `VES_CLI_RELEASE_INCOMPATIBLE`, and accepts an equal or newer one
@@ -52,6 +52,15 @@ Proof: run semver | ✔ a pre-release minimum newer than the installed CLI fails
 
 **C10** - Workspace reconcile fails closed with `VES_SYNC_CONFIG_INCOMPATIBLE` when the installed or minimum version cannot be parsed
 Proof: run semver | ✔ an unparseable CLI version fails closed before state load or mutation
+
+**C11** - A value that is not a string is refused with `VES_SEMVER_INVALID`, never with another error
+Proof: run semver | ✔ refuses a value that is not a string
+
+**C12** - Alphanumeric identifiers order by code unit, so `Alpha` is older than `alpha`
+Proof: run semver | ✔ orders alphanumeric identifiers by code unit, not by locale
+
+**C13** - Numeric identifiers and core parts beyond 2^53 order by value
+Proof: run semver | ✔ orders numeric identifiers beyond 2^53 by value
 
 ## Coverage
 
@@ -67,7 +76,7 @@ Proof: run semver | ✔ an unparseable CLI version fails closed before state loa
 
 ## Swept
 
-- validation: C6, C8, C10
+- validation: C6, C8, C10, C11
 - failure modes: C8, C10 (an unparseable version fails closed, where it used to pass)
 - idempotency: n/a - a pure comparison
 - authorization: n/a - no caller, no data
