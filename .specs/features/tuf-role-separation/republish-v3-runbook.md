@@ -37,7 +37,7 @@ root digest**. The tooling enforces it:
   repository does not record (the full root digest, the root version, `.2`'s
   releaseId and host) are `null`, and the checker treats them conservatively.
   Role-only entries (`kind: "role-refresh"`) record each run of the #382
-  timestamp/snapshot re-signing routine (see "Monthly online refresh" below).
+  timestamp/snapshot re-signing routine (see "Online refresh cadence" below).
 - `scripts/t76-publish-release.mjs` — `--metadata-version` is **required**, and
   the script refuses it with `VES_T76_PUBLISH_METADATA_VERSION_NOT_MONOTONIC`
   unless it strictly exceeds every version the ledger records for the same root
@@ -156,8 +156,8 @@ Publish the role-separated lineage as its own trust anchor and demonstrate the
    both anchors committed, `metadata_version` from step 2, a new `/v3/` base-URL
    prefix, and the rollback index from step 3. `timestamp_expires` is a required
    input: pass the same value as `expires` for the full horizon, or a short
-   window (for example 45 days) **only** if the monthly online refresh below will
-   be run for this root without a gap. The tooling signs root+targets offline and
+   window of at most 90 days **only** if the online refresh below will be run
+   for this root without a gap. The tooling signs root+targets offline and
    timestamp+snapshot online, each bound to its anchor.
 5. **Upload to R2 and verify live BEFORE `npm publish`** (owner). Verify every
    object by sha256, then confirm the endpoint serves, for each target: the
@@ -191,7 +191,7 @@ Publish the role-separated lineage as its own trust anchor and demonstrate the
    tooling derived them; `tests/agent-readiness/tuf-publication-ledger.test.mjs`
    proves the derivation reproduces both byte for byte.
 
-## Monthly online refresh (#382)
+## Online refresh cadence (#382)
 
 A short online window is the freeze-attack defense (#18 F2): a client refuses a
 `timestamp.json` past its expiry (`VES_TUF_EXPIRED`), so a mirror or attacker
@@ -210,16 +210,24 @@ environment, and its public half is committed as
 `VES_T76_PUBLISH_ANCHOR_MISSING`, and a retired one with
 `VES_T76_PUBLISH_ANCHOR_RETIRED`. The routine refreshes only role-separated
 lineages, so it cannot apply to v1/`.2`. Dispatch it from `main`; each run waits
-for the environment reviewer's approval, so plan the monthly refresh around the
+for the environment reviewer's approval, so plan the refresh around the
 reviewer's availability.
 
-Every month, at least one full cycle before the current `timestampExpires`:
+The policy is a quarterly cadence under a 90-day ceiling: `timestamp_expires` is at
+most 90 days after the run, and both the workflow and the script refuse a later one
+(`VES_T76_REFRESH_EXPIRY_WINDOW`). A 90-day window with a refresh exactly every 90
+days has no margin, so dispatch the next refresh no later than 15 days before the
+current `timestampExpires` (about every 75 days against a full window). A missed
+refresh freezes every client at expiry. Until a refresh has run under this ceiling,
+short online expiry is not an operating control.
+
+Every quarter, and no later than 15 days before the current `timestampExpires`:
 
 1. **Pick the version.** Read `docs/qualification/tuf-publication-ledger.json` on
    `main`. The new `metadata_version` must strictly exceed every snapshot,
    targets, and timestamp version recorded for the root (use the next integer
    above the highest). Pick `timestamp_expires`: no later than the published
-   targets expiry; about 45 days out keeps a two-week margin on a monthly cadence.
+   targets expiry and at most 90 days after the run.
 2. **Refresh.** Dispatch `t76-refresh-timestamp.yml` from `main` with
    `publish_revision` and `publish_run_id` of the `t76-publish-release` run that
    published the current release (its `t76-release-metadata-…` artifact holds
@@ -266,7 +274,7 @@ endpoint or a fresh publication.
 
 - #387 — the metadata-version collision (fix: this runbook + the tooling guard).
 - #393 — rollback vs anti-rollback; the launcher always re-resolves.
-- #382 — the monthly timestamp/snapshot refresh routine (makes a short
+- #382 — the quarterly timestamp/snapshot refresh routine (makes a short
   `timestamp_expires` safe): `t76-refresh-timestamp.yml`, procedure above,
   feature `.specs/features/tuf-timestamp-refresh/`.
 - #391 — the update client surfacing a version collision as a misleading source

@@ -123,6 +123,19 @@ test("no untrusted value reaches a run block except through env", () => {
   assert.doesNotMatch(workflow, /--release-anchor|--timestamp-anchor/u);
 });
 
+test("the timestamp window of 90 days is named and enforced before the refresh runs", () => {
+  const block = /^ {6}timestamp_expires:\n(?: {8}.*\n)+/mu.exec(workflow)?.[0] ?? "";
+  assert.match(block, /90 days/u, "the input description names the policy window");
+  // why: the shell guard fails the run before any key is read; the script enforces it again.
+  const guard = /date -u -d "\+90 days" \+%Y-%m-%dT%H:%M:%S\.000Z/u.exec(workflow);
+  assert.ok(guard, "the step derives the 90 day limit from the run clock");
+  assert.match(workflow, /"\$TIMESTAMP_EXPIRES" > "\$LIMIT"/u);
+  assert.ok(
+    workflow.indexOf(guard[0]) < workflow.indexOf("node scripts/t76-refresh-timestamp.mjs"),
+    "the guard runs before the refresh command"
+  );
+});
+
 test("the published metadata comes from the exact publish run's artifact", () => {
   assert.match(workflow, /run-id: \$\{\{ inputs\.publish_run_id \}\}/u);
   assert.match(

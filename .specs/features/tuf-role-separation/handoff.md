@@ -93,14 +93,14 @@ same-root release and the #393 decision — a single `.3` cannot close it.
   users only on the next republication (the `.3` release under a new base-URL
   prefix). The already-published package is unaffected. Because the root changes,
   existing installs do not update in place to `.3` (finding 2 in the runbook).
-- **Short online window (#382).** The monthly re-signing routine now exists:
+- **Short online window (#382).** The re-signing routine now exists:
   `.github/workflows/t76-refresh-timestamp.yml` runs
   `scripts/t76-refresh-timestamp.mjs`, which re-signs only timestamp and snapshot
   with the online key over the verified, untouched root, targets, and components,
   and emits the files, an upload manifest, and the ledger entry to append. The
   publish workflow's `timestamp_expires` input is now required (no default). A
-  short window is safe only while the operator runs the monthly procedure in
-  `republish-v3-runbook.md` ("Monthly online refresh") for that root:
+  short window is safe only while the operator runs the refresh procedure in
+  `republish-v3-runbook.md` ("Online refresh cadence") for that root:
   refresh, verify, upload (snapshot before timestamp), append the ledger entry.
   Feature: `.specs/features/tuf-timestamp-refresh/`.
 - **Custody.** Two role-separated keys narrow F1, but both still sit with one
@@ -155,4 +155,4 @@ History, reconciled 2026-09-29 (#407):
   `.specs/features/live-activation-matrix/handoff.md`).
 - **The #382 refresh routine has shipped** (`t76-refresh-timestamp.yml`,
   `scripts/t76-refresh-timestamp.mjs`, merged in #428). A short
-  `timestamp_expires` is safe only for a root whose monthly refresh is running.
+  `timestamp_expires` is safe only for a root whose refresh is running on the quarterly cadence.

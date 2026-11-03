@@ -175,12 +175,17 @@ choose them.
   run (36779932633, 2026-09-30) failed because it was dispatched from a feature
   branch. That refresh kept `timestampExpires` at the publication horizon,
   `2027-09-30T00:00:00Z`, so it proves the path, not a short window.
-- **Still missing: a short window.** The live `.8` timestamp, snapshot,
+- **Still missing: a short window in force.** The live `.8` timestamp, snapshot,
   targets and root all expire with the publication horizon,
   `2027-09-30T00:00:00Z`, so a frozen client stays frozen until that date.
-  The signed `1.0.0` decision counts F2 closed on its code; a later round must
-  not cite short online expiry as an operating control until refreshes run on
-  a cadence with a short `timestampExpires`.
+  The cadence is now policy and code: a quarterly refresh with
+  `timestamp_expires` at most 90 days after the run, which
+  `t76-refresh-timestamp.yml` and `scripts/t76-refresh-timestamp.mjs` enforce
+  (`VES_T76_REFRESH_EXPIRY_WINDOW`), and which the runbook says to renew no later
+  than 15 days before the current expiry. No refresh has run under it yet. The
+  signed `1.0.0` decision counts F2 closed on its code; a later round must not
+  cite short online expiry as an operating control until a refresh has run on
+  that cadence with a short `timestampExpires`.
 - **Does not constrain.** A holder of the online key can still freeze clients on
   current metadata or re-sign current snapshots until the key is rotated. This is
   accepted and bounded by expiry, not prevented.
