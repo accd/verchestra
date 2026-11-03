@@ -35,8 +35,11 @@ function parse(value: string): ParsedVersion {
   return { core: [BigInt(match[1]!), BigInt(match[2]!), BigInt(match[3]!)], prerelease };
 }
 
-const order = <T extends bigint | number | string>(left: T, right: T): -1 | 0 | 1 =>
-  left < right ? -1 : left > right ? 1 : 0;
+function order<T extends bigint | number | string>(left: T, right: T): -1 | 0 | 1 {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
 
 function compareIdentifiers(left: string, right: string): -1 | 0 | 1 {
   const leftNumeric = NUMERIC.test(left);
@@ -59,7 +62,7 @@ export function compareSemanticVersions(left: string, right: string): -1 | 0 | 1
   }
   // why: a version with a pre-release is older than the same version without one.
   if (a.prerelease.length === 0 || b.prerelease.length === 0)
-    return a.prerelease.length === b.prerelease.length ? 0 : a.prerelease.length === 0 ? 1 : -1;
+    return order(a.prerelease.length === 0 ? 1 : 0, b.prerelease.length === 0 ? 1 : 0);
   for (let index = 0; index < Math.min(a.prerelease.length, b.prerelease.length); index += 1) {
     const difference = compareIdentifiers(a.prerelease[index]!, b.prerelease[index]!);
     if (difference !== 0) return difference;
