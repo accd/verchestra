@@ -143,6 +143,9 @@ test("reviewed binaries are built twice, compared byte for byte, and run with PA
 // `reviewed/t76-release-publication/release-inputs`, a directory the artifact does not contain.
 // `actions/upload-artifact` makes the least common ancestor of several paths the artifact root, so the
 // layout is derived here from the publish workflow's own upload paths instead of being written twice.
+// The model below (a final segment with an extension is a file, cut at the first wildcard) reproduces what
+// the action did on the real upload: the log of job 123880634649 in run 40999595578 reads "The least common
+// ancestor is .../t76-release-publication. This will be the root directory of the artifact" (29 files).
 function metadataArtifactRoot() {
   const publish = readFileSync(new URL("../../.github/workflows/t76-publish-release.yml", import.meta.url), "utf8");
   const step = /name: t76-release-metadata-[^\n]*\n\s+path: \|\n((?:\s+\S[^\n]*\n)+)/u.exec(publish);
@@ -189,7 +192,7 @@ test("the derivation reproduces the directory the published package was built fr
   const npm = readFileSync(new URL("../../.github/workflows/npm-publish.yml", import.meta.url), "utf8");
   const download = /name: t76-release-metadata-[^\n]*\n\s+path: (\S+)/u.exec(npm);
   assert.ok(download, "npm-publish downloads the metadata artifact to a path");
-  assert.match(npm, new RegExp(`--release-inputs ${download[1]}/${relative}\\b`, "u"));
+  assert.match(npm, new RegExp(`--release-inputs ${download[1]}/${relative}(?![\\w/.-])`, "u"));
 });
 
 test("every heredoc in the workflow terminates where the shell can find it", () => {

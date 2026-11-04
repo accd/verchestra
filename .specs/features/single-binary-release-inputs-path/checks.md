@@ -32,7 +32,7 @@ Proof: run wf | ✔ the reviewed inputs directory is the one the metadata artifa
 **C2** - The same derivation reproduces the directory `npm-publish.yml` reads, the consumer that built the published `.9` package
 Proof: run wf | ✔ the derivation reproduces the directory the published package was built from
 
-**C3** - The build step names `reviewed/release-inputs` and no path segment the artifact does not contain
+**C3** - The build step names `reviewed/release-inputs`, and the segment `t76-release-publication` appears nowhere in the workflow
 Proof: run wf | ✔ reviewed binaries are built twice, compared byte for byte, and run with PATH emptied
 
 ## Coverage
@@ -56,10 +56,10 @@ Proof: run wf | ✔ reviewed binaries are built twice, compared byte for byte, a
 
 ## Assumptions
 
-| Assumption                                                                                   | Default                            | Rationale                                                                                                                                   | Confirmed? |
-| -------------------------------------------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| `actions/upload-artifact` makes the least common ancestor of several paths the artifact root | root is `t76-release-publication/` | its own log says so ("Calculating the least common ancestor ... root directory of the artifact") and `npm-publish.yml` works on that layout | y          |
-| The change to `.github/workflows/` preserves enforcement                                     | preserves                          | it corrects one path; no gate, check, permission or scan is removed or narrowed                                                             | y          |
+| Assumption                                                                                   | Default                            | Rationale                                                                                                                                                                                                                                                                        | Confirmed? |
+| -------------------------------------------------------------------------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| `actions/upload-artifact` makes the least common ancestor of several paths the artifact root | root is `t76-release-publication/` | the real upload says so: the log of job 123880634649 in run 40999595578 reads "The least common ancestor is .../t76-release-publication. This will be the root directory of the artifact" for the 29 files of `t76-release-metadata`, and `npm-publish.yml` works on that layout | y          |
+| The change to `.github/workflows/` preserves enforcement                                     | preserves                          | it corrects one path; no gate, check, permission or scan is removed or narrowed                                                                                                                                                                                                  | y          |
 
 ## Out of scope
 
