@@ -209,7 +209,7 @@ jobs:
             pnpm build:vestra-binary -- \
               --target "$target" \
               --node-cache node-dist-cache \
-              --release-inputs reviewed/t76-release-publication/release-inputs \
+              --release-inputs reviewed/release-inputs \
               --out "$out"
           done
           node --input-type=module <<'NODE'

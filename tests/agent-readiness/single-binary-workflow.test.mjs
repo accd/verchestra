@@ -127,7 +127,8 @@ test("reviewed binaries are built twice, compared byte for byte, and run with PA
   assert.match(workflow, /for out in vestra-binary vestra-binary-replay; do/u);
   assert.match(workflow, /two builds from identical inputs emitted different bytes/u);
   assert.match(workflow, /const env = \{ PATH: "",/u);
-  assert.match(workflow, /--release-inputs reviewed\/t76-release-publication\/release-inputs/u);
+  assert.match(workflow, /--release-inputs reviewed\/release-inputs \\/u);
+  assert.doesNotMatch(workflow, /t76-release-publication/u);
   assert.match(
     workflow,
     /name: t76-release-metadata-\$\{\{ inputs\.release_inputs_revision \}\}-\$\{\{ inputs\.release_inputs_run_id \}\}/u
@@ -136,6 +137,59 @@ test("reviewed binaries are built twice, compared byte for byte, and run with PA
     workflow,
     /expected = new Set\(\["win32-x64", "darwin-x64", "darwin-arm64", "linux-x64", "linux-arm64"\]\)/u
   );
+});
+
+// why: the first dispatch with reviewed inputs failed on all five legs because the workflow read
+// `reviewed/t76-release-publication/release-inputs`, a directory the artifact does not contain.
+// `actions/upload-artifact` makes the least common ancestor of several paths the artifact root, so the
+// layout is derived here from the publish workflow's own upload paths instead of being written twice.
+function metadataArtifactRoot() {
+  const publish = readFileSync(new URL("../../.github/workflows/t76-publish-release.yml", import.meta.url), "utf8");
+  const step = /name: t76-release-metadata-[^\n]*\n\s+path: \|\n((?:\s+\S[^\n]*\n)+)/u.exec(publish);
+  assert.ok(step, "the publish workflow uploads the t76-release-metadata artifact from a path list");
+  const paths = [];
+  for (const line of step[1].split("\n")) {
+    const text = line.trim();
+    // the list ends at the next YAML key of the same step
+    if (text === "" || /^[\w-]+:/u.test(text)) break;
+    paths.push(text);
+  }
+  assert.equal(paths.length, 4, "the metadata artifact is uploaded from exactly four paths");
+  const directories = paths.map((path) => {
+    const segments = path.split("/");
+    const wildcard = segments.findIndex((segment) => segment.includes("*"));
+    const kept = wildcard === -1 ? segments : segments.slice(0, wildcard);
+    // a final segment with an extension is a file, so its directory is the parent
+    return /\.[a-z]+$/u.test(kept.at(-1)) ? kept.slice(0, -1) : kept;
+  });
+  const common = directories.reduce((left, right) => {
+    let length = 0;
+    while (length < left.length && length < right.length && left[length] === right[length]) length += 1;
+    return left.slice(0, length);
+  });
+  return { root: common.join("/"), paths };
+}
+
+test("the reviewed inputs directory is the one the metadata artifact exposes", () => {
+  const { root, paths } = metadataArtifactRoot();
+  assert.equal(root, "t76-release-publication");
+  const inputs = paths.find((path) => path.endsWith("/release-inputs"));
+  assert.ok(inputs, "the artifact carries the release-inputs directory");
+  const relative = inputs.slice(root.length + 1);
+  assert.equal(relative, "release-inputs");
+  const download = /name: t76-release-metadata-[^\n]*\n\s+path: (\S+)/u.exec(workflow);
+  assert.ok(download, "the workflow downloads the metadata artifact to a path");
+  assert.equal(download[1], "reviewed");
+  assert.match(workflow, new RegExp(`--release-inputs ${download[1]}/${relative} \\\\`, "u"));
+});
+
+test("the derivation reproduces the directory the published package was built from", () => {
+  const { root, paths } = metadataArtifactRoot();
+  const relative = paths.find((path) => path.endsWith("/release-inputs")).slice(root.length + 1);
+  const npm = readFileSync(new URL("../../.github/workflows/npm-publish.yml", import.meta.url), "utf8");
+  const download = /name: t76-release-metadata-[^\n]*\n\s+path: (\S+)/u.exec(npm);
+  assert.ok(download, "npm-publish downloads the metadata artifact to a path");
+  assert.match(npm, new RegExp(`--release-inputs ${download[1]}/${relative}\\b`, "u"));
 });
 
 test("every heredoc in the workflow terminates where the shell can find it", () => {
