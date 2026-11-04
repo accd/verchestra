@@ -69,7 +69,7 @@ Proof: run wf | ✔ reviewed binaries are built twice, compared byte for byte, a
 ## Handoff
 
 - **Settled mid-build:** none; the user's standing instruction is to proceed without stopping (2026-11-04)
-- **Dispatched:** none yet
-- **Boundary:** none
+- **Dispatched:** Verifier, round 1, at the HEAD of the commit that carries this line; not yet returned
+- **Boundary:** C1-C3 closed at the fix commit
 - **Abandoned:** none
 - **Walked:** n/a - no screen
