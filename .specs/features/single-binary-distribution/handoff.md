@@ -6,9 +6,9 @@ status: verification
 branch: fix/236-windows-sea-pe
 baseRevision: 8422c9ff064cb47a6239a12cf577c0b4f7f79cbb
 lastCompletedTask: T8
-nextTask: "Post-merge independent review of #425 and #432 on 2026-10-13: no findings (https://github.com/accd/verchestra/pull/425#issuecomment-6153569019, https://github.com/accd/verchestra/pull/432#issuecomment-6153569538). T6 stays pending: dispatch .github/workflows/single-binary-build.yml at the merge revision (first with no release inputs, then with a t76-publish-release run), record the five per-leg transcripts in validation.md, then hand the owner the macOS Developer ID/notarization and Windows Authenticode signing steps."
-lastGate: "T8 on a local darwin-arm64 host: focused single-binary suites 59/59; gate:quick, gate:build, gate:release, and agent:check PASS with 0 skipped. single-binary-build.yml run 36677942597 (tests only) PASS on all five legs, 50/50 each with 0 skipped. See validation.md."
-updatedAt: 2026-10-13T19:50:00Z
+nextTask: "T6 second dispatch: single-binary-build.yml with release_inputs_revision and release_inputs_run_id read from a t76-publish-release run, then record the per-target executable digests in validation.md; then the owner applies macOS Developer ID/notarization and Windows Authenticode signing. The tests-only dispatch at 27e56e5c8516 passed on all five legs (run 41918706453)."
+lastGate: "single-binary-build.yml run 41918706453 (tests only) at 27e56e5c851644b26b4c9bb618f85820491e5517: PASS on all five legs with the zero-skip suite step green on each; the reviewed-input build is not yet run. Earlier run 36677942597: 50/50 each. See validation.md."
+updatedAt: 2026-11-04T22:00:00Z
 ---
 
 # Scope
@@ -39,11 +39,12 @@ section now holds the tree, the copied resource bytes, and the blob. Run
 
 # Next Exact Action
 
-T6. After merge, dispatch `single-binary-build.yml` with `revision` set to the
-merge commit and no release inputs. All five legs must pass with zero skips.
-Then dispatch it again with `release_inputs_revision` and
-`release_inputs_run_id` from the latest `t76-publish-release` run. Record both
-run ids and the per-target executable digests in `validation.md`.
+T6, second dispatch. The tests-only dispatch at the merge revision is recorded
+in `validation.md` (run 41918706453, all five legs PASS). Dispatch
+`single-binary-build.yml` again with `release_inputs_revision` and
+`release_inputs_run_id` from the latest `t76-publish-release` run, read from
+GitHub, and record the run id and the per-target executable digests in
+`validation.md`. The owner then signs.
 
 # Blockers
 
