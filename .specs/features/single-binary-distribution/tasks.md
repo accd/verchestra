@@ -70,8 +70,9 @@ native legs, zero skips, artifacts only) with its shape test, plus
 
 ### T6: Fleet evidence and owner signing
 
-**Status:** In progress. The tests-only dispatch at the merge revision passed on all five legs
-(run 41918706453). The reviewed-input dispatch and the owner signing remain.
+**Status:** In progress. The tests-only dispatch (run 41918706453) and the reviewed-input
+dispatch (run 41928696291) passed on all five legs. The executable digests from the index artifact and the
+owner signing remain.
 **What:**
 1. Dispatch `single-binary-build.yml` at the merge revision, first without
    reviewed inputs and then with a `t76-publish-release` run.
