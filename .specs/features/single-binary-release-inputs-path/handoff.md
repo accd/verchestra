@@ -2,12 +2,12 @@
 schema: verchestra-feature-handoff/v1
 feature: single-binary-release-inputs-path
 issue: 236
-status: in_progress
+status: verification
 branch: claude/clever-lamport-7h2in4
 baseRevision: 25b42166cb8ff8584cc76c2c5539a11f315cae55
 lastCompletedTask: T1
-nextTask: "Independent verification of C1-C3 by a fresh sub-agent, then review and merge. After the merge, dispatch single-binary-build.yml again with revision the new main tip and release_inputs_revision 50ae23c84c889c3546eaa0f2b1c22febab4069c4 and release_inputs_run_id 40999595578 (run 40999595578 of t76-publish-release; its metadata artifact expires 2027-01-28), and record the per-target digests in single-binary-distribution/validation.md."
-lastGate: "node --test tests/agent-readiness/single-binary-workflow.test.mjs: 11 pass, 0 fail; the three tests that read the workflow were red against the old path and green against the new one"
+nextTask: "Review and merge. After the merge, dispatch single-binary-build.yml again with revision the new main tip, release_inputs_revision 50ae23c84c889c3546eaa0f2b1c22febab4069c4 and release_inputs_run_id 40999595578 (its metadata artifact expires 2027-01-28), and record the per-target digests in single-binary-distribution/validation.md."
+lastGate: "independent verification PASS 3/3 (verification.md, four low findings closed); check_proofs 5 pass 0 fail; node --test on the workflow suite 11 pass, 0 fail; agent-readiness scope 474 pass; agent:check PASS; six mutants of the workflows are each killed by a test"
 updatedAt: 2026-11-04T22:40:00Z
 ---
 
