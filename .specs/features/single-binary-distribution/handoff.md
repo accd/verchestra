@@ -6,9 +6,9 @@ status: verification
 branch: fix/236-windows-sea-pe
 baseRevision: 8422c9ff064cb47a6239a12cf577c0b4f7f79cbb
 lastCompletedTask: T8
-nextTask: "T6 second dispatch: single-binary-build.yml with release_inputs_revision and release_inputs_run_id read from a t76-publish-release run, then record the per-target executable digests in validation.md; then the owner applies macOS Developer ID/notarization and Windows Authenticode signing. The tests-only dispatch at 27e56e5c8516 passed on all five legs (run 41918706453)."
-lastGate: "single-binary-build.yml run 41918706453 (tests only) at 27e56e5c851644b26b4c9bb618f85820491e5517: PASS on all five legs with the zero-skip suite step green on each; the reviewed-input build is not yet run. Earlier run 36677942597: 50/50 each. See validation.md."
-updatedAt: 2026-11-04T22:00:00Z
+nextTask: "Read the per-target executable digests from the reconciled index artifact 13371590518 of run 41928696291 and record them in validation.md (the authoring environment cannot download artifacts). Then the owner applies macOS Developer ID/notarization and Windows Authenticode signing and records the signed digests."
+lastGate: "single-binary-build.yml run 41928696291 with reviewed inputs (t76-publish-release run 40999595578) at 2cf4b90046af14da5d1d0cb0cf69cabb4a4ba29b: PASS on all five legs, each building twice from the reviewed inputs with every byte compared, and the collect job PASS. The earlier tests-only run 41918706453 also passed. See validation.md."
+updatedAt: 2026-11-04T23:10:00Z
 ---
 
 # Scope
@@ -39,12 +39,11 @@ section now holds the tree, the copied resource bytes, and the blob. Run
 
 # Next Exact Action
 
-T6, second dispatch. The tests-only dispatch at the merge revision is recorded
-in `validation.md` (run 41918706453, all five legs PASS). Dispatch
-`single-binary-build.yml` again with `release_inputs_revision` and
-`release_inputs_run_id` from the latest `t76-publish-release` run, read from
-GitHub, and record the run id and the per-target executable digests in
-`validation.md`. The owner then signs.
+T6 is recorded for the unsigned binaries: run 41928696291 passed on all five legs with the reviewed
+inputs, and `validation.md` has the jobs, artifacts and zip digests. What is left is to read the per-target
+executable digests from the reconciled index artifact 13371590518, which needs an environment that can
+download artifacts, and then the owner signs (macOS Developer ID with notarization, Windows Authenticode) and
+records the signed digests.
 
 # Blockers
 

@@ -166,10 +166,41 @@ passed, and the step "Run the single-binary suites with zero skips allowed" is g
 - The first dispatch, run 41918600080, failed in the input validation because its
   `revision` was mistyped with 39 characters. It built nothing and is not evidence.
 
+## T6: reviewed-input build at the merge revision (2026-11-04)
+
+`single-binary-build.yml` run 41928696291, dispatched from `main` with `revision`
+`2cf4b90046af14da5d1d0cb0cf69cabb4a4ba29b`, `release_inputs_revision`
+`50ae23c84c889c3546eaa0f2b1c22febab4069c4` and `release_inputs_run_id` `40999595578`
+(the `t76-publish-release` run of the `.9` candidate). All five legs passed the suites with zero
+skips, downloaded the reviewed inputs, built the binary twice from them and compared every byte, and the
+job "Collect five target binaries" passed.
+
+| Leg | Job | Suites, inputs, build twice | Artifact | Size (bytes) | Artifact zip sha256 |
+| --- | --- | --- | --- | --- | --- |
+| Linux glibc arm64 | 126919781237 | success, success, success | `vestra-binary-linux-arm64-41928696291` (13371205314) | 44760893 | `7bdd689738d2c4a5175b2a59e8ed5d42b84544f036d0d8359522faf0397a3a3b` |
+| macOS arm64 | 126919781445 | success, success, success | `vestra-binary-darwin-arm64-41928696291` (13370257500) | 39572675 | `1c683ee5335d6145b54585b62df149ee051f757d89f289d0043325c99c552f3d` |
+| Linux glibc x64 | 126919781343 | success, success, success | `vestra-binary-linux-x64-41928696291` (13370920777) | 44784721 | `b529ea4c424f3bc286b43fde11989536e61a7699c27aa2bbbb3bcb6e208a8e09` |
+| macOS x64 | 126919781259 | success, success, success | `vestra-binary-darwin-x64-41928696291` (13370916206) | 40551664 | `21482e8ea3fbfa349973723bbe13eb5e289ed6ce200722e6fa933d8d3127599f` |
+| Windows x64 | 126919780918 | success, success, success | `vestra-binary-win32-x64-41928696291` (13370099234) | 35249906 | `29691bce8ef07385628aecb0d5d326343205a2c1e1618ef5488fd9db776a9fc6` |
+
+- The three steps are "Run the single-binary suites with zero skips allowed", "Download the reviewed pinned
+  release inputs" and "Build twice from the reviewed inputs and compare every byte". The last one fails the leg
+  when the two trees differ, so its success is the byte-for-byte reconciliation.
+- The collect job downloaded each artifact and the digest it computed matches the digest the artifacts API
+  reports, for all five.
+- The digest in the last column is the sha256 of the uploaded zip, not of the executable. The per-target
+  executable manifest digests are in the reconciled index artifact
+  `single-binary-index-2cf4b90046af14da5d1d0cb0cf69cabb4a4ba29b-41928696291` (13371590518, sha256
+  `13c73702e9b5e8ccc18407dc5a0979c95574d65104603b7485068eec31b287a0`). It could not be opened in the authoring
+  environment, because the proxy blocks the artifact storage host, so the executable digests are not repeated here.
+- The binaries are unsigned. Nothing was signed, notarized or published.
+
+The first reviewed-input dispatch, run 41922118231, failed on all five legs in "Build twice from the
+reviewed inputs" with `VES_VESTRA_BUILD_INPUTS_MISSING`: the workflow read a directory the metadata artifact does
+not contain. That is fixed in `single-binary-release-inputs-path` and not evidence for this feature.
+
 ## Pending evidence (T6)
 
-- A reviewed-input build reconciled across all five targets: the second dispatch,
-  with `release_inputs_revision` and `release_inputs_run_id` taken from a
-  `t76-publish-release` run read from GitHub, and the per-target executable
-  digests recorded here.
-- Owner signing: Developer ID with notarization, and Authenticode.
+- The executable digests per target, read from the reconciled index artifact 13371590518 by someone who can
+  download it, and recorded here.
+- Owner signing: Developer ID with notarization, and Authenticode, with the signed digests.
