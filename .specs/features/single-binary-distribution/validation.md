@@ -144,9 +144,32 @@ new injector.
 | `pnpm agent:check` | PASS |
 | `single-binary-build.yml` run 36677942597 at `9fa81186a15a867677ab03f2e0c1438c6f24ad2f`, tests only | PASS on all five legs: Windows x64, macOS x64, macOS arm64, Linux glibc x64, and Linux glibc arm64. Each ran 50 tests with 0 failed and 0 skipped. |
 
+## T6: tests-only dispatch at the merge revision (2026-11-04)
+
+`single-binary-build.yml` run 41918706453, dispatched from `main` with `revision`
+`27e56e5c851644b26b4c9bb618f85820491e5517` and no release inputs. All five legs
+passed, and the step "Run the single-binary suites with zero skips allowed" is green on each.
+
+| Leg | Runner | Job | Result |
+| --- | --- | --- | --- |
+| Linux glibc arm64 | `ubuntu-24.04-arm` | 126885180420 | PASS |
+| macOS arm64 | `macos-14` | 126885180802 | PASS |
+| Linux glibc x64 | `ubuntu-latest` | 126885181019 | PASS |
+| macOS x64 | `macos-15-intel` | 126885181029 | PASS |
+| Windows x64 | `windows-latest` | 126885181140 | PASS |
+
+- The steps "Download the reviewed pinned release inputs" and "Build twice from the
+  reviewed inputs and compare every byte" are `skipped` on every leg, and the job
+  "Collect five target binaries" is `skipped`: that is the tests-only mode, not a gap.
+- Per-leg test counts were not read from the step logs, so this record does not
+  repeat a number. The earlier tests-only run 36677942597 recorded 50/50 on each leg.
+- The first dispatch, run 41918600080, failed in the input validation because its
+  `revision` was mistyped with 39 characters. It built nothing and is not evidence.
+
 ## Pending evidence (T6)
 
-- The five native legs of `.github/workflows/single-binary-build.yml`, run at
-  the merge revision.
-- A reviewed-input build reconciled across all five targets.
+- A reviewed-input build reconciled across all five targets: the second dispatch,
+  with `release_inputs_revision` and `release_inputs_run_id` taken from a
+  `t76-publish-release` run read from GitHub, and the per-target executable
+  digests recorded here.
 - Owner signing: Developer ID with notarization, and Authenticode.
