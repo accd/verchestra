@@ -52,8 +52,8 @@ importers:
         specifier: 10.13.0
         version: 10.13.0
       jose:
-        specifier: 6.2.13
-        version: 6.2.13
+        specifier: 6.2.15
+        version: 6.2.15
       json-schema-to-typescript:
         specifier: 16.0.0
         version: 16.0.0
@@ -243,8 +243,8 @@ importers:
         specifier: 5.1.0
         version: 5.1.0
       jose:
-        specifier: 6.2.13
-        version: 6.2.13
+        specifier: 6.2.15
+        version: 6.2.15
 
   packages/extension-host:
     dependencies:
@@ -3144,8 +3144,8 @@ packages:
   jose@6.2.12:
     resolution: {integrity: sha512-9NiFmJEex0sy2Dk58j2UGBSHgUs2ypF9eZSu4L6vjOX3Dp96Sw1F3uL+H+D1sx02jZZdzUT0HgvCy59CuvXcWw==}
 
-  jose@6.2.13:
-    resolution: {integrity: sha512-7TIg10ZE1x82YediN+lcrPNvGMKge9yFHQD+Qho/b8y2adfugU3AsvvHfxV0fzyFllT6l9xCjf4RWY9g/Z9PJQ==}
+  jose@6.2.15:
+    resolution: {integrity: sha512-qdF6ewcZARtef63fJ9AKKZPgxw+t7USH6HLXYcD4CrdmSvDp79rpJSPFEKc90QBeGS63u1KQtN2MZQHC0yDIzA==}
 
   jpeg-js@0.4.4:
     resolution: {integrity: sha512-WZzeDOEtTOBK4Mdsar0IqEU5sMr3vSV2RqkAIzUEV2BHnUfKGyswWFPFwK5EeDo93K3FohSHbLAjj0s1Wzd+dg==}
@@ -4356,6 +4356,9 @@ packages:
   tslib@2.8.1:
     resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
 
+  tslib@2.9.1:
+    resolution: {integrity: sha512-a4Ux9VKuIMHsOS7ENbEq6hK2ZGYIT27Rtl0E4eD9KqwxhKiQeMZE/9xb3IdYwWaSOyIBQLExhQgXDTYoiCxnWA==}
+
   tuf-js@5.0.1:
     resolution: {integrity: sha512-ZjElOrQLu8Wv5bcpAb/tW2NbchK85DvHy2nJffRmp5zd1VJIQM1IqgbE+EehwgmqY+ayJD5WCGgbs2ZZkYthPQ==}
     engines: {node: ^20.17.0 || >=22.9.0}
@@ -5478,7 +5481,7 @@ snapshots:
 
   '@emnapi/runtime@2.0.0-alpha.3':
     dependencies:
-      tslib: 2.8.1
+      tslib: 2.9.1
 
   '@emnapi/wasi-threads@1.2.2':
     dependencies:
@@ -8094,7 +8097,7 @@ snapshots:
 
   jose@6.2.12: {}
 
-  jose@6.2.13: {}
+  jose@6.2.15: {}
 
   jpeg-js@0.4.4: {}
 
@@ -9477,6 +9480,8 @@ snapshots:
   tslib@1.14.1: {}
 
   tslib@2.8.1: {}
+
+  tslib@2.9.1: {}
 
   tuf-js@5.0.1:
     dependencies:
